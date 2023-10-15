@@ -1,4 +1,7 @@
+import os.path
+import re
 from contextlib import closing
+from hashlib import md5
 from multiprocessing import Queue
 from threading import Thread
 from time import sleep
@@ -6,6 +9,8 @@ from urllib.parse import unquote
 
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from loguru import logger
 from rich.progress import Progress, TextColumn, BarColumn, TimeRemainingColumn, TimeElapsedColumn, TaskID
 
 from utils.constant import config
@@ -17,15 +22,16 @@ class MultiDown:
     利用header Range实现分段下载
     """
 
-    def __init__(self, url: str, file_path: str, file_size: int = 0) -> None:
+    def __init__(self, url: str, file_path: str, file_name: str, file_size: int = 0, md5: str = None) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
         self.progress_q: Queue = Queue()
         self.close_q: Queue = Queue(1)
         if file_size == 0:
             file_size = self.get_file_size(url)
-
-        self.file_info = FileInfo(url=url, file_path=file_path, file_size=file_size)
+        # win下排除特殊字符 TODO 适配不同系统
+        file_name = re.sub(r'[\\/:*?"<>|]', '', file_name)
+        self.file_info = FileInfo(url=url, file_path=os.path.join(file_path, file_name), file_size=file_size, md5=md5)
         self.progress = Progress(TextColumn('down file[progress.description]{task.description}'),
                                  BarColumn(),
                                  TextColumn(
@@ -39,7 +45,7 @@ class MultiDown:
 
     @staticmethod
     def get_file_size(_url):
-        with closing(requests.get(_url,
+        with closing(requests.get(_url, stream=True,
                                   proxies=config.yande_api.proxies,
                                   headers=config.yande_api.headers)) as res:
             file_size = int(res.headers.get('Content-Length', '0'))
@@ -55,14 +61,20 @@ class MultiDown:
 
         headers.update(config.yande_api.headers)
         content_data = []
-        with closing(requests.get(url, stream=True,
-                                  proxies=config.yande_api.proxies,
-                                  headers=headers,
-                                  timeout=5)) as res:
-            for chunk in res.iter_content(chunk_size=config.downloader.chunk_size):
-                if chunk:
-                    rx_q.put(len(chunk) / 1024 / 1024)
-                    content_data.append(chunk)
+        for retry in range(config.yande_api.retry):
+            try:
+                with closing(requests.get(url, stream=True,
+                                          proxies=config.yande_api.proxies,
+                                          headers=headers,
+                                          timeout=5)) as res:
+                    for chunk in res.iter_content(chunk_size=config.downloader.chunk_size):
+                        if chunk:
+                            rx_q.put(len(chunk) / 1024 / 1024)
+                            content_data.append(chunk)
+                break
+            except Exception as err:
+                logger.warning(f'down error {retry} {url} {s}-{e}: {err}')
+                sleep(5)
         data_q.put([s, e, b''.join(content_data)])
 
     @staticmethod
@@ -70,8 +82,10 @@ class MultiDown:
         """
         刷新进度条
         """
+        # add = 0
         while queue_wait(rx_q, msg_q):
             down_length = rx_q.get()
+            # add += down_length
             progress.advance(task, down_length)
 
     @staticmethod
@@ -87,7 +101,16 @@ class MultiDown:
             s, e, data = data_q.get()
             file.seek(s)
             file.write(data)
+
         file.close()
+
+        if file_info.md5:
+            file = open(f_path, 'rb+')
+            file_md5 = md5(file.read()).hexdigest()
+            # print(file_md5, file_info.md5)
+            if file_info.md5 != file_md5:
+                logger.warning(f'md5 check err: {f_path}')
+            file.close()
 
     def down_file_in_range(self, file_size):
         executor = ThreadPoolExecutor(max_workers=self.thread_num)
@@ -97,7 +120,7 @@ class MultiDown:
             split_size = file_size + 1
 
         for s_offset in range(0, file_size + 1, split_size):
-            e_offset = s_offset + config.downloader.split_size - 1
+            e_offset = s_offset + split_size - 1
             if e_offset >= file_size:
                 e_offset = ''
             t = executor.submit(self.get_content,
@@ -108,7 +131,6 @@ class MultiDown:
 
         for _ in as_completed(executor_pool):
             pass
-        self.close_q.put('1')
 
     def start(self):
         file_size = self.file_info.file_size
@@ -121,8 +143,10 @@ class MultiDown:
         writer_t.start()
         # 启动下载分割
         self.down_file_in_range(file_size)
+        self.close_q.put('1')
         writer_t.join()
         progress_t.join()
+        self.progress.stop()
 
 
 def queue_wait(data_q: Queue, close_q: Queue):
