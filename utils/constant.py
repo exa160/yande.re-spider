@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional
 
 from loguru import logger
@@ -55,4 +56,4 @@ def load_config(config_path: str = 'data.cfg'):
     return _config
 
 
-config = load_config('../config/data.cfg')
+config = load_config(str(Path(__file__).absolute().parent.parent / 'config' / 'data.cfg'))

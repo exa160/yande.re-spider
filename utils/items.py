@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional, List
 
 from pydantic import BaseModel, RootModel
@@ -65,12 +66,37 @@ class YandePostData(RootModel):
     root: List[YandePostItem]
 
 
+class Rating(Enum):
+    S = 'safe'
+    R15 = 'questionable'
+    R18 = 'explicit'
+
+
+class YandeSearchTags(BaseModel):
+    width: str = None
+    rating: Rating = None
+
+
+class YandeRunningConfig(BaseModel):
+    save_dir_path: Optional[str] = None
+    start_page: int = 0
+    end_page: int = 0
+    stop_id: int = 0
+    tags: str = ''
+
+
+class YandeFilterTags(BaseModel):
+    pass
+
+
 class FileInfo(BaseModel):
     """
     下载文件的信息
     """
+    id: Optional[int] = None
     file_path: str
     file_size: int
+    md5: Optional[str] = None
     url: str
 
 
