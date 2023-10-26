@@ -5,7 +5,6 @@ from hashlib import md5
 from multiprocessing import Queue
 from threading import Thread
 from time import sleep
-from urllib.parse import unquote
 
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -22,7 +21,8 @@ class MultiDown:
     利用header Range实现分段下载
     """
 
-    def __init__(self, url: str, file_path: str, file_name: str, file_size: int = 0, md5: str = None) -> None:
+    def __init__(self, url: str, file_path: str, file_name: str,
+                 file_size: int = 0, _md5: str = None, _id: int = None) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
         self.progress_q: Queue = Queue()
@@ -31,7 +31,8 @@ class MultiDown:
             file_size = self.get_file_size(url)
         # win下排除特殊字符 TODO 适配不同系统
         file_name = re.sub(r'[\\/:*?"<>|]', '', file_name)
-        self.file_info = FileInfo(url=url, file_path=os.path.join(file_path, file_name), file_size=file_size, md5=md5)
+        self.file_info = FileInfo(url=url, id=_id,
+                                  file_path=os.path.join(file_path, file_name), file_size=file_size, md5=_md5)
         self.progress = Progress(TextColumn('down file[progress.description]{task.description}'),
                                  BarColumn(),
                                  TextColumn(
@@ -52,11 +53,11 @@ class MultiDown:
         return file_size
 
     @staticmethod
-    def get_content(url: str, s: int, e: int, rx_q: Queue, data_q: Queue):
+    def get_content(url: str, _id: int, s: int, e: int, rx_q: Queue, data_q: Queue):
         headers = {
             "Range": f"bytes={s}-{e}",
             "Host": "files.yande.re",
-            # 'Referer': f'https://yande.re/post/show/{id}'
+            'Referer': f'https://yande.re/post/show/{_id}'
         }
 
         headers.update(config.yande_api.headers)
@@ -74,7 +75,7 @@ class MultiDown:
                 break
             except Exception as err:
                 logger.warning(f'down error {retry} {url} {s}-{e}: {err}')
-                sleep(5)
+                sleep(6)
         data_q.put([s, e, b''.join(content_data)])
 
     @staticmethod
@@ -124,7 +125,8 @@ class MultiDown:
             if e_offset >= file_size:
                 e_offset = ''
             t = executor.submit(self.get_content,
-                                self.file_info.url, s_offset, e_offset, self.progress_q, self.data_q)
+                                self.file_info.url, self.file_info.id,
+                                s_offset, e_offset, self.progress_q, self.data_q)
             t.add_done_callback(lambda x: print(x.exception()) if x.exception() else '')
             executor_pool.append(t)
             # self.get_content(self.file_info.url, s_offset, e_offset, self.progress_q, self.data_q)
