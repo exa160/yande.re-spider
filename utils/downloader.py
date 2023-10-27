@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from loguru import logger
 from rich.progress import Progress, TextColumn, BarColumn, TimeRemainingColumn, TimeElapsedColumn, TaskID
+from pathvalidate import sanitize_filename
 
 from utils.constant import config
 from utils.items import FileInfo
@@ -29,8 +30,8 @@ class MultiDown:
         self.close_q: Queue = Queue(1)
         if file_size == 0:
             file_size = self.get_file_size(url)
-        # win下排除特殊字符 TODO 适配不同系统
-        file_name = re.sub(r'[\\/:*?"<>|]', '', file_name)
+        # 排除文件名特殊字符
+        file_name = sanitize_filename(file_name)
         self.file_info = FileInfo(url=url, id=_id,
                                   file_path=os.path.join(file_path, file_name), file_size=file_size, md5=_md5)
         self.progress = Progress(TextColumn('down file[progress.description]{task.description}'),
