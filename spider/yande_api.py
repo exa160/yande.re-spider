@@ -6,6 +6,7 @@ from typing import Union, Tuple
 import requests
 from urllib.parse import unquote
 from loguru import logger
+from pathvalidate import sanitize_filename
 
 from utils.constant import config
 from utils.downloader import MultiDown
@@ -68,7 +69,7 @@ class YandeSpider:
                 logger.info('finish')
                 break
             for i in yande_item.root:
-                fn = unquote(i.file_url.rsplit("/", maxsplit=1)[-1])
+                fn = sanitize_filename(unquote(i.file_url.rsplit("/", maxsplit=1)[-1]))
                 if i.id <= get_config.stop_id:
                     return
                 if (save_dir_path / fn).exists():
