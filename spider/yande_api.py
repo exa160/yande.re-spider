@@ -10,7 +10,7 @@ from pathvalidate import sanitize_filename
 
 from utils.constant import config
 from utils.downloader import MultiDown
-from utils.items import YandePostData, YandeSearchTags, YandeRunningConfig
+from utils.items import YandePostData, YandeSearchTags, YandeRunningConfig, IterStatus
 
 
 class YandeApi:
@@ -38,7 +38,7 @@ class YandeApi:
                     # 利用pydantic解析request
                     return True, YandePostData.model_validate_json(req.content)
             except Exception as e:
-                logger.warning(f'requests error {page} {tags}: {e}')
+                logger.warning(f'requests error {page} {tags}: {e} {req.content}')
 
 
 class YandeSpider:
@@ -47,7 +47,36 @@ class YandeSpider:
         self.download_queue = Queue()
         self.search_config = search_config
 
-    def get_post_list(self, get_config: YandeRunningConfig = YandeRunningConfig()):
+    @staticmethod
+    def item_iter_and_down(yande_item, save_dir_path, get_config):
+        """
+        遍历及下载
+        :param yande_item:
+        :param save_dir_path:
+        :param get_config:
+        :return:
+        """
+        for i in yande_item.root:
+            fn = sanitize_filename(unquote(i.file_url.rsplit("/", maxsplit=1)[-1]))
+            if i.id <= get_config.stop_id:
+                return IterStatus.stop
+            if (save_dir_path / fn).exists():
+                if get_config.add_flag:
+                    continue
+                else:
+                    return IterStatus.stop
+            MultiDown(i.file_url, str(save_dir_path), fn, i.file_size, i.md5, i.id)
+        return IterStatus.next
+
+    def get_post_list(self, get_config: YandeRunningConfig = None):
+        """
+        获取yande搜索列表
+        :param get_config:
+        :return:
+        """
+        if get_config is None:
+            get_config = YandeRunningConfig()
+
         s_page = max(1, get_config.start_page)
         e_page = get_config.end_page if get_config.end_page > 0 else 100
         s_page, e_page = (e_page, s_page) if s_page > e_page else (s_page, e_page)
@@ -58,7 +87,7 @@ class YandeSpider:
             save_dir_path = Path('.', tags)
         else:
             save_dir_path = Path(save_dir_path)
-
+        logger.info(f'*search start\t{"["+tags+"]":>20} \tdown path:{save_dir_path}')
         for page in range(s_page, e_page):
 
             if not save_dir_path.exists():
@@ -66,19 +95,23 @@ class YandeSpider:
             # status, yande_item = self.y_api.get_ranking(page, tags='rating:e width:>=10000 ext:png')
             status, yande_item = self.y_api.get_ranking(page, tags=tags)
             if len(yande_item.root) == 0:
-                logger.info('finish')
+                logger.info(f'**search finish\t{"["+tags+"]":>20}')
                 break
-            for i in yande_item.root:
-                fn = sanitize_filename(unquote(i.file_url.rsplit("/", maxsplit=1)[-1]))
-                if i.id <= get_config.stop_id:
-                    return
-                if (save_dir_path / fn).exists():
-                    continue
-                MultiDown(i.file_url, str(save_dir_path), fn, i.file_size, i.md5, i.id)
+            iter_status = self.item_iter_and_down(yande_item, save_dir_path, get_config)
+            if iter_status == IterStatus.stop:
+                break
 
     def update_tags(self, tag_list, b_path, get_config: YandeRunningConfig = YandeRunningConfig()):
-        for tag, stop_id in tag_list:
+        """
+        批量搜索tag
+        :param tag_list:
+        :param b_path:
+        :param get_config:
+        :return:
+        """
+        for tag, stop_id, add_flag in tag_list:
             get_config.tags = tag
             get_config.stop_id = stop_id
-            get_config.save_dir_path = b_path / tag
+            get_config.save_dir_path = Path(b_path) / tag
+            get_config.add_flag = add_flag
             self.get_post_list(get_config)

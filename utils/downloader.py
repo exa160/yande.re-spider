@@ -34,7 +34,7 @@ class MultiDown:
         file_name = sanitize_filename(file_name)
         self.file_info = FileInfo(url=url, id=_id,
                                   file_path=os.path.join(file_path, file_name), file_size=file_size, md5=_md5)
-        self.progress = Progress(TextColumn('down file[progress.description]{task.description}'),
+        self.progress = Progress(TextColumn('down file [progress.description] {task.description}'),
                                  BarColumn(),
                                  TextColumn(
                                      "[progress.percentage]{task.percentage:>3.0f}%"
