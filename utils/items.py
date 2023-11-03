@@ -13,12 +13,13 @@ class YandePostData(RootModel):
     """
     yande.re接口获取的list json内容
     """
+
     class YandePostItem(BaseModel):
         id: int
         tags: str
         created_at: datetime
         updated_at: datetime
-        creator_id: int
+        creator_id: Optional[int] = None
         author: str
         change: int
         source: str
@@ -43,9 +44,9 @@ class YandePostData(RootModel):
         sample_file_size: int
         # jpg信息
         jpeg_url: str
-        jpeg_width:  int
-        jpeg_height:  int
-        jpeg_file_size:  int
+        jpeg_width: int
+        jpeg_height: int
+        jpeg_file_size: int
         rating: str
         is_rating_locked: bool
         has_children: bool
@@ -83,6 +84,7 @@ class YandeRunningConfig(BaseModel):
     end_page: int = 0
     stop_id: int = 0
     tags: str = ''
+    add_flag: bool = False
 
 
 class YandeFilterTags(BaseModel):
@@ -98,6 +100,11 @@ class FileInfo(BaseModel):
     file_size: int
     md5: Optional[str] = None
     url: str
+
+
+class IterStatus(Enum):
+    next = 'continue'
+    stop = 'stop'
 
 
 if __name__ == '__main__':
