@@ -25,6 +25,7 @@ class YandeApi:
         )
         if tags:
             query_params.update(dict(tags=tags))
+        req = None
         for i in range(config.yande_api.retry):
             try:
                 req = requests.get(self.post_api,

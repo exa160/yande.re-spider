@@ -62,9 +62,9 @@ class MultiDown:
         }
 
         headers.update(config.yande_api.headers)
-        content_data = []
         for retry in range(config.yande_api.retry):
             try:
+                content_data = []
                 with closing(requests.get(url, stream=True,
                                           proxies=config.yande_api.proxies,
                                           headers=headers,
@@ -73,11 +73,11 @@ class MultiDown:
                         if chunk:
                             rx_q.put(len(chunk) / 1024 / 1024)
                             content_data.append(chunk)
-                break
+                data_q.put([s, e, b''.join(content_data)])
+                return
             except Exception as err:
                 logger.warning(f'down error {retry} {url} {s}-{e}: {err}')
                 sleep(6)
-        data_q.put([s, e, b''.join(content_data)])
 
     @staticmethod
     def progress_update(rx_q: Queue, msg_q: Queue, progress: Progress, task: TaskID):
@@ -112,6 +112,7 @@ class MultiDown:
             # print(file_md5, file_info.md5)
             if file_info.md5 != file_md5:
                 logger.warning(f'md5 check err: {f_path}')
+                os.remove(f_path)
             file.close()
 
     def down_file_in_range(self, file_size):
