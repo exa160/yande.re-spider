@@ -27,6 +27,7 @@ class YandeApi:
             query_params.update(dict(tags=tags))
         req = None
         for i in range(config.yande_api.retry):
+            req = None
             try:
                 req = requests.get(self.post_api,
                                    params=query_params,
@@ -39,7 +40,8 @@ class YandeApi:
                     # 利用pydantic解析request
                     return True, YandePostData.model_validate_json(req.content)
             except Exception as e:
-                logger.warning(f'requests error {page} {tags}: {e} {req.content}')
+                logger.warning(f'[{i + 1}] requests error'
+                               f'page: {page} tag: {tags}: {e} {req.content if req is not None else req}')
 
 
 class YandeSpider:
