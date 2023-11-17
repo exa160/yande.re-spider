@@ -84,7 +84,9 @@ class YandeRunningConfig(BaseModel):
     end_page: int = 0
     stop_id: int = 0
     tags: str = ''
-    add_flag: bool = False
+    add_flag: bool = False  # 文件插入
+    id_check: bool = True  # 检查文件夹内id是否重复
+    id_check_list: set = None  # 检查文件夹内id是否重复
 
 
 class YandeFilterTags(BaseModel):
