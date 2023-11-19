@@ -53,6 +53,8 @@ class YandeSpider:
     @staticmethod
     def scan_id_in_dir(save_dir_path) -> set:
         ret_set = set()
+        if not os.path.exists(save_dir_path):
+            return ret_set
         for entry_dir in os.scandir(save_dir_path):
             if not entry_dir.is_file():
                 continue
@@ -61,7 +63,7 @@ class YandeSpider:
                 yid = int(yid)
                 ret_set.add(yid)
             except Exception as e:
-                logger.warning(e)
+                logger.warning(f'{entry_dir.name}:{e}')
                 continue
         return ret_set
 
@@ -80,7 +82,10 @@ class YandeSpider:
                 return IterStatus.stop
             if get_config.id_check and get_config.id_check_list is not None:
                 if i.id in get_config.id_check_list:
-                    continue
+                    if get_config.add_flag:
+                        continue
+                    else:
+                        return IterStatus.stop
             if (save_dir_path / fn).exists():
                 if get_config.add_flag:
                     continue
