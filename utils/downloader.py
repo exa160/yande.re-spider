@@ -76,7 +76,7 @@ class MultiDown:
                 data_q.put([s, e, b''.join(content_data)])
                 return
             except Exception as err:
-                logger.warning(f'down error {retry} {url} {s}-{e}: {err}')
+                logger.warning(f'[{_id}] down error {retry} {url} {s}-{e}: {err}')
                 sleep(6)
 
     @staticmethod
@@ -138,8 +138,11 @@ class MultiDown:
 
     def start(self):
         file_size = self.file_info.file_size
+        file_path = self.file_info.file_path
+        description = file_path if len(file_path) < 21 else f'{file_path[:10]}...{file_path[-10:]}'
         # 启动进度条
-        task_id = self.progress.add_task(self.file_info.file_path, total=file_size / 1024 / 1024)
+        task_id = self.progress.add_task(f'[{self.file_info.id}] {description}',
+                                         total=file_size / 1024 / 1024)
         progress_t = Thread(target=self.progress_update, args=(self.progress_q, self.close_q, self.progress, task_id))
         progress_t.start()
         # 启动文件写
