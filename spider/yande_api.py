@@ -80,13 +80,11 @@ class YandeSpider:
             fn = sanitize_filename(unquote(i.file_url.rsplit("/", maxsplit=1)[-1]))
             if i.id <= get_config.stop_id:
                 return IterStatus.stop
-            if get_config.id_check and get_config.id_check_list is not None:
-                if i.id in get_config.id_check_list:
-                    if get_config.add_flag:
-                        continue
-                    else:
-                        return IterStatus.stop
-            if (save_dir_path / fn).exists():
+
+            # 检查重复后退出或者跳过
+            if ((save_dir_path / fn).exists() or
+                    (get_config.id_check and get_config.id_check_list is not None and
+                     i.id in get_config.id_check_list)):
                 if get_config.add_flag:
                     continue
                 else:
@@ -122,7 +120,7 @@ class YandeSpider:
             if not save_dir_path.exists():
                 os.makedirs(save_dir_path)
             # status, yande_item = self.y_api.get_ranking(page, tags='rating:e width:>=10000 ext:png')
-            status, yande_item = self.y_api.get_ranking(page, tags=tags)
+            status, yande_item = self.y_api.get_ranking(page, tags=tags.replace('tag_', ''))
             if len(yande_item.root) == 0:
                 logger.info(f'**search finish\t{"[" + tags + "]":>20}')
                 break
