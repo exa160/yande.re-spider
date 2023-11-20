@@ -1,5 +1,4 @@
 import os.path
-import re
 from contextlib import closing
 from hashlib import md5
 from multiprocessing import Queue
@@ -36,9 +35,9 @@ class MultiDown:
                                   file_path=os.path.join(file_path, file_name), file_size=file_size, md5=_md5)
         self.progress = Progress(TextColumn('down file [progress.description] {task.description}'),
                                  BarColumn(),
-                                 SpeedColumn(
-                                     "[progress.percentage]{task.percentage:>3.0f}%"
-                                     " {task.speed} {task.completed:>.03f}/{task.total:>.03f} MB"),
+                                 TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                                 SpeedColumn(" {task.speed}"),
+                                 TextColumn("{task.completed:>.03f}/{task.total:>.03f} MB"),
                                  TimeRemainingColumn(),
                                  TimeElapsedColumn()
                                  )
@@ -56,16 +55,16 @@ class MultiDown:
     @staticmethod
     def get_content(url: str, _id: int, s: int, e: int, rx_q: Queue, data_q: Queue):
         headers = {
-            "Range": f"bytes={s}-{e}",
-            "Host": "files.yande.re",
-            'Referer': f'https://yande.re/post/show/{_id}'
+            "authority": "files.yande.re",
+            'Referer': 'https://yande.re/'
         }
-
+        if s != 0 or e != '':
+            headers.update({"Range": f"bytes={s}-{e}"})
         headers.update(config.yande_api.headers)
         for retry in range(config.yande_api.retry):
+            content_data = []
+            chunk_sum = 0
             try:
-                content_data = []
-                chunk_sum = 0
                 with closing(requests.get(url, stream=True,
                                           proxies=config.yande_api.proxies,
                                           headers=headers,
@@ -73,13 +72,14 @@ class MultiDown:
                     for chunk in res.iter_content(chunk_size=config.downloader.chunk_size):
                         if chunk:
                             rx_q.put(len(chunk) / 1024 / 1024)
-                            chunk_sum += len(chunk) /1024 / 1024
+                            chunk_sum += len(chunk) / 1024 / 1024
                             content_data.append(chunk)
                 data_q.put([s, e, b''.join(content_data)])
                 return
             except Exception as err:
                 logger.warning(f'[{_id}] down error {retry} {url} {s}-{e}: {err}')
-                rx_q.put(-chunk_sum)
+                if s != 0 or e != '':
+                    rx_q.put(-chunk_sum)
                 sleep(6)
 
     @staticmethod
@@ -163,7 +163,7 @@ class SpeedColumn(TextColumn):
     def render(self, task: "Task") -> str:
         if task.speed is None:
             return 'NA'
-        else:
+        elif task.speed is not None:
             return f'{task.speed:.03f} MB/s'
 
 
