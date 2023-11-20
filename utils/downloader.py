@@ -36,9 +36,9 @@ class MultiDown:
                                   file_path=os.path.join(file_path, file_name), file_size=file_size, md5=_md5)
         self.progress = Progress(TextColumn('down file [progress.description] {task.description}'),
                                  BarColumn(),
-                                 TextColumn(
+                                 SpeedColumn(
                                      "[progress.percentage]{task.percentage:>3.0f}%"
-                                     " {task.speed} MB/s {task.completed:>.03f}/{task.total:>.03f} MB"),
+                                     " {task.speed} {task.completed:>.03f}/{task.total:>.03f} MB"),
                                  TimeRemainingColumn(),
                                  TimeElapsedColumn()
                                  )
@@ -65,6 +65,7 @@ class MultiDown:
         for retry in range(config.yande_api.retry):
             try:
                 content_data = []
+                chunk_sum = 0
                 with closing(requests.get(url, stream=True,
                                           proxies=config.yande_api.proxies,
                                           headers=headers,
@@ -72,11 +73,13 @@ class MultiDown:
                     for chunk in res.iter_content(chunk_size=config.downloader.chunk_size):
                         if chunk:
                             rx_q.put(len(chunk) / 1024 / 1024)
+                            chunk_sum += len(chunk) /1024 / 1024
                             content_data.append(chunk)
                 data_q.put([s, e, b''.join(content_data)])
                 return
             except Exception as err:
                 logger.warning(f'[{_id}] down error {retry} {url} {s}-{e}: {err}')
+                rx_q.put(-chunk_sum)
                 sleep(6)
 
     @staticmethod
@@ -109,11 +112,11 @@ class MultiDown:
         if file_info.md5:
             file = open(f_path, 'rb+')
             file_md5 = md5(file.read()).hexdigest()
+            file.close()
             # print(file_md5, file_info.md5)
             if file_info.md5 != file_md5:
                 logger.warning(f'md5 check err: {f_path}')
                 os.remove(f_path)
-            file.close()
 
     def down_file_in_range(self, file_size):
         executor = ThreadPoolExecutor(max_workers=self.thread_num)
@@ -129,12 +132,12 @@ class MultiDown:
             t = executor.submit(self.get_content,
                                 self.file_info.url, self.file_info.id,
                                 s_offset, e_offset, self.progress_q, self.data_q)
-            t.add_done_callback(lambda x: print(x.exception()) if x.exception() else '')
+            t.add_done_callback(lambda x: logger.warning(x.exception()) if x.exception() else '')
             executor_pool.append(t)
             # self.get_content(self.file_info.url, s_offset, e_offset, self.progress_q, self.data_q)
 
-        for _ in as_completed(executor_pool):
-            pass
+        for t in as_completed(executor_pool):
+            t.result()
 
     def start(self):
         file_size = self.file_info.file_size
@@ -154,6 +157,14 @@ class MultiDown:
         writer_t.join()
         progress_t.join()
         self.progress.stop()
+
+
+class SpeedColumn(TextColumn):
+    def render(self, task: "Task") -> str:
+        if task.speed is None:
+            return 'NA'
+        else:
+            return f'{task.speed:.03f} MB/s'
 
 
 def queue_wait(data_q: Queue, close_q: Queue):
