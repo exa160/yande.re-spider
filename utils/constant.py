@@ -30,7 +30,18 @@ class DownloaderConfig(ConfigModel):
     split_size: int = 5 * 1024 * 1024
 
 
+class MariaDBConfig(ConfigModel):
+    enable: bool = False
+    host: str = '127.0.0.1'
+    port: str = '3306'
+    user: str = ''
+    password: str = ''
+    schema_name: str = 'Pictures'
+    datatable: str = 'YandeRE'
+
+
 class Config(ConfigModel):
+    database: MariaDBConfig = MariaDBConfig()
     yande_api: ApiConfig = ApiConfig()
     downloader: DownloaderConfig = DownloaderConfig()
 
