@@ -5,6 +5,18 @@ from typing import Optional, List
 from pydantic import BaseModel, RootModel
 
 
+class SearchRating(Enum):
+    S = 'safe'
+    R15 = 'questionable'
+    R18 = 'explicit'
+
+
+class Rating(Enum):
+    S = 's'
+    R15 = 'q'
+    R18 = 'e'
+
+
 class IntegerInput(BaseModel):
     pass
 
@@ -47,7 +59,7 @@ class YandePostData(RootModel):
         jpeg_width: int
         jpeg_height: int
         jpeg_file_size: int
-        rating: str
+        rating: Rating
         is_rating_locked: bool
         has_children: bool
         parent_id: Optional[int]
@@ -57,20 +69,14 @@ class YandePostData(RootModel):
         height: int
         is_held: bool
         frames_pending_string: Optional[str]
-        frames_pending: Optional[list]
+        frames_pending: Optional[List[dict]]
         frames_string: Optional[str]
-        frames: Optional[List[str]]
+        frames: Optional[List[dict]]
         is_note_locked: bool
         last_noted_at: int
         last_commented_at: int
 
     root: List[YandePostItem]
-
-
-class Rating(Enum):
-    S = 'safe'
-    R15 = 'questionable'
-    R18 = 'explicit'
 
 
 class YandeSearchTags(BaseModel):
@@ -110,6 +116,9 @@ class IterStatus(Enum):
 
 
 if __name__ == '__main__':
-    with open(r"C:\Users\sfy11\Documents\a.json", 'rb') as f:
+    import json
+    with open(r"C:\Share\a.json", 'rb') as f:
+        # print(json.loads(f.read())[0]['frames'])
         for i in YandePostData.model_validate_json(f.read()).root:
-            print(i.id)
+            print(i.frames)
+            # break

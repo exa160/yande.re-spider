@@ -3,3 +3,5 @@ loguru
 requests[socks]
 rich
 pathvalidate
+sqlalchemy
+mariadb
