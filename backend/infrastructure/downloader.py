@@ -21,6 +21,12 @@ from rich.progress import (
 from pathvalidate import sanitize_filename
 
 from backend.config.settings import config
+from backend.config.constant import (
+    YANDE_RE_FILES_HOST,
+    YANDE_RE_REFERER,
+    TIMEOUT_RANGE_DOWNLOAD,
+    RETRY_SLEEP_SECONDS,
+)
 from backend.models.download import FileInfo
 
 
@@ -80,7 +86,7 @@ class MultiDown:
 
     @staticmethod
     def get_content(url: str, _id: int, s: int, e: int, rx_q: Queue, data_q: Queue):
-        headers = {"authority": "files.yande.re", "Referer": "https://yande.re/"}
+        headers = {"authority": YANDE_RE_FILES_HOST, "Referer": YANDE_RE_REFERER}
         if s != 0 or e != "":
             headers.update({"Range": f"bytes={s}-{e}"})
         headers.update(config.yande_api.headers)
@@ -94,7 +100,7 @@ class MultiDown:
                         stream=True,
                         proxies=config.yande_api.proxies,
                         headers=headers,
-                        timeout=50,
+                        timeout=TIMEOUT_RANGE_DOWNLOAD,
                     )
                 ) as res:
                     for chunk in res.iter_content(
@@ -109,7 +115,7 @@ class MultiDown:
             except Exception as err:
                 logger.warning(f"[{_id}] down error {retry} {url} {s}-{e}: {err}")
                 rx_q.put(-chunk_sum)
-                sleep(6)
+                sleep(RETRY_SLEEP_SECONDS)
 
     @staticmethod
     def progress_update(rx_q: Queue, msg_q: Queue, progress: Progress, task: TaskID):
@@ -151,7 +157,7 @@ class MultiDown:
         def get_content_with_callback(url, _id, s, e, data_q, callback):
             content_data = []
             chunk_sum = 0
-            headers = {"authority": "files.yande.re", "Referer": "https://yande.re/"}
+            headers = {"authority": YANDE_RE_FILES_HOST, "Referer": YANDE_RE_REFERER}
             if s != 0 or e != "":
                 headers.update({"Range": f"bytes={s}-{e}"})
             headers.update(config.yande_api.headers)
@@ -163,7 +169,7 @@ class MultiDown:
                             stream=True,
                             proxies=config.yande_api.proxies,
                             headers=headers,
-                            timeout=50,
+                            timeout=TIMEOUT_RANGE_DOWNLOAD,
                         )
                     ) as res:
                         for chunk in res.iter_content(
@@ -178,7 +184,7 @@ class MultiDown:
                         return
                 except Exception as err:
                     logger.warning(f"[{_id}] down error {retry} {url} {s}-{e}: {err}")
-                    sleep(6)
+                sleep(RETRY_SLEEP_SECONDS)
             data_q.put([s, e, b""])
 
         for s_offset in range(0, file_size + 1, split_size):

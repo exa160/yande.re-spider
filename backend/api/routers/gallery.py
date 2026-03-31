@@ -7,6 +7,13 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from backend.infrastructure.yande_api import YandeApi
+from backend.config.constant import (
+    DOWNLOADS_DIR,
+    TIMEOUT_PREVIEW,
+    THUMBNAIL_MAX_SIZE,
+    THUMBNAIL_QUALITY,
+    RATING_DISPLAY_MAP,
+)
 
 router = APIRouter()
 
@@ -47,7 +54,10 @@ class GalleryLoadRequest(BaseModel):
     sort_by: Optional[str] = Field("created_at", description="排序字段")
     sort_order: Optional[str] = Field("desc", description="排序方向")
     source: Optional[str] = Field(
-        "local", description="数据源: yande=在线, local=本地数据库"
+        "local", description="数据源: yande=在线, local=本地数据库, hybrid=混合模式"
+    )
+    max_id: Optional[int] = Field(
+        None, description="当前展示的最小 id，用于混合模式分页"
     )
 
 
@@ -57,6 +67,29 @@ class GalleryLoadResponse(BaseModel):
     page_size: int
     has_more: bool
     images: List[ImageDetail]
+    has_gap: bool = Field(False, description="是否有数据断档")
+    gap_before_id: Optional[int] = Field(None, description="断档位置的 id")
+
+
+class BrowseStateResponse(BaseModel):
+    last_max_id: Optional[int] = Field(None, description="数据库中最大 id")
+    db_count: int = Field(0, description="数据库总记录数")
+    newest_in_db: Optional[int] = Field(None, description="数据库最新记录 id")
+
+
+class SyncOnlineRequest(BaseModel):
+    max_id: Optional[int] = Field(None, description="当前展示的最小 id")
+    page_size: int = Field(20, ge=1, le=100)
+    tags: Optional[str] = ""
+
+
+class SyncOnlineResponse(BaseModel):
+    synced_count: int = Field(0, description="本次同步数量")
+    new_max_id: Optional[int] = Field(None, description="同步后的新最大 id")
+    has_gap: bool = Field(False, description="是否有断档")
+    gap_before_id: Optional[int] = Field(None, description="断档位置")
+    inserted: int = Field(0)
+    updated: int = Field(0)
 
 
 def get_rating_value(rating_str: str) -> str:
@@ -111,7 +144,6 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
 
     repo = YandeDataRepository()
     images = []
-    rating_map = {"s": "Safe", "q": "Questionable", "e": "Explicit"}
     for item in yande_data.root:
         if params.get("rating") and params["rating"] != "All":
             rating_val = get_rating_value(params["rating"])
@@ -145,7 +177,7 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
                 "tags": item.tags.split() if item.tags else [],
                 "width": item.width,
                 "height": item.height,
-                "rating": rating_map.get(item.rating.value, item.rating.value),
+                "rating": RATING_DISPLAY_MAP.get(item.rating.value, item.rating.value),
                 "file_url": item.file_url,
                 "preview_url": item.preview_url,
                 "sample_url": item.sample_url,
@@ -167,12 +199,41 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
 @router.post("/load", response_model=GalleryLoadResponse, summary="加载图库")
 async def load_gallery(request: GalleryLoadRequest):
     try:
+        from backend.dao.yande_data import YandeDataRepository
+
         params = request.model_dump()
         source = params.pop("source", "local")
+        max_id = params.pop("max_id", None)
+
+        has_gap = False
+        gap_before_id = None
 
         if source == "local":
             images, total = query_local_database(params)
             has_more = len(images) >= params.get("page_size", 20)
+        elif source == "hybrid":
+            repo = YandeDataRepository()
+            db_max_id = repo.get_max_id()
+
+            if max_id is None:
+                max_id = db_max_id
+
+            if db_max_id and db_max_id > 0:
+                db_images, db_total = repo.query_by_id_range(
+                    max_id=max_id,
+                    page=params.get("page", 1),
+                    page_size=params.get("page_size", 20),
+                )
+                gap_info = repo.check_continuous(max_id)
+                has_gap = gap_info["has_gap"]
+                gap_before_id = gap_info["gap_before_id"]
+
+                images = db_images
+                total = db_total
+                has_more = len(images) >= params.get("page_size", 20)
+            else:
+                images, total = query_yande_api(params)
+                has_more = len(images) >= params.get("page_size", 20)
         else:
             images, total = query_yande_api(params)
             has_more = len(images) >= params.get("page_size", 20)
@@ -183,6 +244,8 @@ async def load_gallery(request: GalleryLoadRequest):
             page_size=request.page_size,
             has_more=has_more,
             images=images,
+            has_gap=has_gap,
+            gap_before_id=gap_before_id,
         )
     except Exception as e:
         import traceback
@@ -250,14 +313,125 @@ async def get_gallery_statistics(source: str = Query("local", description="数�
         raise HTTPException(status_code=500, detail=f"统计失败: {str(e)}")
 
 
+@router.get("/browse-state", response_model=BrowseStateResponse, summary="获取浏览状态")
+async def get_browse_state():
+    try:
+        from backend.dao.yande_data import YandeDataRepository
+
+        repo = YandeDataRepository()
+        db_max_id = repo.get_max_id()
+        db_count = repo.get_count()
+
+        return BrowseStateResponse(
+            last_max_id=db_max_id,
+            db_count=db_count,
+            newest_in_db=db_max_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取浏览状态失败: {str(e)}")
+
+
+@router.post(
+    "/sync-online", response_model=SyncOnlineResponse, summary="同步在线数据到本地"
+)
+async def sync_online_data(request: SyncOnlineRequest):
+    try:
+        from backend.dao.yande_data import YandeDataRepository
+
+        yande_api = YandeApi()
+        repo = YandeDataRepository()
+
+        current_max_id = repo.get_max_id()
+        page = 1
+        total_inserted = 0
+        total_updated = 0
+        synced_count = 0
+
+        while synced_count < request.page_size:
+            success, yande_data = yande_api.get_ranking(page, request.tags or "")
+
+            if not success or not yande_data or not yande_data.root:
+                break
+
+            posts_to_save = []
+            for item in yande_data.root:
+                if request.max_id and item.id >= request.max_id:
+                    continue
+
+                posts_to_save.append(
+                    {
+                        "id": item.id,
+                        "tags": item.tags,
+                        "created_at": item.created_at,
+                        "creator_id": item.creator_id,
+                        "author": item.author,
+                        "change": item.change,
+                        "source": item.source,
+                        "score": item.score,
+                        "md5": item.md5,
+                        "file_size": item.file_size,
+                        "file_ext": item.file_ext,
+                        "file_url": item.file_url,
+                        "is_shown_in_index": item.is_shown_in_index,
+                        "preview_url": item.preview_url,
+                        "preview_width": item.preview_width,
+                        "preview_height": item.preview_height,
+                        "actual_preview_width": item.actual_preview_width,
+                        "actual_preview_height": item.actual_preview_height,
+                        "sample_url": item.sample_url,
+                        "sample_width": item.sample_width,
+                        "sample_height": item.sample_height,
+                        "sample_file_size": item.sample_file_size,
+                        "jpeg_url": item.jpeg_url,
+                        "jpeg_width": item.jpeg_width,
+                        "jpeg_height": item.jpeg_height,
+                        "jpeg_file_size": item.jpeg_file_size,
+                        "rating": item.rating.value
+                        if hasattr(item.rating, "value")
+                        else item.rating,
+                        "is_rating_locked": item.is_rating_locked,
+                        "has_children": item.has_children,
+                        "parent_id": item.parent_id,
+                        "status": item.status,
+                        "is_pending": item.is_pending,
+                        "width": item.width,
+                        "height": item.height,
+                        "is_held": item.is_held,
+                    }
+                )
+                synced_count += 1
+
+            if posts_to_save:
+                result = repo.save_posts(posts_to_save, down_flag=False)
+                total_inserted += result["inserted"]
+                total_updated += result["updated"]
+
+            page += 1
+
+        new_max_id = repo.get_max_id()
+        gap_info = repo.check_continuous(new_max_id or 0)
+
+        return SyncOnlineResponse(
+            synced_count=synced_count,
+            new_max_id=new_max_id,
+            has_gap=gap_info["has_gap"],
+            gap_before_id=gap_info["gap_before_id"],
+            inserted=total_inserted,
+            updated=total_updated,
+        )
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
+
+
 @router.get("/cache/preview/{filename}")
 async def get_preview_image(filename: str):
     from fastapi.responses import FileResponse
     from pathlib import Path
 
-    preview_path = (
-        Path(__file__).parent.parent.parent / "downloads" / "previews" / filename
-    )
+    preview_path = DOWNLOADS_DIR / "previews" / filename
     if preview_path.exists():
         return FileResponse(str(preview_path))
     return {"error": "Preview not found"}
@@ -322,14 +496,16 @@ async def fetch_and_cache_preview(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-def generate_thumbnail(original_path: str, preview_path: str, max_size: int = 300):
+def generate_thumbnail(
+    original_path: str, preview_path: str, max_size: int = THUMBNAIL_MAX_SIZE
+):
     from PIL import Image
 
     img = Image.open(original_path)
     img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
     if img.mode == "RGBA":
         img = img.convert("RGB")
-    img.save(preview_path, "JPEG", quality=85)
+    img.save(preview_path, "JPEG", quality=THUMBNAIL_QUALITY)
 
 
 def download_preview_image(preview_url: str, preview_path: str):
@@ -337,7 +513,7 @@ def download_preview_image(preview_url: str, preview_path: str):
     from backend.config.settings import config
 
     proxies = config.yande_api.proxies if config.yande_api.proxies else None
-    resp = requests.get(preview_url, proxies=proxies, timeout=10)
+    resp = requests.get(preview_url, proxies=proxies, timeout=TIMEOUT_PREVIEW)
     if resp.status_code == 200:
         with open(preview_path, "wb") as f:
             f.write(resp.content)
@@ -348,9 +524,7 @@ async def get_original_image(filename: str):
     from fastapi.responses import FileResponse
     from pathlib import Path
 
-    original_path = (
-        Path(__file__).parent.parent.parent / "downloads" / "originals" / filename
-    )
+    original_path = DOWNLOADS_DIR / "originals" / filename
     if original_path.exists():
         return FileResponse(str(original_path))
     return {"error": "Original not found"}
