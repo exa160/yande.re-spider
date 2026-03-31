@@ -158,3 +158,37 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Node modules - frontend dependencies
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+
+# Config files with sensitive data
+config/data.cfg
+config/*.cfg
+!config/*.cfg.example
+
+# Downloaded images
+downloads/
+images/
+cache/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
