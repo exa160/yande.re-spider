@@ -7,16 +7,14 @@
     <div class="source-toolbar">
       <el-card shadow="never" class="source-card">
         <div class="source-controls">
-          <el-select
+          <el-switch
             v-model="querySource"
-            placeholder="选择数据源"
+            active-text="在线 (yande.re)"
+            inactive-text="本地 (已下载)"
+            active-value="yande"
+            inactive-value="local"
             @change="handleSourceChange"
-            style="width: 150px;"
-          >
-            <el-option label="本地 (已下载)" value="local" />
-            <el-option label="在线 (yande.re)" value="yande" />
-            <el-option label="混合模式" value="hybrid" />
-          </el-select>
+          />
           <el-divider direction="vertical" />
           <el-tooltip content="开启后不加载远程缩略图，节省流量" placement="bottom">
             <el-switch
@@ -28,7 +26,7 @@
           <el-divider direction="vertical" />
           <span class="source-hint">
             <el-icon><InfoFilled /></el-icon>
-            {{ getSourceHint() }}
+            {{ querySource === 'yande' ? '从 yande.re 获取最新图片' : '从本地数据库读取已下载图片' }}
           </span>
           <el-divider direction="vertical" />
           <el-button 
@@ -40,17 +38,8 @@
             <el-icon><Download /></el-icon>
             批量下载 ({{ selectedImages.length }})
           </el-button>
-          <el-tag v-if="dbCount > 0" type="info" size="small">
-            本地库: {{ dbCount }} 条
-          </el-tag>
         </div>
       </el-card>
-    </div>
-
-    <!-- 同步状态提示 -->
-    <div v-if="syncing" class="sync-status">
-      <el-icon class="is-loading"><Loading /></el-icon>
-      正在同步在线数据...
     </div>
 
     <!-- 批量选择工具栏 -->
@@ -158,7 +147,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Check, InfoFilled, Loading } from '@element-plus/icons-vue'
+import { Download, Check, InfoFilled } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import api from '@/api'
@@ -171,13 +160,6 @@ const queryParams = ref({})
 const querySource = ref('local')
 const saveDataMode = ref(true)
 
-// 混合模式相关状态
-const syncing = ref(false)
-const dbCount = ref(0)
-const currentMaxId = ref(null)
-const hasGap = ref(false)
-const gapBeforeId = ref(null)
-
 const previewVisible = ref(false)
 const currentImage = ref(null)
 const downloading = ref(false)
@@ -188,36 +170,25 @@ const selectedImages = ref([])
 const selectAll = ref(false)
 const isIndeterminate = ref(false)
 
-const getSourceHint = () => {
-  if (querySource.value === 'local') return '从本地数据库读取已下载图片'
-  if (querySource.value === 'yande') return '从 yande.re 获取最新图片'
-  return '优先展示本地数据，自动同步在线数据'
-}
-
 const handleSearch = async (params) => {
   queryParams.value = { ...params, source: querySource.value }
   currentPage.value = 1
   images.value = []
-  selectedImages.value = []
+  selectedImages.value = []  // 清空选择
   selectAll.value = false
-  hasGap.value = false
-  gapBeforeId.value = null
-  currentMaxId.value = null
   await loadImages()
 }
 
 const handleSourceChange = (newSource) => {
   querySource.value = newSource
-  selectedImages.value = []
+  selectedImages.value = []  // 清空选择
   selectAll.value = false
   isIndeterminate.value = false
-  hasGap.value = false
-  gapBeforeId.value = null
-  currentMaxId.value = null
   if (Object.keys(queryParams.value).length > 0) {
     queryParams.value.source = newSource
     handleSearch(queryParams.value)
   } else {
+    // 初始加载
     handleSearch({})
   }
 }
@@ -228,34 +199,16 @@ const loadImages = async () => {
     loading.value = true
   }
   try {
-    const requestParams = {
+    const response = await api.post('/gallery/load', {
       ...queryParams.value,
       page: currentPage.value
-    }
-
-    if (querySource.value === 'hybrid' && currentMaxId.value) {
-      requestParams.max_id = currentMaxId.value
-    }
-
-    const response = await api.post('/gallery/load', requestParams)
-
+    })
     if (currentPage.value === 1) {
       images.value = response.images
     } else {
       images.value.push(...response.images)
     }
     hasMore.value = response.has_more
-
-    // 混合模式：更新 gap 信息
-    if (querySource.value === 'hybrid') {
-      hasGap.value = response.has_gap
-      gapBeforeId.value = response.gap_before_id
-      // 更新 currentMaxId 为当前最小 id
-      if (response.images && response.images.length > 0) {
-        const minId = Math.min(...response.images.map(img => img.id))
-        currentMaxId.value = minId
-      }
-    }
   } catch (error) {
     ElMessage.error('加载图片失败')
   } finally {
@@ -265,45 +218,10 @@ const loadImages = async () => {
   }
 }
 
-const syncOnlineData = async () => {
-  if (syncing.value) return
-  syncing.value = true
-  try {
-    await api.post('/gallery/sync-online', {
-      max_id: currentMaxId.value,
-      page_size: 20,
-      tags: queryParams.value.tags || ''
-    })
-    // 同步完成后刷新本地数据
-    currentPage.value = 1
-    await loadImages()
-  } catch (error) {
-    console.error('同步失败:', error)
-  } finally {
-    syncing.value = false
-  }
-}
-
 const loadMore = async () => {
-  if (querySource.value === 'hybrid' && hasGap.value) {
-    // 有断档，先同步再加载
-    await syncOnlineData()
-  } else {
-    currentPage.value++
-    await loadImages()
-  }
+  currentPage.value++
+  await loadImages()
 }
-
-// 页面加载时获取浏览状态
-onMounted(async () => {
-  try {
-    const state = await api.get('/gallery/browse-state')
-    dbCount.value = state.db_count || 0
-  } catch (e) {
-    console.error('获取浏览状态失败:', e)
-  }
-  handleSearch({})
-})
 
 const handleImageClick = (image) => {
   currentImage.value = image

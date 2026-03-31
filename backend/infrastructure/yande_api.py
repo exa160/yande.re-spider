@@ -4,13 +4,12 @@ import requests
 from loguru import logger
 
 from backend.config.settings import config
-from backend.config.constant import YANDE_RE_POST_API, YANDE_RE_REFERER
 from backend.models.yande import YandePostData
 
 
 class YandeApi:
     def __init__(self):
-        self.post_api = YANDE_RE_POST_API
+        self.post_api = "https://yande.re/post.json"
         self.proxies = config.yande_api.proxies
         self.headers = config.yande_api.headers
 
