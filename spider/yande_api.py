@@ -1,6 +1,8 @@
 import os.path
+import random
 from pathlib import Path
 from queue import Queue
+from time import sleep
 from typing import Union, Tuple
 
 import requests
@@ -9,6 +11,7 @@ from loguru import logger
 from pathvalidate import sanitize_filename
 
 from utils.constant import config
+from utils.database import MariaDBClient
 from utils.downloader import MultiDown
 from utils.items import YandePostData, YandeSearchTags, YandeRunningConfig, IterStatus
 
@@ -25,7 +28,6 @@ class YandeApi:
         )
         if tags:
             query_params.update(dict(tags=tags))
-        req = None
         for i in range(config.yande_api.retry):
             req = None
             try:
@@ -35,6 +37,8 @@ class YandeApi:
                                    headers=self.headers)
                 if req.status_code > 300:
                     logger.info(f'get api error {page} {tags}: {req.status_code}')
+                    if req.status_code > 500:
+                        continue
                     return False, req.content
                 else:
                     # 利用pydantic解析request
@@ -68,7 +72,7 @@ class YandeSpider:
         return ret_set
 
     @staticmethod
-    def item_iter_and_down(yande_item, save_dir_path, get_config: YandeRunningConfig):
+    def item_iter_and_down(yande_item, save_dir_path, get_config: YandeRunningConfig, sql_cli: MariaDBClient = None):
         """
         遍历及下载
         :param yande_item:
@@ -77,25 +81,34 @@ class YandeSpider:
         :return:
         """
         for i in yande_item.root:
+            sleep(random.randint(8, 15) / 10)
             fn = sanitize_filename(unquote(i.file_url.rsplit("/", maxsplit=1)[-1]))
             if i.id <= get_config.stop_id:
                 return IterStatus.stop
-
-            # 检查重复后退出或者跳过
-            if ((save_dir_path / fn).exists() or
-                    (get_config.id_check and get_config.id_check_list is not None and
-                     i.id in get_config.id_check_list)):
+            # if not sql_cli.insert_check_by_id(i.id):
+            #     continue
+            if get_config.id_check and get_config.id_check_list is not None:
+                if i.id in get_config.id_check_list:
+                    if get_config.add_flag:
+                        if sql_cli is not None:
+                            sql_cli.insert_by_id(i.id, MariaDBClient.YandeData(**i.model_dump()))
+                        continue
+                    else:
+                        return IterStatus.stop
+            if (save_dir_path / fn).exists():
                 if get_config.add_flag:
                     continue
                 else:
                     return IterStatus.stop
             MultiDown(i.file_url, str(save_dir_path), fn, i.file_size, i.md5, i.id)
+            if sql_cli is not None:
+                sql_cli.insert_by_id(i.id, MariaDBClient.YandeData(**i.model_dump()))
         return IterStatus.next
 
     def search_trans(self):
         pass
 
-    def get_post_list(self, get_config: YandeRunningConfig = None):
+    def get_post_list(self, maria_cli, get_config: YandeRunningConfig = None):
         """
         获取yande搜索列表
         :param get_config:
@@ -107,6 +120,7 @@ class YandeSpider:
         s_page = max(1, get_config.start_page)
         e_page = get_config.end_page if get_config.end_page > 0 else 100
         s_page, e_page = (e_page, s_page) if s_page > e_page else (s_page, e_page)
+        e_page = e_page + 1 if s_page == e_page else e_page
         tags = get_config.tags
 
         save_dir_path = get_config.save_dir_path
@@ -124,7 +138,7 @@ class YandeSpider:
             if len(yande_item.root) == 0:
                 logger.info(f'**search finish\t{"[" + tags + "]":>20}')
                 break
-            iter_status = self.item_iter_and_down(yande_item, save_dir_path, get_config)
+            iter_status = self.item_iter_and_down(yande_item, save_dir_path, get_config, maria_cli)
             if iter_status == IterStatus.stop:
                 break
 
@@ -136,11 +150,12 @@ class YandeSpider:
         :param get_config:
         :return:
         """
+        maria_cli = MariaDBClient()
         for tag, stop_id, add_flag in tag_list:
             get_config.tags = tag
             get_config.stop_id = stop_id
-            get_config.save_dir_path = Path(b_path) / tag
+            get_config.save_dir_path = Path(b_path) / tag.split(' ', maxsplit=1)[0]
             if get_config.id_check:
                 get_config.id_check_list = YandeSpider.scan_id_in_dir(get_config.save_dir_path)
             get_config.add_flag = add_flag
-            self.get_post_list(get_config)
+            self.get_post_list(maria_cli, get_config)
