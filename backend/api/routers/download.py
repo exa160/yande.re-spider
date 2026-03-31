@@ -14,16 +14,18 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel, Field
 
 from backend.config.settings import config
-from backend.config.constant import (
-    TaskStatus,
-    DOWNLOADS_DIR,
-    ORIGINALS_DIR,
-    PREVIEWS_DIR,
-    TIMEOUT_PREVIEW,
-)
 from backend.infrastructure.downloader import MultiDown
 
 router = APIRouter()
+
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class DownloadTaskCreate(BaseModel):
@@ -151,9 +153,9 @@ def run_download(task_id: str):
         import hashlib
         from pathlib import Path
 
-        downloads_dir = DOWNLOADS_DIR
-        originals_dir = ORIGINALS_DIR
-        previews_dir = PREVIEWS_DIR
+        downloads_dir = Path(__file__).parent.parent.parent / "downloads"
+        originals_dir = downloads_dir / "originals"
+        previews_dir = downloads_dir / "previews"
 
         originals_dir.mkdir(parents=True, exist_ok=True)
         previews_dir.mkdir(parents=True, exist_ok=True)
@@ -214,9 +216,7 @@ def run_download(task_id: str):
                     proxies = (
                         config.yande_api.proxies if config.yande_api.proxies else None
                     )
-                    resp = requests.get(
-                        preview_url, proxies=proxies, timeout=TIMEOUT_PREVIEW
-                    )
+                    resp = requests.get(preview_url, proxies=proxies, timeout=10)
                     if resp.status_code == 200:
                         with open(preview_path, "wb") as f:
                             f.write(resp.content)

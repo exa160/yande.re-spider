@@ -14,7 +14,7 @@ from backend.dao.yande_data import refresh_engine
 
 router = APIRouter()
 
-CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+CONFIG_DIR = Path(__file__).parent.parent.parent.parent / "config"
 CONFIG_FILE = CONFIG_DIR / "data.cfg"
 
 

@@ -4,19 +4,11 @@ import requests
 from pathlib import Path
 from typing import Optional, Tuple
 
-from backend.config.constant import (
-    DOWNLOADS_DIR,
-    PREVIEWS_DIR,
-    ORIGINALS_DIR,
-    TIMEOUT_PREVIEW,
-    TIMEOUT_ORIGINAL,
-)
-
 
 class ImageCache:
-    DOWNLOADS_DIR = DOWNLOADS_DIR
-    PREVIEWS_DIR = PREVIEWS_DIR
-    ORIGINALS_DIR = ORIGINALS_DIR
+    DOWNLOADS_DIR = Path(__file__).parent.parent.parent / "downloads"
+    PREVIEWS_DIR = DOWNLOADS_DIR / "previews"
+    ORIGINALS_DIR = DOWNLOADS_DIR / "originals"
 
     def __init__(self):
         self.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -50,9 +42,7 @@ class ImageCache:
             return preview_path
 
         try:
-            resp = requests.get(
-                preview_url, proxies=current_proxy(), timeout=TIMEOUT_PREVIEW
-            )
+            resp = requests.get(preview_url, proxies=current_proxy(), timeout=10)
             if resp.status_code == 200:
                 with open(preview_path, "wb") as f:
                     f.write(resp.content)
@@ -71,9 +61,7 @@ class ImageCache:
             return original_path
 
         try:
-            resp = requests.get(
-                file_url, proxies=current_proxy(), timeout=TIMEOUT_ORIGINAL
-            )
+            resp = requests.get(file_url, proxies=current_proxy(), timeout=30)
             if resp.status_code == 200:
                 with open(original_path, "wb") as f:
                     f.write(resp.content)
