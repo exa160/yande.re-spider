@@ -4,11 +4,17 @@ import requests
 from pathlib import Path
 from typing import Optional, Tuple
 
+from backend.config.constant import (
+    DOWNLOADS_DIR,
+    PREVIEWS_DIR,
+    ORIGINALS_DIR,
+)
+
 
 class ImageCache:
-    DOWNLOADS_DIR = Path(__file__).parent.parent.parent / "downloads"
-    PREVIEWS_DIR = DOWNLOADS_DIR / "previews"
-    ORIGINALS_DIR = DOWNLOADS_DIR / "originals"
+    DOWNLOADS_DIR = Path(DOWNLOADS_DIR)
+    PREVIEWS_DIR = Path(PREVIEWS_DIR)
+    ORIGINALS_DIR = Path(ORIGINALS_DIR)
 
     def __init__(self):
         self.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)

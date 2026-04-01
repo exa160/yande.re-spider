@@ -224,19 +224,28 @@ const getRatingType = (rating) => {
 }
 
 const getPreviewUrl = (image) => {
+  const isPending = pendingImages.value.has(image.id)
+  const ts = isPending && retryKeys.value > 0 ? `&t=${retryKeys.value}` : ''
+  
   if (props.sourceMode === 'local') {
-    if (!props.saveDataMode || pendingImages.value.has(image.id)) {
-      if (image.local_preview_path) {
-        const filename = `${image.id}.${image.file_ext || 'jpg'}`
-        return `/api/v1/gallery/cache/preview/${filename}`
-      }
-      if (image.local_file_path) {
-        return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`
-      }
+    if (isPending && image.local_preview_path) {
+      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}?t=${retryKeys.value}`
+    }
+    if (isPending && image.local_file_path) {
+      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${ts}`
+    }
+    if (props.saveDataMode) {
+      return ''
+    }
+    if (image.local_preview_path) {
+      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}`
+    }
+    if (image.local_file_path) {
+      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`
     }
     return ''
   }
-  if (props.saveDataMode && !pendingImages.value.has(image.id)) {
+  if (props.saveDataMode && !isPending) {
     return ''
   }
   return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}`

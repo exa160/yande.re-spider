@@ -106,38 +106,101 @@ def query_local_database(params: dict) -> tuple[List[dict], int]:
 
 def query_yande_api(params: dict) -> tuple[List[dict], int]:
     from backend.dao.yande_data import YandeDataRepository, _check_local_file
+    from backend.services.advanced_search import build_search_string
+    from backend.dao.database import MariaDBClient
+    from backend.models.yande import Rating
+    from datetime import datetime as dt
 
     yande_api = YandeApi()
     page = params.get("page", 1)
-    tags = params.get("tags", "")
 
-    success, yande_data = yande_api.get_ranking(page, tags)
+    api_tags = build_search_string(
+        tags=params.get("tags", ""),
+        author=params.get("author"),
+        min_width=params.get("min_width"),
+        max_width=params.get("max_width"),
+        min_height=params.get("min_height"),
+        max_height=params.get("max_height"),
+        rating=params.get("rating"),
+        min_score=params.get("min_score"),
+        file_type=params.get("file_type"),
+        min_file_size=params.get("min_file_size"),
+        max_file_size=params.get("max_file_size"),
+    )
+
+    success, yande_data = yande_api.get_ranking(page, api_tags)
 
     if not success:
         return [], 0
 
     repo = YandeDataRepository()
+    client = MariaDBClient()
     images = []
+
     for item in yande_data.root:
-        if params.get("rating") and params["rating"] != "All":
-            rating_val = get_rating_value(params["rating"])
-            if item.rating.value != rating_val:
-                continue
-
-        if params.get("min_width") and item.width < params["min_width"]:
-            continue
-        if params.get("max_width") and item.width > params["max_width"]:
-            continue
-        if params.get("min_height") and item.height < params["min_height"]:
-            continue
-        if params.get("max_height") and item.height > params["max_height"]:
-            continue
-
-        if params.get("author") and params["author"].lower() not in item.author.lower():
-            continue
-
         file_ext = item.file_ext or "jpg"
-        is_downloaded = repo.check_exists(item.id)
+        record_exists = repo.check_exists(item.id)
+        is_downloaded = repo.check_downloaded(item.id)
+
+        if not record_exists:
+            rating_val = item.rating.value if item.rating else "s"
+            if rating_val == "s":
+                rating = Rating.S
+            elif rating_val == "q":
+                rating = Rating.R15
+            else:
+                rating = Rating.R18
+
+            new_record = client.YandeData(
+                id=item.id,
+                tags=item.tags or "",
+                created_at=item.created_at or dt.now(),
+                updated_at=item.updated_at or dt.now(),
+                creator_id=item.creator_id,
+                author=item.author or "",
+                change=item.change or 0,
+                source=item.source or "",
+                score=item.score or 0,
+                md5=item.md5 or "",
+                file_size=item.file_size or 0,
+                file_ext=file_ext,
+                file_url=item.file_url or "",
+                is_shown_in_index=item.is_shown_in_index
+                if hasattr(item, "is_shown_in_index")
+                else True,
+                preview_url=item.preview_url or "",
+                preview_width=item.preview_width or 0,
+                preview_height=item.preview_height or 0,
+                actual_preview_width=item.actual_preview_width or 0,
+                actual_preview_height=item.actual_preview_height or 0,
+                sample_url=item.sample_url or "",
+                sample_width=item.sample_width or 0,
+                sample_height=item.sample_height or 0,
+                sample_file_size=item.sample_file_size or 0,
+                jpeg_url=item.jpeg_url or "",
+                jpeg_width=item.jpeg_width or 0,
+                jpeg_height=item.jpeg_height or 0,
+                jpeg_file_size=item.jpeg_file_size or 0,
+                rating=rating,
+                is_rating_locked=item.is_rating_locked
+                if hasattr(item, "is_rating_locked")
+                else False,
+                has_children=item.has_children
+                if hasattr(item, "has_children")
+                else False,
+                parent_id=item.parent_id,
+                status=item.status or "active",
+                is_pending=item.is_pending if hasattr(item, "is_pending") else False,
+                width=item.width or 0,
+                height=item.height or 0,
+                is_held=item.is_held if hasattr(item, "is_held") else False,
+                down_flag=False,
+            )
+            try:
+                client.insert_data(new_record)
+            except Exception as e:
+                pass
+
         local_preview = (
             _check_local_file(item.id, file_ext, "preview") if is_downloaded else None
         )
@@ -151,7 +214,9 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
                 "tags": item.tags.split() if item.tags else [],
                 "width": item.width,
                 "height": item.height,
-                "rating": RATING_DISPLAY_MAP.get(item.rating.value, item.rating.value),
+                "rating": RATING_DISPLAY_MAP.get(item.rating.value, item.rating.value)
+                if item.rating
+                else "Safe",
                 "file_url": item.file_url,
                 "preview_url": item.preview_url,
                 "sample_url": item.sample_url,
@@ -167,6 +232,7 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
             }
         )
 
+    client.close()
     return images, len(images)
 
 

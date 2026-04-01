@@ -153,9 +153,10 @@ def run_download(task_id: str):
         import hashlib
         from pathlib import Path
 
-        downloads_dir = Path(__file__).parent.parent.parent / "downloads"
-        originals_dir = downloads_dir / "originals"
-        previews_dir = downloads_dir / "previews"
+        from backend.config.constant import DOWNLOADS_DIR, ORIGINALS_DIR, PREVIEWS_DIR
+
+        originals_dir = ORIGINALS_DIR
+        previews_dir = PREVIEWS_DIR
 
         originals_dir.mkdir(parents=True, exist_ok=True)
         previews_dir.mkdir(parents=True, exist_ok=True)
@@ -231,47 +232,52 @@ def run_download(task_id: str):
 
             client = MariaDBClient()
 
-            rating_str = task.get("rating", "s")
-            if rating_str in ["Safe", "s", "S"]:
-                rating = Rating.S
-            elif rating_str in ["Questionable", "q", "Q"]:
-                rating = Rating.R15
-            else:
-                rating = Rating.R18
+            if not client.update_down_flag(task["image_id"], True):
+                rating_str = task.get("rating", "s")
+                if rating_str in ["Safe", "s", "S"]:
+                    rating = Rating.S
+                elif rating_str in ["Questionable", "q", "Q"]:
+                    rating = Rating.R15
+                else:
+                    rating = Rating.R18
 
-            new_record = client.YandeData(
-                id=task["image_id"],
-                tags=task.get("tags", ""),
-                created_at=dt.now(),
-                updated_at=dt.now(),
-                creator_id=None,
-                author=task.get("author", ""),
-                change=0,
-                source=task["file_url"],
-                score=0,
-                md5=task.get("md5", ""),
-                file_size=task.get("total_size", 0),
-                file_ext=task["file_name"].rsplit(".", 1)[-1]
-                if "." in task["file_name"]
-                else "jpg",
-                file_url=task["file_url"],
-                is_shown_in_index=True,
-                preview_url=task["file_url"].replace("images", "previews"),
-                width=task.get("width", 0),
-                height=task.get("height", 0),
-                rating=rating,
-                is_rating_locked=False,
-                has_children=False,
-                parent_id=None,
-                status="active",
-                is_pending=False,
-                is_held=False,
-                down_flag=True,
-            )
-            client.insert_data(new_record)
+                file_ext = (
+                    task.get("file_name", "jpg").rsplit(".", 1)[-1]
+                    if "." in task.get("file_name", "jpg")
+                    else "jpg"
+                )
+
+                new_record = client.YandeData(
+                    id=task["image_id"],
+                    tags=task.get("tags", ""),
+                    created_at=dt.now(),
+                    updated_at=dt.now(),
+                    creator_id=None,
+                    author=task.get("author", ""),
+                    change=0,
+                    source=task["file_url"],
+                    score=0,
+                    md5=task.get("md5", ""),
+                    file_size=task.get("total_size", 0),
+                    file_ext=file_ext,
+                    file_url=task["file_url"],
+                    is_shown_in_index=True,
+                    preview_url=task["file_url"].replace("images", "previews"),
+                    width=task.get("width", 0),
+                    height=task.get("height", 0),
+                    rating=rating,
+                    is_rating_locked=False,
+                    has_children=False,
+                    parent_id=None,
+                    status="active",
+                    is_pending=False,
+                    is_held=False,
+                    down_flag=True,
+                )
+                client.insert_data(new_record)
             client.close()
         except Exception as db_err:
-            print(f"Failed to write to database: {db_err}")
+            print(f"Failed to update database: {db_err}")
 
         task_store.update_task(
             task_id,

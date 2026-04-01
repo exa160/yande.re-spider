@@ -1,285 +1,660 @@
 <template>
-  <div class="query-container">
-    <!-- 一级查询：悬浮在页面上的小型查询栏 -->
-    <div class="floating-query-bar">
-      <el-card shadow="hover" class="query-bar-card">
-        <el-form :model="basicParams" inline>
-          <el-form-item label="标签">
-            <el-input
-              v-model="basicParams.tags"
-              placeholder="输入标签搜索"
-              clearable
-              style="width: 200px;"
-              @keyup.enter="handleSearch"
-            />
-          </el-form-item>
-          <el-form-item label="作者">
-            <el-input
-              v-model="basicParams.author"
-              placeholder="作者名称"
-              clearable
-              style="width: 120px;"
-              @keyup.enter="handleSearch"
-            />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="handleSearch">
-              <el-icon><Search /></el-icon>
-              查询
-            </el-button>
-            <el-button @click="toggleAdvanced">
-              {{ showAdvanced ? '收起' : '高级' }}
-              <el-icon>
-                <ArrowUp v-if="showAdvanced" />
-                <ArrowDown v-else />
-              </el-icon>
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
+  <div class="advanced-query-container">
+    <!-- 收缩状态：右下角圆形按钮 -->
+    <div v-if="collapsed" class="collapsed-button" @click="expand">
+      <el-icon :size="20"><Search /></el-icon>
     </div>
 
-    <!-- 二级高级查询：展开后显示的悬浮面板 -->
-    <el-collapse-transition>
-      <div v-if="showAdvanced" class="advanced-query-panel">
-        <el-card shadow="hover">
-          <template #header>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span>高级筛选</span>
-              <el-button type="text" @click="showAdvanced = false">
-                <el-icon><Close /></el-icon>
-              </el-button>
+    <!-- 展开状态 -->
+    <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }">
+      <!-- 一级搜索栏 -->
+      <div class="search-bar">
+        <div class="search-input-wrapper">
+          <el-icon class="search-icon"><Search /></el-icon>
+          <el-input
+            v-model="searchText"
+            placeholder="输入标签搜索（用空格分隔，+tag包含 -tag排除）"
+            clearable
+            @keyup.enter="handleSearch"
+          />
+        </div>
+        <div class="search-tags" v-if="activeFilters.length > 0">
+          <el-tag
+            v-for="filter in activeFilters"
+            :key="filter.key"
+            closable
+            @close="removeFilter(filter)"
+            size="small"
+          >
+            {{ filter.label }}
+          </el-tag>
+        </div>
+        <div class="search-actions">
+          <el-button circle size="small" @click="toggleAdvanced">
+            <el-icon><Setting /></el-icon>
+          </el-button>
+          <el-button circle size="small" @click="collapse">
+            <el-icon><Minus /></el-icon>
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 高级筛选面板 -->
+      <el-collapse-transition>
+        <div v-if="showAdvanced" class="advanced-panel">
+          <!-- 第一行：上传者、评分、格式 -->
+          <div class="panel-row">
+            <div class="row-item">
+              <label>上传者</label>
+              <el-input
+                v-model="queryParams.author"
+                placeholder="作者名称"
+                size="small"
+                clearable
+              />
             </div>
-          </template>
 
-          <el-form :model="queryParams" label-width="100px">
-            <el-row :gutter="20">
-              <!-- 分辨率范围 -->
-              <el-col :span="12">
-                <el-form-item label="宽度范围">
-                  <el-col :span="11">
-                    <el-input-number v-model="queryParams.min_width" :min="0" :max="10000" placeholder="最小宽度" style="width: 100%;" />
-                  </el-col>
-                  <el-col :span="2" style="text-align: center;">-</el-col>
-                  <el-col :span="11">
-                    <el-input-number v-model="queryParams.max_width" :min="0" :max="10000" placeholder="最大宽度" style="width: 100%;" />
-                  </el-col>
-                </el-form-item>
-              </el-col>
+            <div class="row-item">
+              <label>评分</label>
+              <div class="checkbox-group">
+                <el-checkbox-button
+                  v-for="opt in ratingOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                  v-model="queryParams.rating"
+                  :label="opt.label"
+                />
+              </div>
+            </div>
 
-              <el-col :span="12">
-                <el-form-item label="高度范围">
-                  <el-col :span="11">
-                    <el-input-number v-model="queryParams.min_height" :min="0" :max="10000" placeholder="最小高度" style="width: 100%;" />
-                  </el-col>
-                  <el-col :span="2" style="text-align: center;">-</el-col>
-                  <el-col :span="11">
-                    <el-input-number v-model="queryParams.max_height" :min="0" :max="10000" placeholder="最大高度" style="width: 100%;" />
-                  </el-col>
-                </el-form-item>
-              </el-col>
-            </el-row>
+            <div class="row-item">
+              <label>格式</label>
+              <div class="checkbox-group">
+                <el-checkbox-button
+                  v-for="opt in fileTypeOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                  v-model="queryParams.fileType"
+                  :label="opt.label"
+                />
+              </div>
+            </div>
+          </div>
 
-            <el-row :gutter="20">
-              <!-- 评分过滤 -->
-              <el-col :span="12">
-                <el-form-item label="评分">
-                  <el-select v-model="queryParams.rating" placeholder="选择评分" style="width: 100%;">
-                    <el-option label="全部" value="All" />
-                    <el-option label="Safe" value="Safe" />
-                    <el-option label="Questionable" value="Questionable" />
-                    <el-option label="Explicit" value="Explicit" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
+          <!-- 第二行：宽度、高度 -->
+          <div class="panel-row">
+            <div class="row-item range-item">
+              <label>宽度</label>
+              <div class="range-inputs">
+                <el-input-number v-model="queryParams.minWidth" :min="0" size="small" placeholder="最小" />
+                <span class="range-separator">-</span>
+                <el-input-number v-model="queryParams.maxWidth" :min="0" size="small" placeholder="最大" />
+              </div>
+            </div>
 
-              <!-- 文件类型 -->
-              <el-col :span="12">
-                <el-form-item label="文件类型">
-                  <el-select v-model="queryParams.file_type" placeholder="选择文件类型" style="width: 100%;" clearable>
-                    <el-option label="JPG" value="JPG" />
-                    <el-option label="PNG" value="PNG" />
-                    <el-option label="GIF" value="GIF" />
-                    <el-option label="WEBP" value="WEBP" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
+            <div class="row-item range-item">
+              <label>高度</label>
+              <div class="range-inputs">
+                <el-input-number v-model="queryParams.minHeight" :min="0" size="small" placeholder="最小" />
+                <span class="range-separator">-</span>
+                <el-input-number v-model="queryParams.maxHeight" :min="0" size="small" placeholder="最大" />
+              </div>
+            </div>
 
-            <!-- 文件大小范围 -->
-            <el-form-item label="文件大小">
-              <el-col :span="11">
-                <el-input-number v-model="queryParams.min_file_size" :min="0" :max="1000000" placeholder="最小(KB)" style="width: 100%;" />
-              </el-col>
-              <el-col :span="2" style="text-align: center;">-</el-col>
-              <el-col :span="11">
-                <el-input-number v-model="queryParams.max_file_size" :min="0" :max="1000000" placeholder="最大(KB)" style="width: 100%;" />
-              </el-col>
-            </el-form-item>
+            <div class="row-item range-item">
+              <label>文件大小</label>
+              <div class="range-inputs">
+                <el-input-number v-model="queryParams.minFileSize" :min="0" size="small" placeholder="最小" />
+                <span class="range-separator">-</span>
+                <el-input-number v-model="queryParams.maxFileSize" :min="0" size="small" placeholder="最大" />
+              </div>
+            </div>
+          </div>
 
-            <!-- 排序 -->
-            <el-form-item label="排序方式">
-              <el-col :span="12">
-                <el-select v-model="queryParams.sort_by" placeholder="排序字段" style="width: 100%;">
+          <!-- 第三行：排序 -->
+          <div class="panel-row">
+            <div class="row-item">
+              <label>排序</label>
+              <div class="sort-selects">
+                <el-select v-model="queryParams.sortBy" size="small">
                   <el-option label="创建时间" value="created_at" />
                   <el-option label="评分" value="rating" />
                   <el-option label="文件大小" value="file_size" />
                   <el-option label="宽度" value="width" />
                   <el-option label="高度" value="height" />
                 </el-select>
-              </el-col>
-              <el-col :span="12">
-                <el-select v-model="queryParams.sort_order" placeholder="排序方向" style="width: 100%;">
-                  <el-option label="升序" value="asc" />
+                <el-select v-model="queryParams.sortOrder" size="small">
                   <el-option label="降序" value="desc" />
+                  <el-option label="升序" value="asc" />
                 </el-select>
-              </el-col>
-            </el-form-item>
+              </div>
+            </div>
+          </div>
 
-            <!-- 分页 -->
-            <el-form-item label="每页数量">
-              <el-input-number v-model="queryParams.page_size" :min="1" :max="100" />
-            </el-form-item>
-          </el-form>
-        </el-card>
-      </div>
-    </el-collapse-transition>
+          <!-- 底部按钮 -->
+          <div class="panel-footer">
+            <el-button size="small" @click="resetParams">重置</el-button>
+            <el-button type="primary" size="small" @click="applyAndSearch">应用</el-button>
+          </div>
+        </div>
+      </el-collapse-transition>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { Search, ArrowDown, ArrowUp, Close } from '@element-plus/icons-vue'
+import { ref, reactive, computed } from 'vue'
+import { Search, Setting, Minus } from '@element-plus/icons-vue'
+
+const props = defineProps({
+  sourceMode: {
+    type: String,
+    default: 'local'
+  }
+})
 
 const emit = defineEmits(['search'])
 
+// 状态
+const collapsed = ref(false)
 const showAdvanced = ref(false)
+const searchText = ref('')
 
-// 基础查询参数（一级）
-const basicParams = reactive({
-  tags: '',
-  author: ''
-})
+// 选项配置
+const ratingOptions = [
+  { label: 'Safe', value: 's' },
+  { label: 'Questionable', value: 'q' },
+  { label: 'Explicit', value: 'e' },
+]
 
-// 完整查询参数（二级高级选项）
+const fileTypeOptions = [
+  { label: 'JPG', value: 'jpg' },
+  { label: 'PNG', value: 'png' },
+  { label: 'GIF', value: 'gif' },
+  { label: 'WEBP', value: 'webp' },
+]
+
+// 查询参数
 const queryParams = reactive({
-  tags: '',
   author: '',
-  min_width: null,
-  max_width: null,
-  min_height: null,
-  max_height: null,
-  rating: 'All',
-  min_file_size: null,
-  max_file_size: null,
-  file_type: '',
-  sort_by: 'created_at',
-  sort_order: 'desc',
-  page: 1,
-  page_size: 20
+  rating: [],
+  fileType: [],
+  minWidth: null,
+  maxWidth: null,
+  minHeight: null,
+  maxHeight: null,
+  minFileSize: null,
+  maxFileSize: null,
+  sortBy: 'created_at',
+  sortOrder: 'desc',
 })
 
+// 计算激活的筛选标签
+const activeFilters = computed(() => {
+  const filters = []
+
+  if (queryParams.author) {
+    filters.push({ key: 'author', label: `上传者:${queryParams.author}` })
+  }
+
+  if (queryParams.rating.length > 0) {
+    filters.push({ key: 'rating', label: `评分:${queryParams.rating.join(',')}` })
+  }
+
+  if (queryParams.fileType.length > 0) {
+    filters.push({ key: 'fileType', label: `格式:${queryParams.fileType.join(',')}` })
+  }
+
+  if (queryParams.minWidth || queryParams.maxWidth) {
+    const min = queryParams.minWidth || 0
+    const max = queryParams.maxWidth || '∞'
+    filters.push({ key: 'width', label: `宽度:${min}-${max}` })
+  }
+
+  if (queryParams.minHeight || queryParams.maxHeight) {
+    const min = queryParams.minHeight || 0
+    const max = queryParams.maxHeight || '∞'
+    filters.push({ key: 'height', label: `高度:${min}-${max}` })
+  }
+
+  if (queryParams.minFileSize || queryParams.maxFileSize) {
+    const min = queryParams.minFileSize || 0
+    const max = queryParams.maxFileSize || '∞'
+    filters.push({ key: 'fileSize', label: `大小:${min}-${max}KB` })
+  }
+
+  return filters
+})
+
+// 移除筛选标签
+const removeFilter = (filter) => {
+  switch (filter.key) {
+    case 'author':
+      queryParams.author = ''
+      break
+    case 'rating':
+      queryParams.rating = []
+      break
+    case 'fileType':
+      queryParams.fileType = []
+      break
+    case 'width':
+      queryParams.minWidth = null
+      queryParams.maxWidth = null
+      break
+    case 'height':
+      queryParams.minHeight = null
+      queryParams.maxHeight = null
+      break
+    case 'fileSize':
+      queryParams.minFileSize = null
+      queryParams.maxFileSize = null
+      break
+  }
+}
+
+// 收缩/展开
+const collapse = () => {
+  collapsed.value = true
+  showAdvanced.value = false
+}
+
+const expand = () => {
+  collapsed.value = false
+}
+
+// 切换高级面板
 const toggleAdvanced = () => {
   showAdvanced.value = !showAdvanced.value
 }
 
-const handleSearch = () => {
-  // 合并基础参数和高级参数
-  const mergedParams = {
-    ...queryParams,
-    tags: basicParams.tags,
-    author: basicParams.author,
-    page: 1
+// 重置参数
+const resetParams = () => {
+  queryParams.author = ''
+  queryParams.rating = []
+  queryParams.fileType = []
+  queryParams.minWidth = null
+  queryParams.maxWidth = null
+  queryParams.minHeight = null
+  queryParams.maxHeight = null
+  queryParams.minFileSize = null
+  queryParams.maxFileSize = null
+  queryParams.sortBy = 'created_at'
+  queryParams.sortOrder = 'desc'
+}
+
+// 解析标签文本中的包含/排除
+const parseTags = (text) => {
+  const include = []
+  const exclude = []
+
+  if (!text) return { include, exclude }
+
+  text.split(/\s+/).forEach(tag => {
+    if (!tag) return
+    if (tag.startsWith('-')) {
+      const t = tag.substring(1)
+      if (t) exclude.push(t)
+    } else if (tag.startsWith('+')) {
+      const t = tag.substring(1)
+      if (t) include.push(t)
+    } else {
+      include.push(tag)
+    }
+  })
+
+  return { include, exclude }
+}
+
+// 构建搜索参数字符串（用于本地模式）
+const buildLocalParams = () => {
+  const { include, exclude } = parseTags(searchText.value)
+
+  const tagsParts = [...include]
+  exclude.forEach(tag => {
+    if (tag) tagsParts.push(`-${tag}`)
+  })
+
+  return {
+    tags: tagsParts.join(' '),
+    author: queryParams.author || undefined,
+    rating: queryParams.rating.length > 0 ? queryParams.rating.join(',') : undefined,
+    file_type: queryParams.fileType.length > 0 ? queryParams.fileType.join(',') : undefined,
+    min_width: queryParams.minWidth || undefined,
+    max_width: queryParams.maxWidth || undefined,
+    min_height: queryParams.minHeight || undefined,
+    max_height: queryParams.maxHeight || undefined,
+    min_file_size: queryParams.minFileSize || undefined,
+    max_file_size: queryParams.maxFileSize || undefined,
+    sort_by: queryParams.sortBy,
+    sort_order: queryParams.sortOrder,
+    page: 1,
+    page_size: 20,
   }
-  emit('search', mergedParams)
+}
+
+// 构建在线模式搜索参数字符串
+const buildOnlineParams = () => {
+  const { include, exclude } = parseTags(searchText.value)
+  const tagsParts = [...include]
+
+  // 评分多选：只选一个时用 rating:xxx，只选两个时用排除语法
+  if (queryParams.rating.length === 1) {
+    tagsParts.push(`rating:${queryParams.rating[0]}`)
+  } else if (queryParams.rating.length === 2) {
+    const allRatings = ['s', 'q', 'e']
+    const excludeRatings = allRatings.filter(r => !queryParams.rating.includes(r))
+    excludeRatings.forEach(r => tagsParts.push(`-${r}`))
+  }
+
+  // 格式多选用 OR 语法
+  if (queryParams.fileType.length > 0) {
+    if (queryParams.fileType.length === 1) {
+      tagsParts.push(`ext:${queryParams.fileType[0]}`)
+    } else {
+      tagsParts.push(`(${queryParams.fileType.map(t => `ext:${t}`).join(' OR ')})`)
+    }
+  }
+
+  // 排除的标签
+  exclude.forEach(tag => {
+    if (tag) tagsParts.push(`-${tag}`)
+  })
+
+  // 宽度
+  if (queryParams.minWidth != null) {
+    tagsParts.push(`width:>=${queryParams.minWidth}`)
+  }
+  if (queryParams.maxWidth != null) {
+    tagsParts.push(`width:<=${queryParams.maxWidth}`)
+  }
+
+  // 高度
+  if (queryParams.minHeight != null) {
+    tagsParts.push(`height:>=${queryParams.minHeight}`)
+  }
+  if (queryParams.maxHeight != null) {
+    tagsParts.push(`height:<=${queryParams.maxHeight}`)
+  }
+
+  // 文件大小
+  if (queryParams.minFileSize != null) {
+    tagsParts.push(`filesize:>=${queryParams.minFileSize}`)
+  }
+  if (queryParams.maxFileSize != null) {
+    tagsParts.push(`filesize:<=${queryParams.maxFileSize}`)
+  }
+
+  const tags = tagsParts.join(' ')
+
+  return {
+    tags: tags,
+    author: queryParams.author || undefined,
+    sort_by: queryParams.sortBy,
+    sort_order: queryParams.sortOrder,
+    page: 1,
+    page_size: 20,
+  }
+}
+
+// 执行搜索
+const handleSearch = () => {
+  const mode = props.sourceMode || 'local'
+  const params = mode === 'local' ? buildLocalParams() : buildOnlineParams()
+  emit('search', { mode, params })
+}
+
+// 应用并搜索
+const applyAndSearch = () => {
+  showAdvanced.value = false
+  handleSearch()
 }
 
 // 暴露方法供父组件调用
 defineExpose({
   reset: () => {
-    basicParams.tags = ''
-    basicParams.author = ''
-    Object.assign(queryParams, {
-      tags: '',
-      author: '',
-      min_width: null,
-      max_width: null,
-      min_height: null,
-      max_height: null,
-      rating: 'All',
-      min_file_size: null,
-      max_file_size: null,
-      file_type: '',
-      sort_by: 'created_at',
-      sort_order: 'desc',
-      page: 1,
-      page_size: 20
-    })
+    searchText.value = ''
+    resetParams()
+    showAdvanced.value = false
   }
 })
 </script>
 
 <style scoped>
-.query-container {
-  margin-bottom: 20px;
-  position: relative;
+.advanced-query-container {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: 90%;
+  max-width: 900px;
 }
 
-.floating-query-bar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  padding: 10px 0;
+/* 收缩状态按钮 */
+.collapsed-button {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.6);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
 }
 
-.query-bar-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
+.collapsed-button:hover {
+  background: rgba(40, 40, 40, 0.7);
+  transform: scale(1.05);
 }
 
-.query-bar-card :deep(.el-card__body) {
-  padding: 15px 20px;
+/* 搜索面板 */
+.search-panel {
+  background: rgba(20, 20, 20, 0.55);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s ease;
 }
 
-.query-bar-card :deep(.el-form-item) {
-  margin-bottom: 0;
+/* 一级搜索栏 */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.query-bar-card :deep(.el-form-item__label) {
+.search-input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.search-input-wrapper :deep(.el-input__wrapper) {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.search-input-wrapper :deep(.el-input__inner) {
   color: white;
 }
 
-.query-bar-card :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.9);
+.search-input-wrapper :deep(.el-input__inner::placeholder) {
+  color: rgba(255, 255, 255, 0.4);
 }
 
-.query-bar-card :deep(.el-button) {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.search-icon {
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.search-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.search-tags :deep(.el-tag) {
+  background: rgba(0, 120, 212, 0.25);
+  border: 1px solid rgba(0, 120, 212, 0.4);
   color: white;
 }
 
-.query-bar-card :deep(.el-button:hover) {
-  background: rgba(255, 255, 255, 0.3);
+.search-actions {
+  display: flex;
+  gap: 8px;
 }
 
-.query-bar-card :deep(.el-button--primary) {
-  background: white;
-  border-color: white;
-  color: #667eea;
+.search-actions :deep(.el-button) {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
-.query-bar-card :deep(.el-button--primary:hover) {
-  background: #f0f0f0;
-  border-color: #f0f0f0;
+.search-actions :deep(.el-button:hover) {
+  background: rgba(255, 255, 255, 0.15);
 }
 
-.advanced-query-panel {
-  margin-top: 10px;
+/* 高级筛选面板 */
+.advanced-panel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.advanced-query-panel :deep(.el-card__header) {
-  background: #f5f7fa;
-  padding: 10px 20px;
+.panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-row:last-of-type {
+  margin-bottom: 12px;
+}
+
+.row-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.row-item label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  white-space: nowrap;
+  min-width: 50px;
+}
+
+.range-item {
+  flex: 2;
+  min-width: 280px;
+}
+
+.range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.range-separator {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sort-selects {
+  display: flex;
+  gap: 8px;
+}
+
+.sort-selects .el-select {
+  width: 120px;
+}
+
+/* 输入框样式 */
+.row-item :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.row-item :deep(.el-input__inner) {
+  color: white;
+}
+
+.row-item :deep(.el-input-number) {
+  width: 90px;
+}
+
+.row-item :deep(.el-input-number .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.row-item :deep(.el-select .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.row-item :deep(.el-checkbox-button__inner) {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.row-item :deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
+  background: rgba(0, 120, 212, 0.4);
+  border-color: rgba(0, 120, 212, 0.6);
+  color: white;
+}
+
+/* 面板底部 */
+.panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.panel-footer :deep(.el-button) {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.panel-footer :deep(.el-button--primary) {
+  background: rgba(0, 120, 212, 0.6);
+  border-color: rgba(0, 120, 212, 0.6);
+  color: white;
+}
+
+.panel-footer :deep(.el-button--primary:hover) {
+  background: rgba(0, 120, 212, 0.8);
 }
 </style>

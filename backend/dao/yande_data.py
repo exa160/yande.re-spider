@@ -47,10 +47,12 @@ _cached_table_name = None
 
 
 def get_engine():
+    from backend.dao.database import get_db_engine as _get_db_engine
+
     global _cached_engine, _cached_table_name
     current_table_name = get_table_name()
     if _cached_engine is None or _cached_table_name != current_table_name:
-        _cached_engine = get_db_engine()
+        _cached_engine = _get_db_engine()
         _cached_table_name = current_table_name
     return _cached_engine
 
@@ -82,7 +84,10 @@ def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[
 
 class YandeDataRepository:
     def __init__(self, session: Session = None):
+        from backend.dao.database import YandeData
+
         self._session = session
+        self._Model = YandeData
 
     @property
     def session(self) -> Session:
@@ -91,57 +96,7 @@ class YandeDataRepository:
         return self._session
 
     def _get_model(self):
-        table_name = get_table_name()
-
-        class DynamicModel(Base):
-            __tablename__ = table_name
-            __table_args__ = {"extend_existing": True}
-            id = Column(Integer, unique=True, primary_key=True)
-            down_flag = Column(Boolean, default=True)
-            tags = Column(String(918), nullable=True)
-            created_at = Column(DateTime)
-            updated_at = Column(DateTime)
-            creator_id = Column(Integer)
-            author = Column(String(32), nullable=True)
-            change = Column(Integer, nullable=True)
-            source = Column(String(918))
-            score = Column(Integer, nullable=True)
-            md5 = Column(String(32))
-            file_size = Column(Integer)
-            file_ext = Column(String(6))
-            file_url = Column(String(918))
-            is_shown_in_index = Column(Boolean)
-            preview_url = Column(String(918))
-            preview_width = Column(Integer)
-            preview_height = Column(Integer)
-            actual_preview_width = Column(Integer)
-            actual_preview_height = Column(Integer)
-            sample_url = Column(String(918))
-            sample_width = Column(Integer)
-            sample_height = Column(Integer)
-            sample_file_size = Column(Integer)
-            jpeg_url = Column(String(918))
-            jpeg_width = Column(Integer)
-            jpeg_height = Column(Integer)
-            jpeg_file_size = Column(Integer)
-            rating = Column(String(1))
-            is_rating_locked = Column(Boolean)
-            has_children = Column(Boolean)
-            parent_id = Column(Integer, nullable=True)
-            status = Column(String(16))
-            is_pending = Column(Boolean)
-            width = Column(Integer)
-            height = Column(Integer)
-            is_held = Column(Boolean)
-            frames_pending_string = Column(String(918), nullable=True)
-            frames_pending = Column(String(918), nullable=True)
-            frames_string = Column(String(918), nullable=True)
-            frames = Column(String(918), nullable=True)
-            is_note_locked = Column(Boolean)
-            last_noted_at = Column(Integer)
-            last_commented_at = Column(Integer)
-
-        return DynamicModel
+        return self._Model
 
     def query(
         self,
@@ -220,13 +175,17 @@ class YandeDataRepository:
         images = []
         for row in results:
             tags_list = row.tags.split() if row.tags else []
+            rating_val = (
+                row.rating.value if hasattr(row.rating, "value") else row.rating
+            )
             rating_display = (
-                rating_display_map.get(row.rating, row.rating) if row.rating else "Safe"
+                rating_display_map.get(rating_val, rating_val) if rating_val else "Safe"
             )
             file_ext = row.file_ext or "jpg"
 
             local_preview = _check_local_file(row.id, file_ext, "preview")
             local_original = _check_local_file(row.id, file_ext, "original")
+            is_downloaded = row.down_flag if hasattr(row, "down_flag") else True
 
             images.append(
                 {
@@ -244,7 +203,7 @@ class YandeDataRepository:
                     "created_at": str(row.created_at) if row.created_at else "",
                     "md5": row.md5 or "",
                     "score": row.score,
-                    "is_downloaded": True,
+                    "is_downloaded": is_downloaded,
                     "local_preview_path": local_preview,
                     "local_file_path": local_original,
                 }
@@ -303,4 +262,10 @@ class YandeDataRepository:
     def check_exists(self, image_id: int) -> bool:
         Model = self._get_model()
         stmt = select(Model.id).filter_by(id=image_id)
+        return self.session.execute(stmt).scalar_one_or_none() is not None
+
+    def check_downloaded(self, image_id: int) -> bool:
+        """检查图片是否已下载（记录存在且 down_flag=True）"""
+        Model = self._get_model()
+        stmt = select(Model.id).filter_by(id=image_id, down_flag=True)
         return self.session.execute(stmt).scalar_one_or_none() is not None
