@@ -1,0 +1,3665 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://yande.re/help/api#tags
+Subject: yande.re
+Date: Wed, 1 Apr 2026 23:21:41 +0800
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----"
+
+
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----
+Content-Type: text/html
+Content-ID: <frame-EE22E36E6BE68C35EDDC35C2431E5350@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://yande.re/help/api#tags
+
+<!DOCTYPE html><html class=3D"action-help action-help-show hide-advanced-ed=
+iting"><head><meta http-equiv=3D"Content-Type" content=3D"text/html; charse=
+t=3DUTF-8"><link rel=3D"stylesheet" type=3D"text/css" href=3D"cid:css-0b697=
+24e-9470-4671-9af9-3e27d80a65a2@mhtml.blink" /><link rel=3D"stylesheet" typ=
+e=3D"text/css" href=3D"cid:css-80bbd2be-fc03-4593-9a8b-87b0a148a969@mhtml.b=
+link" /><link rel=3D"stylesheet" type=3D"text/css" href=3D"cid:css-29fb5044=
+-a291-4307-9000-7423f8cb42af@mhtml.blink" />
+ =20
+  <title>yande.re</title>
+  <link rel=3D"shortcut icon" href=3D"https://yande.re/favicon.ico" type=3D=
+"image/x-icon">
+  <link rel=3D"top" title=3D"yande.re" href=3D"https://yande.re/">
+ =20
+
+ =20
+  <link rel=3D"alternate" type=3D"application/atom+xml" title=3D"ATOM" href=
+=3D"https://yande.re/post/atom?tags=3D">
+  <link rel=3D"stylesheet" href=3D"https://assets.yande.re/assets/applicati=
+on-c99e88fb51193c7d2860b6be344dbb89c941621f4de743808386a02fad731e9f.css">
+
+ =20
+
+ =20
+
+ =20
+ =20
+
+  <link rel=3D"search" type=3D"application/opensearchdescription+xml" href=
+=3D"https://yande.re/opensearch.xml" title=3D"yande.re">
+ =20
+  <meta name=3D"csrf-param" content=3D"authenticity_token">
+<meta name=3D"csrf-token" content=3D"ik0bJa1wYRK2W82DvOO3sbhQo5zvDt299_HTN3=
+D5CxW4Sk9bgM7Jr0unUrM54yzBrV1A9f87lfL8wHXciR36TQ">
+  <meta name=3D"juicyads-site-verification" content=3D"a42ccc8181bc457cfad4=
+3695b47609d8">
+  <meta name=3D"clckd" content=3D"ca7848b3d8df49a04183874ab5d60e23">
+</head>
+<body>
+  <div class=3D"overlay-notice-container" id=3D"notice-container" style=3D"=
+display: none;">
+  <table cellspacing=3D"0" cellpadding=3D"0"> <tbody>
+    <tr> <td>
+      <div id=3D"notice">
+      </div>
+    </td> </tr>
+  </tbody> </table>
+</div>
+
+      <div id=3D"news-ticker" style=3D"" data-date=3D"20201219">
+  <ul>
+    <li>Try clearing out cookies of you have problem logging in/out.</li>
+  </ul>
+
+  <a href=3D"https://yande.re/help/api#" class=3D"close-link">Close</a>
+</div>
+
+  <div id=3D"header">
+    <div id=3D"title"><h2 id=3D"site-title"><a href=3D"https://yande.re/"><=
+img alt=3D"yande.re" id=3D"logo" src=3D"https://assets.yande.re/assets/logo=
+_small-418e8d5ec0229f274edebe4af43b01aa29ed83b715991ba14bb41ba06b5b57b5.png=
+" width=3D"484" height=3D"75"></a><span></span></h2></div>
+    <div class=3D"clearfix" id=3D"main-menu" data-controller=3D"help">
+    <ul>
+      <li class=3D"user"><a href=3D"https://yande.re/user/home">My Account<=
+/a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"submenu">
+            <li><a id=3D"login-link" class=3D"login-button" href=3D"https:/=
+/yande.re/user/login">Login</a></li>
+            <li><a href=3D"https://yande.re/user/signup"><span class=3D"tra=
+nslation_missing" title=3D"translation missing: en.layouts.menu.account.reg=
+ister">Register</span></a></li>
+            <li><a href=3D"https://yande.re/user/reset_password">Reset Pass=
+word</a></li>
+        </ul>
+      </li>
+      <li class=3D"post"><a href=3D"https://yande.re/post">Posts</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/post" accept-charset=3D"UTF-=
+8" method=3D"get">
+                <input type=3D"text" name=3D"tags"><br>
+                <input type=3D"submit" value=3D"Search Posts" data-disable-=
+with=3D"Search Posts">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/post">View Posts</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/post">Searc=
+h Posts</a></li>
+          <li><a href=3D"https://yande.re/post/upload">Upload</a></li>
+          <li><a href=3D"https://yande.re/post?tags=3Dorder%3Arandom">Rando=
+m</a></li>
+          <li><a href=3D"https://yande.re/post/popular_recent">Popular</a><=
+/li>
+          <li><a href=3D"https://yande.re/post/similar">Image Search</a></l=
+i>
+          <li><a href=3D"https://yande.re/history">History</a></li>
+        </ul>
+      </li>
+      <li class=3D"comment"><a id=3D"comments-link" href=3D"https://yande.r=
+e/comment">Comments</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/comment/search" accept-chars=
+et=3D"UTF-8" method=3D"get">
+                <input type=3D"text" name=3D"query"><br>
+                <input type=3D"submit" value=3D"Search Comments" data-disab=
+le-with=3D"Search Comments">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/comment">View Comments</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/comment/sea=
+rch">Search Comments</a></li>
+        </ul>
+      </li>
+      <li class=3D"note"><a href=3D"https://yande.re/note">Notes</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/note/search" accept-charset=
+=3D"UTF-8" method=3D"get">
+                <input type=3D"text" name=3D"query"><br>
+                <input type=3D"submit" value=3D"Search Notes" data-disable-=
+with=3D"Search Notes">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/note">View Notes</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/note/search=
+">Search Notes</a></li>
+          <li><a href=3D"https://yande.re/post?tags=3Dtranslation_request">=
+Requests</a></li>
+        </ul>
+      </li>
+      <li class=3D"artist"><a href=3D"https://yande.re/artist?order=3Ddate"=
+>Artists</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/artist" accept-charset=3D"UT=
+F-8" method=3D"get">
+                <input type=3D"text" name=3D"name"><br>
+                <input type=3D"submit" value=3D"Search Artists" data-disabl=
+e-with=3D"Search Artists">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/artist">View Artists</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/artist">Sea=
+rch Artists</a></li>
+          <li><a href=3D"https://yande.re/artist/create">Create</a></li>
+        </ul>
+      </li>
+      <li class=3D"tag"><a href=3D"https://yande.re/tag?order=3Ddate">Tags<=
+/a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/tag" accept-charset=3D"UTF-8=
+" method=3D"get">
+                <input type=3D"text" name=3D"name"><br>
+                <input type=3D"submit" value=3D"Search Tags" data-disable-w=
+ith=3D"Search Tags">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/tag">View Tags</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/tag">Search=
+ Tags</a></li>
+          <li><a href=3D"https://yande.re/tag/popular_by_day">Popular</a></=
+li>
+          <li><a href=3D"https://yande.re/tag_alias">Aliases</a></li>
+          <li><a href=3D"https://yande.re/tag_implication">Implications</a>=
+</li>
+        </ul>
+      </li>
+      <li class=3D"pool"><a href=3D"https://yande.re/pool">Pools</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/pool" accept-charset=3D"UTF-=
+8" method=3D"get">
+                <input type=3D"text" name=3D"query"><br>
+                <input type=3D"submit" value=3D"Search Pools" data-disable-=
+with=3D"Search Pools">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/pool">View Pools</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/pool">Searc=
+h Pools</a></li>
+          <li><a href=3D"https://yande.re/pool/create">Create New Pool</a><=
+/li>
+        </ul>
+      </li>
+      <li class=3D"wiki"><a href=3D"https://yande.re/wiki/show?title=3Dhelp=
+%3Ahome">Wiki</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/wiki" accept-charset=3D"UTF-=
+8" method=3D"get">
+                <input type=3D"text" name=3D"query"><br>
+                <input type=3D"submit" value=3D"Search Wiki" data-disable-w=
+ith=3D"Search Wiki">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/wiki">View Wiki Index</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/wiki">Searc=
+h Wiki</a></li>
+          <li><a href=3D"https://yande.re/wiki/add">Create New Page</a></li=
+>
+        </ul>
+      </li>
+      <li class=3D"forum"><a id=3D"forum-link" href=3D"https://yande.re/for=
+um">Forum</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"search-box">
+          <li>
+            <div>
+              <form action=3D"https://yande.re/forum/search" accept-charset=
+=3D"UTF-8" method=3D"get">
+                <input type=3D"text" name=3D"query"><br>
+                <input type=3D"submit" value=3D"Search Forums" data-disable=
+-with=3D"Search Forums">
+</form>            </div>
+          </li>
+        </ul>
+        <ul class=3D"submenu">
+          <li><a href=3D"https://yande.re/forum">View Topics</a></li>
+          <li><a class=3D"search-link" href=3D"https://yande.re/forum">Sear=
+ch Forums</a></li>
+          <li><a href=3D"https://yande.re/forum/new">New Topic</a></li>
+          <li><a id=3D"forum-mark-all-read" style=3D"display: none;" href=
+=3D"https://yande.re/forum/mark_all_read">Mark All Read</a></li>
+          <li class=3D"forum-items-start" style=3D"display: list-item;"><sp=
+an class=3D"separator"></span></li>
+        <li><a href=3D"https://yande.re/forum/show/10470?page=3D19" title=
+=3D"How would you improve yande.re">How would you improve yande.re</a></li>=
+<li><a href=3D"https://yande.re/forum/show/34791?page=3D1" title=3D"Activat=
+e all held posts">Activate all held posts</a></li><li><a href=3D"https://ya=
+nde.re/forum/show/22465?page=3D12" title=3D"Tag aliases, implications, rena=
+mes etc. requests thread">Tag aliases, implications, renames etc. requests =
+thread</a></li><li><a href=3D"https://yande.re/forum/show/31550?page=3D6" t=
+itle=3D"Why I get 100 KB/s download speed from this site again?">Why I get =
+100 KB/s download speed from this site again?</a></li><li><a href=3D"https:=
+//yande.re/forum/show/10527?page=3D208" title=3D"Scans of tutorial books">S=
+cans of tutorial books</a></li><li><a href=3D"https://yande.re/forum/show/1=
+0136?page=3D62" title=3D"=E8=BF=9B=E7=AB=99=E5=BF=85=E8=AF=BB (=E5=85=BC=E8=
+=AE=A8=E8=AE=BA=E5=B8=96)">=E8=BF=9B=E7=AB=99=E5=BF=85=E8=AF=BB (=E5=85=BC=
+=E8=AE=A8=E8=AE=BA=E5=B8=96)</a></li><li><a href=3D"https://yande.re/forum/=
+show/34773?page=3D1" title=3D"Password forgotten">Password forgotten</a></l=
+i><li><a href=3D"https://yande.re/forum/show/34766?page=3D1" title=3D"I wan=
+t to delete my account.">I want to delete my account.</a></li><li><a href=
+=3D"https://yande.re/forum/show/34762?page=3D1" title=3D"Post deleted, how =
+can I get it back?">Post deleted, how can I get it back?</a></li><li><a hre=
+f=3D"https://yande.re/forum/show/34743?page=3D1" title=3D"The administrator=
+ can answer when he sees it.">The administrator can answer when he sees it.=
+</a></li></ul>
+      </li>
+      <li class=3D"help current-menu"><a href=3D"https://yande.re/help">Hel=
+p</a>
+        <a class=3D"submenu-button" href=3D"https://yande.re/help/api#">=E2=
+=96=A0</a>
+        <ul class=3D"submenu">
+            <li><a class=3D"help-item post" href=3D"https://yande.re/help/p=
+osts">Post Help</a>
+            </li><li><a class=3D"help-item comment" href=3D"https://yande.r=
+e/help/comments">Comment Help</a>
+            </li><li><a class=3D"help-item note" href=3D"https://yande.re/h=
+elp/notes">Note Help</a>
+            </li><li><a class=3D"help-item artist" href=3D"https://yande.re=
+/help/artists">Artist Help</a>
+            </li><li><a class=3D"help-item tag" href=3D"https://yande.re/he=
+lp/tags">Tag Help</a>
+            </li><li><a class=3D"help-item pool" href=3D"https://yande.re/h=
+elp/pools">Pool Help</a>
+            </li><li><a class=3D"help-item wiki" href=3D"https://yande.re/h=
+elp/wiki">Wiki Help</a>
+            </li><li><a class=3D"help-item forum" href=3D"https://yande.re/=
+help/forum">Forum Help</a>
+          </li><li><a href=3D"https://yande.re/help">Site Help</a></li>
+        </ul>
+      </li>
+      <li class=3D"static"><a href=3D"https://yande.re/static/more">More =
+=C2=BB</a>
+      </li>
+      <li class=3D"has-mail">
+        <a id=3D"has-mail-notice" href=3D"https://yande.re/dmail/inbox">New=
+ Mail</a>
+      </li>
+    </ul>
+</div>
+
+
+
+
+  </div>
+ =20
+<div id=3D"login-background" style=3D"display: none;">&nbsp;</div>
+
+<div id=3D"login-container" style=3D"display: none;">
+  <div id=3D"login-container-inner">
+    <div id=3D"login-container-with-tabs">
+      <div>
+        <ul class=3D"flat-list login-tabs" id=3D"login-tabs">
+        <li id=3D"tab-login"><a href=3D"https://yande.re/help/api#">Login</=
+a></li>
+        <li id=3D"tab-reset"><a href=3D"https://yande.re/help/api#">Reset P=
+assword</a></li>
+        </ul>
+      </div>
+      <div id=3D"login" style=3D"position: relative;">
+        <p id=3D"tab-login-text" class=3D"tab-header-text">
+          Please log in. To create a new account, enter the name and passwo=
+rd you want to use.
+        </p>
+        <p id=3D"tab-reset-text" class=3D"tab-header-text">
+          If you supplied an email address when you signed up or added a em=
+ail later, you can have your password reset.
+        </p>
+
+        <form id=3D"login-popup" action=3D"https://yande.re/user/authentica=
+te" accept-charset=3D"UTF-8" method=3D"post">
+          <div style=3D"position: absolute; top: 0; right: 0;">
+            <a href=3D"https://yande.re/help/api#" id=3D"login-popup-cancel=
+" style=3D"font-size: 1.2em; padding: 2px;">=E2=93=A7</a>
+          </div>
+
+          <table class=3D"form" style=3D"width: 80%; max-width: 30em; margi=
+n-bottom: .5em; margin-left: auto; margin-right: auto;">
+            <tbody><tr>
+              <th style=3D"width: 8em"><label class=3D"block" for=3D"login-=
+popup-username">Name</label></th>
+              <td style=3D"width: 10em" align=3D"left"><input id=3D"login-p=
+opup-username" name=3D"username" type=3D"text" style=3D"width: 100%;"></td>
+            </tr>
+            <tr id=3D"login-popup-email-box">
+              <th><label class=3D"block" for=3D"login-popup-email">Email</l=
+abel></th>
+              <td align=3D"left"><input id=3D"login-popup-email" name=3D"em=
+ail" type=3D"text" style=3D"width: 100%;"></td>
+            </tr>
+            <tr id=3D"login-popup-password-box">
+              <th><label class=3D"block" for=3D"login-popup-password">Passw=
+ord</label></th>
+              <td align=3D"left"><input id=3D"login-popup-password" name=3D=
+"password" type=3D"password" style=3D"width: 100%;"></td>
+            </tr>
+            <tr id=3D"login-popup-password-confirm-box" style=3D"display: n=
+one;">
+              <th><label class=3D"block" for=3D"login-popup-password-confir=
+m">Confirm Password</label></th>
+              <td align=3D"left"><input id=3D"login-popup-password-confirm"=
+ name=3D"password-confirm" type=3D"password" style=3D"width: 100%;"></td>
+            </tr>
+            <tr>
+              <th style=3D"background: none;"></th>
+              <td align=3D"left">
+              </td>
+            </tr>
+          </tbody></table>
+          <a href=3D"https://yande.re/help/api#" id=3D"login-popup-submit" =
+style=3D"margin-bottom: 1em; margin-left: auto; margin-right: auto;">Login<=
+/a>
+</form>
+        <div id=3D"login-popup-notices" class=3D"login-popup-notice">
+          <span id=3D"login-popup-login-confirm-password">
+            This user name doesn't exist.  If you want to create a new acco=
+unt, just verify your password and log in.
+          </span>
+          <span id=3D"login-popup-login-user-exists">
+            This user name exists.  If you want to create a new account, pl=
+ease choose a different name.
+          </span>
+          <span id=3D"login-popup-reset-user-exists">
+            Enter the current email address you have registered in your pro=
+file.  You'll get an email containing your new password.
+          </span>
+          <span id=3D"login-popup-reset-user-has-no-email">
+            You have no email address in your profile, so you can't have yo=
+ur password reset.
+          </span>
+          <span id=3D"login-popup-reset-successful">
+            Password reset. Check your email in a few minutes
+          </span>
+          <span id=3D"login-popup-reset-unknown-user">
+            That account does not exist.
+          </span>
+          <span id=3D"login-popup-reset-blank">
+          </span>
+          <span id=3D"login-popup-reset-user-email-incorrect">
+            The email address specified is not registered with this account=
+.
+          </span>
+          <span id=3D"login-popup-reset-user-email-invalid">
+            Delivery to this email address has failed.
+          </span>
+          <span id=3D"login-popup-message">
+          </span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+
+
+
+  <!--[if lt IE 7]>
+  <div style=3D"display: none;" id=3D"old-browser">Your browser is very old=
+, and this site will not display properly.
+    Please consider upgrading to a more recent web browser:
+    <a href=3D"http://www.mozilla.com/firefox/">Firefox</a>,
+    <a href=3D"http://www.opera.com/">Opera</a>,
+    <a href=3D"http://www.microsoft.com/windows/internet-explorer/download-=
+ie.aspx">Internet Explorer</a>.
+    <div style=3D"text-align: right;" id=3D"old-browser-hide">
+      <a href=3D"#" onclick=3D'$("old-browser").hide(); Cookie.put("hide-ie=
+-nag", "1");'>(hide this message)</a>
+    </div>
+  </div>
+  <![endif]-->
+  <div class=3D"overlay-notice-container" id=3D"notice-container" style=3D"=
+display: none;">
+  <table cellspacing=3D"0" cellpadding=3D"0"> <tbody>
+    <tr> <td>
+      <div id=3D"notice">
+      </div>
+    </td> </tr>
+  </tbody> </table>
+</div>
+
+
+  <div class=3D"blocked" id=3D"block-reason" style=3D"display: none;">
+  </div>
+
+  <div id=3D"content">
+    <div class=3D"help">
+  <h1>Help: API 1.13.0+update.3</h1>
+
+  <div class=3D"section">
+    <p>Moebooru offers API which is mostly compatible with Danbooru API (ve=
+rsion 1.13.0) to make scripting easy. All you need is a way to <a href=3D"h=
+ttp://en.wikipedia.org/wiki/HTTP_GET#Request_methods">GET and POST</a> to <=
+a href=3D"http://en.wikipedia.org/wiki/Uniform_Resource_Locator">URLs</a>. =
+The ability to parse <a href=3D"http://en.wikipedia.org/wiki/Xml">XML</a> o=
+r <a href=3D"http://en.wikipedia.org/wiki/Json">JSON</a> responses is nice,=
+ but not critical. The simplicity of the API means you can write scripts us=
+ing JavaScript, Perl, Python, Ruby, even shell languages like bash or tcsh.=
+</p>
+    <p style=3D"text-align: center;"><a href=3D"https://yande.re/help/api#c=
+hangelog">Change Log</a> | <a href=3D"https://yande.re/help/api#posts">Post=
+s</a> | <a href=3D"https://yande.re/help/api#tags">Tags</a> | <a href=3D"ht=
+tps://yande.re/help/api#artists">Artists</a> | <a href=3D"https://yande.re/=
+help/api#comments">Comments</a> | <a href=3D"https://yande.re/help/api#wiki=
+">Wiki</a> | <a href=3D"https://yande.re/help/api#notes">Notes</a> | <a hre=
+f=3D"https://yande.re/help/api#users">Users</a> | <a href=3D"https://yande.=
+re/help/api#forum">Forum</a> | <a href=3D"https://yande.re/help/api#pools">=
+Pools</a></p>
+  </div>
+
+  <div class=3D"section">
+    <div class=3D"section">
+      <h2>Basics</h2>
+      <p>HTTP defines two request methods: GET and POST. You'll be using th=
+ese two methods to interact with the Danbooru API. Most API calls that chan=
+ge the state of the database (like creating, updating, or deleting somethin=
+g) require an HTTP POST call. API calls that only retrieve data can typical=
+ly be done with an HTTP GET call.</p>
+      <p>In the Danbooru API, a URL is analogous to a function name. You pa=
+ss in the function parameters as a query string. Here's an extremely simple=
+ example: <a class=3D"code" href=3D"https://yande.re/post.xml?limit=3D1" ta=
+rget=3D"_blank">/post.xml?limit=3D1</a>.</p>
+      <p>The <code>post</code> part indicates the controller we're working =
+with. In this case it's posts. <code>index</code> describes the action. Her=
+e we're retrieving a list of posts. Finally, the <code>xml</code> part desc=
+ribes what format we want the response in. You can specify <code>.xml</code=
+> for XML responses, <code>.json</code> for JSON responses, and nothing at =
+all for HTML responses.</p>
+    </div>
+
+    <div class=3D"section">
+      <h4>Responses</h4>
+      <p>All API calls that change state will return a single element respo=
+nse (for XML calls). They are formatted like this:</p>
+      <div class=3D"code">
+        &lt;?xml version=3D"1.0" encoding=3D"UTF-8"?&gt;<br>
+        &lt;response success=3D"false" reason=3D"duplicate"/&gt;
+      </div>
+      <p>For JSON responses, they'll look like this:</p>
+      <div class=3D"code">
+        {success: false, reason: "duplicate"}
+      </div>
+      <p>While you can usually determine success or failure based on the re=
+sponse object, you can also figure out what happened based on the HTTP stat=
+us code. In addition to the standard ones, Danbooru uses some custom status=
+ codes in the 4xx and 5xx range.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Status Code</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>200 OK</td>
+            <td>Request was successful</td>
+          </tr>
+          <tr>
+            <td>403 Forbidden</td>
+            <td>Access denied</td>
+          </tr>
+          <tr>
+            <td>404 Not Found</td>
+            <td>Not found</td>
+          </tr>
+          <tr>
+            <td>420 Invalid Record</td>
+            <td>Record could not be saved</td>
+          </tr>
+          <tr>
+            <td>421 User Throttled</td>
+            <td>User is throttled, try again later</td>
+          </tr>
+          <tr>
+            <td>422 Locked</td>
+            <td>The resource is locked and cannot be modified</td>
+          </tr>
+          <tr>
+            <td>423 Already Exists</td>
+            <td>Resource already exists</td>
+          </tr>
+          <tr>
+            <td>424 Invalid Parameters</td>
+            <td>The given parameters were invalid</td>
+          </tr>
+          <tr>
+            <td>500 Internal Server Error</td>
+            <td>Some unknown error occurred on the server</td>
+          </tr>
+          <tr>
+            <td>503 Service Unavailable</td>
+            <td>Server cannot currently handle the request, try again later=
+</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class=3D"section">
+      <h4>JSON Responses</h4>
+      <p>While you will probably want to work with XML in the majority of c=
+ases, if you're writing something in Javascript then the JSON responses may=
+ be preferable. They are much faster to parse and there's less code to writ=
+e to get your data structure:</p>
+      <div class=3D"code">
+        var data =3D JSON.parse(responseText)<br>
+        alert(data.response)
+      </div>
+    </div>
+
+    <div class=3D"section">
+      <h4>Logging In</h4>
+      <p>Some actions may require you to log in. For any action you can alw=
+ays specify two parameters to identify yourself:</p>
+      <ul>
+        <li><strong>login</strong> Your login name.</li>
+        <li><strong>password_hash</strong> Your SHA1 hashed password. Simpl=
+y hashing your plain password will NOT work since Danbooru salts its passwo=
+rds. The actual string that is hashed is "choujin-steiner--<em>your-passwor=
+d</em>--".</li>
+      </ul>
+      <p>Please be aware of the security risks involved in sending your pas=
+sword through an unencrypted channel. Although your password will be hashed=
+, it is still theoretically possible for someone to steal your account by c=
+reating a fake cookie based on your hashed password.</p>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"posts"></a>
+    <h2>Posts</h2>
+
+    <div class=3D"section">
+      <h4>List</h4>
+      <p>The base URL is /post.xml.</p>
+      <ul>
+        <li><strong>limit</strong> How many posts you want to retrieve. The=
+re is a hard limit of 100 posts per request.</li>
+        <li><strong>page</strong> The page number.</li>
+        <li><strong>tags</strong> The tags to search for. Any tag combinati=
+on that works on the web site will work here. This includes all the meta-ta=
+gs.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Create</h4>
+      <p>The base URL is /post/create.xml. There are only two mandatory fie=
+lds: you need to supply the tags, and you need to supply the file, either t=
+hrough a multipart form or through a source URL.</p>
+      <ul>
+        <li><strong>post[tags]</strong> A space delimited list of tags.</li=
+>
+        <li><strong>post[file]</strong> The file data encoded as a multipar=
+t form.</li>
+        <li><strong>post[rating]</strong> The rating for the post. Can be: =
+safe, questionable, or explicit.</li>
+        <li><strong>post[source]</strong> If this is a URL, Danbooru will d=
+ownload the file.</li>
+        <li><strong>post[is_rating_locked]</strong> Set to true to prevent =
+others from changing the rating.</li>
+        <li><strong>post[is_note_locked]</strong> Set to true to prevent ot=
+hers from adding notes.</li>
+        <li><strong>post[parent_id]</strong> The ID of the parent post.</li=
+>
+        <li><strong>md5</strong> Supply an MD5 if you want Danbooru to veri=
+fy the file after uploading. If the MD5 doesn't match, the post is destroye=
+d.</li>
+      </ul>
+      <p>If the call fails, the following response reasons are possible:</p=
+>
+      <ul>
+        <li><strong>MD5 mismatch</strong> This means you supplied an MD5 pa=
+rameter and what Danbooru got doesn't match. Try uploading the file again.<=
+/li>
+        <li><strong>duplicate</strong> This post already exists in Danbooru=
+ (based on the MD5 hash). An additional attribute called <code>location</co=
+de> will be set, pointing to the (relative) URL of the original post.</li>
+        <li><strong><em>other</em></strong> Any other error will have its e=
+rror message printed.</li>
+      </ul>
+      <p>If the post upload succeeded, you'll get an attribute called <code=
+>location</code> in the response pointing to the relative URL of your newly=
+ uploaded post.</p>
+    </div>
+    <div class=3D"section">
+      <h4>Update</h4>
+      <p>The base URL is /post/update.xml. Only the <code>id</code> paramet=
+er is required. Leave the other parameters blank if you don't want to chang=
+e them.</p>
+      <ul>
+        <li><strong>id</strong> The id number of the post to update.</li>
+        <li><strong>post[tags]</strong> A space delimited list of tags.</li=
+>
+        <li><strong>post[file]</strong> The file data encoded as a multipar=
+t form.</li>
+        <li><strong>post[rating]</strong> The rating for the post. Can be: =
+safe, questionable, or explicit.</li>
+        <li><strong>post[source]</strong> If this is a URL, Danbooru will d=
+ownload the file.</li>
+        <li><strong>post[is_rating_locked]</strong> Set to true to prevent =
+others from changing the rating.</li>
+        <li><strong>post[is_note_locked]</strong> Set to true to prevent ot=
+hers from adding notes.</li>
+        <li><strong>post[parent_id]</strong> The ID of the parent post.</li=
+>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Destroy</h4>
+      <p>You must be logged in to use this action. You must also be the use=
+r who uploaded the post (or you must be a moderator).</p>
+      <ul>
+        <li><strong>id</strong> The id number of the post to delete.</li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Revert Tags</h4>
+      <p>This action reverts a post to a previous set of tags. The base URL=
+ is /post/revert_tags.xml.</p>
+      <ul>
+        <li><strong>id</strong> The post id number to update.</li>
+        <li><strong>history_id</strong> The id number of the tag history.</=
+li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Vote</h4>
+      <p>This action lets you vote for a post. You can only vote once per p=
+ost per IP address. The base URL is /post/vote.xml.</p>
+      <ul>
+        <li><strong>id</strong> The post id number to update.</li>
+        <li><strong>score</strong> Set to <code>1</code> to vote up and <co=
+de>-1</code> to vote down. All other values will be ignored.</li>
+      </ul>
+      <p>If the call did not succeed, the following reasons are possible:</=
+p>
+      <ul>
+        <li><strong>already voted</strong> You have already voted for this =
+post.</li>
+        <li><strong>invalid score</strong> You have supplied an invalid sco=
+re.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"tags"></a>
+    <h2>Tags</h2>
+
+    <div class=3D"section">
+      <h4>List</h4>
+      <p>The base URL is /tag.xml.</p>
+      <ul>
+        <li><strong>limit</strong> How many tags to retrieve. Setting this =
+to 0 will return every tag.</li>
+        <li><strong>page</strong> The page number.</li>
+        <li><strong>order</strong> Can be <code>date</code>, <code>count</c=
+ode>, or <code>name</code>.</li>
+        <li><strong>id</strong> The id number of the tag.</li>
+        <li><strong>after_id</strong> Return all tags that have an id numbe=
+r greater than this.</li>
+        <li><strong>name</strong> The exact name of the tag.</li>
+        <li><strong>name_pattern</strong> Search for any tag that has this =
+parameter in its name.</li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Update</h4>
+      <p>The base URL is /tag/update.xml.</p>
+      <ul>
+        <li><strong>name</strong> The name of the tag to update.</li>
+        <li><strong>tag[tag_type]</strong> The tag type. General: 0, artist=
+: 1, copyright: 3, character: 4.</li>
+        <li><strong>tag[is_ambiguous]</strong> Whether or not this tag is a=
+mbiguous. Use 1 for true and 0 for false.</li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Related</h4>
+      <p>The base URL is /tag/related.xml.</p>
+      <ul>
+        <li><strong>tags</strong> The tag names to query.</li>
+        <li><strong>type</strong> Restrict results to this tag type (can be=
+ <code>general</code>, <code>artist</code>, <code>copyright</code>, or <cod=
+e>character</code>).</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"artists"></a>
+    <h2>Artists</h2>
+
+    <div class=3D"section">
+      <h4>List</h4>
+      <p>The base URL is /artist.xml.</p>
+      <ul>
+        <li><strong>name</strong> The name (or a fragment of the name) of t=
+he artist.</li>
+        <li><strong>order</strong> Can be <code>date</code> or <code>name</=
+code>.</li>
+        <li><strong>page</strong> The page number.</li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Create</h4>
+      <p>The base URL is /artist/create.xml.</p>
+      <ul>
+        <li><strong>artist[name]</strong> The artist's name.</li>
+        <li><strong>artist[urls]</strong> A list of URLs associated with th=
+e artist, whitespace delimited.</li>
+        <li><strong>artist[alias]</strong> The artist that this artist is a=
+n alias for. Simply enter the alias artist's name.</li>
+        <li><strong>artist[group]</strong> The group or cicle that this art=
+ist is a member of. Simply enter the group's name.</li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Update</h4>
+      <p>The base URL is /artist/update.xml. Only the <strong>id</strong> p=
+arameter is required. The other parameters are optional.</p>
+      <ul>
+        <li><strong>id</strong> The id of thr artist to update.</li>
+        <li><strong>artist[name]</strong> The artist's name.</li>
+        <li><strong>artist[urls]</strong> A list of URLs associated with th=
+e artist, whitespace delimited.</li>
+        <li><strong>artist[alias]</strong> The artist that this artist is a=
+n alias for. Simply enter the alias artist's name.</li>
+        <li><strong>artist[group]</strong> The group or cicle that this art=
+ist is a member of. Simply enter the group's name.</li>
+      </ul>
+    </div>
+    <div class=3D"section">
+      <h4>Destroy</h4>
+      <p>The base URL is /artist/destroy.xml. You must be logged in to dele=
+te artists.</p>
+      <ul>
+        <li><strong>id</strong> The id of the artist to destroy.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"comments"></a>
+    <h2>Comments</h2>
+
+    <div class=3D"section">
+      <h4>Show</h4>
+      <p>The base URL is /comment/show.xml. This retrieves a single comment=
+.</p>
+      <ul>
+        <li><strong>id</strong> The id number of the comment to retrieve.</=
+li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Create</h4>
+      <p>The base URL is /comment/create.xml.</p>
+      <ul>
+        <li><strong>comment[anonymous]</strong> Set to 1 if you want to pos=
+t this comment anonymously.</li>
+        <li><strong>comment[post_id]</strong> The post id number to which y=
+ou are responding.</li>
+        <li><strong>comment[body]</strong> The body of the comment.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Destroy</h4>
+      <p>The base url is /comment/destroy.xml. You must be logged in to use=
+ this action. You must also be the owner of the comment, or you must be a m=
+oderator.</p>
+      <ul>
+        <li><strong>id</strong> The id number of the comment to delete.</li=
+>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"wiki"></a>
+    <h2>Wiki</h2>
+    <p>All titles must be exact (but case and whitespace don't matter).</p>
+
+    <div class=3D"section">
+      <h4>List</h4>
+      <p>The base URL is /wiki.xml. This retrieves a list of every wiki pag=
+e.</p>
+      <ul>
+        <li><strong>order</strong> How you want the pages ordered. Can be: =
+<code>title</code>, <code>date</code>.</li>
+        <li><strong>limit</strong> The number of pages to retrieve.</li>
+        <li><strong>page</strong> The page number.</li>
+        <li><strong>query</strong> A word or phrase to search for.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Create</h4>
+      <p>The base URL is /wiki/create.xml.</p>
+      <ul>
+        <li><strong>wiki_page[title]</strong> The title of the wiki page.</=
+li>
+        <li><strong>wiki_page[body]</strong> The body of the wiki page.</li=
+>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Update</h4>
+      <p>The base URL is /wiki/update.xml. Potential error reasons: "Page i=
+s locked"</p>
+      <ul>
+        <li><strong>title</strong> The title of the wiki page to update.</l=
+i>
+        <li><strong>wiki_page[title]</strong> The new title of the wiki pag=
+e.</li>
+        <li><strong>wiki_page[body]</strong> The new body of the wiki page.=
+</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Show</h4>
+      <p>The base URL is /wiki/show.xml. Potential error reasons: "artist t=
+ype"</p>
+      <ul>
+        <li><strong>title</strong> The title of the wiki page to retrieve.<=
+/li>
+        <li><strong>version</strong> The version of the page to retrieve.</=
+li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Destroy</h4>
+      <p>The base URL is /wiki/destroy.xml. You must be logged in as a mode=
+rator to use this action.</p>
+      <ul>
+        <li><strong>title</strong> The title of the page to delete.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Lock</h4>
+      <p>The base URL is /wiki/lock.xml. You must be logged in as a moderat=
+or to use this action.</p>
+      <ul>
+        <li><strong>title</strong> The title of the page to lock.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Unlock</h4>
+      <p>The base URL is /wiki/unlock.xml. You must be logged in as a moder=
+ator to use this action.</p>
+      <ul>
+        <li><strong>title</strong> The title of the page to unlock.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Revert</h4>
+      <p>The base URL is /wiki/revert.xml. Potential error reasons: "Page i=
+s locked"</p>
+      <ul>
+        <li><strong>title</strong> The title of the wiki page to update.</l=
+i>
+        <li><strong>version</strong> The version to revert to.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>History</h4>
+      <p>The base URL is /wiki/history.xml.</p>
+      <ul>
+        <li><strong>title</strong> The title of the wiki page to retrieve v=
+ersions for.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"notes"></a>
+    <h2>Notes</h2>
+
+    <div class=3D"section">
+      <h4>List</h4>
+      <p>The base URL is /note.xml.</p>
+      <ul>
+        <li><strong>post_id</strong> The post id number to retrieve notes f=
+or.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Search</h4>
+      <p>The base URL is /note/search.xml.</p>
+      <ul>
+        <li><strong>query</strong> A word or phrase to search for.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>History</h4>
+      <p>The base URL is /note/history.xml. You can either specify <code>id=
+</code>, <code>post_id</code>, or nothing. Specifying nothing will give you=
+ a list of every note verison.</p>
+      <ul>
+        <li><strong>limit</strong> How many versions to retrieve.</li>
+        <li><strong>page</strong> The offset.</li>
+        <li><strong>post_id</strong> The post id number to retrieve note ve=
+rsions for.</li>
+        <li><strong>id</strong> The note id number to retrieve versions for=
+.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Revert</h4>
+      <p>The base URL is /note/revert.xml. Potential error reasons: "Post i=
+s locked"</p>
+      <ul>
+        <li><strong>id</strong> The note id to update.</li>
+        <li><strong>version</strong> The version to revert to.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Create/Update</h4>
+      <p>The base URL is /note/update.xml. Notes differ from the other cont=
+rollers in that the interface for creation and updates is the same. If you =
+supply an <code>id</code> parameter, then Danbooru will assume you're updat=
+ing an existing note. Otherwise, it will create a new note. Potential error=
+ reasons: "Post is locked"</p>
+      <ul>
+        <li><strong>id</strong> If you are updating a note, this is the not=
+e id number to update.</li>
+        <li><strong>note[post_id]</strong> The post id number this note bel=
+ongs to.</li>
+        <li><strong>note[x]</strong> The x coordinate of the note.</li>
+        <li><strong>note[y]</strong> The y coordinate of the note.</li>
+        <li><strong>note[width]</strong> The width of the note.</li>
+        <li><strong>note[height]</strong> The height of the note.</li>
+        <li><strong>note[is_active]</strong> Whether or not the note is vis=
+ible. Set to 1 for active, 0 for inactive.</li>
+        <li><strong>note[body]</strong> The note message.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"users"></a>
+    <h2>Users</h2>
+
+    <div class=3D"section">
+      <h4>Search</h4>
+      <p>The base URL is /user.xml. If you don't specify any parameters you=
+'ll get a listing of all users.</p>
+      <ul>
+        <li><strong>id</strong> The id number of the user.</li>
+        <li><strong>name</strong> The name of the user.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"forum"></a>
+    <h2>Forum</h2>
+
+    <div class=3D"section">
+      <h4>List</h4>
+      <p>The base URL is /forum.xml. If you don't specify any parameters yo=
+u'll get a list of all the parent topics.</p>
+      <ul>
+        <li><strong>parent_id</strong> The parent ID number. You'll return =
+all the responses to that forum post.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"pools"></a>
+    <h2>Pools</h2>
+
+    <div class=3D"section">
+      <h4>List Pools</h4>
+      <p>The base URL is /pool.xml. If you don't specify any parameters you=
+'ll get a list of all pools.</p>
+      <ul>
+        <li><strong>query</strong> The title.</li>
+        <li><strong>page</strong> The page.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>List Posts</h4>
+      <p>The base URL is /pool/show.xml. If you don't specify any parameter=
+s you'll get a list of all pools.</p>
+      <ul>
+        <li><strong>id</strong> The pool id number.</li>
+        <li><strong>page</strong> The page.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Update</h4>
+      <p>The base URL is /pool/update.xml.</p>
+      <ul>
+        <li><strong>id</strong> The pool id number.</li>
+        <li><strong>pool[name]</strong> The name.</li>
+        <li><strong>pool[is_public]</strong> 1 or 0, whether or not the poo=
+l is public.</li>
+        <li><strong>pool[description]</strong> A description of the pool.</=
+li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Create</h4>
+      <p>The base URL is /pool/create.xml.</p>
+      <ul>
+        <li><strong>pool[name]</strong> The name.</li>
+        <li><strong>pool[is_public]</strong> 1 or 0, whether or not the poo=
+l is public.</li>
+        <li><strong>pool[description]</strong> A description of the pool.</=
+li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Destroy</h4>
+      <p>The base URL is /pool/destroy.xml.</p>
+      <ul>
+        <li><strong>id</strong> The pool id number.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Add Post</h4>
+      <p>The base URL is /pool/add_post.xml. Potential error reasons: "Post=
+ already exists", "access denied"</p>
+      <ul>
+        <li><strong>pool_id</strong> The pool to add the post to.</li>
+        <li><strong>post_id</strong> The post to add.</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>Remove Post</h4>
+      <p>The base URL is /pool/remove_post.xml. Potential error reasons: "a=
+ccess denied"</p>
+      <ul>
+        <li><strong>pool_id</strong> The pool to remove the post from.</li>
+        <li><strong>post_id</strong> The post to remove.</li>
+      </ul>
+    </div>
+
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"favorites"></a>
+    <h2>Favorites</h2>
+
+    <div class=3D"section">
+      <h4>List Users</h4>
+      <p>The base URL is /favorite/list_users.json. There is no XML API for=
+ this action.</p>
+      <ul>
+        <li><strong>id</strong> The post id.</li>
+      </ul>
+    </div>
+  </div>
+
+
+
+  <div class=3D"section">
+    <a name=3D"changelog"></a>
+    <h2>Change Log</h2>
+    <div class=3D"section">
+      <h4>2.0.0</h4>
+      <ul>
+        <li>Removed <code>blacklist_tags</code> from user object (never doc=
+umented)</li>
+        <li>XML tag for user API has been changed from <code>post</code> to=
+ <code>user</code></li>
+      </ul>
+      <h4>1.13.0+update.3</h4>
+      <ul>
+        <li>Removed /index from API URLs</li>
+      </ul>
+      <h4>1.13.0+update.2</h4>
+      <ul>
+        <li>Readd favorite/list_users API</li>
+      </ul>
+      <h4>1.13.0+update.1</h4>
+      <ul>
+        <li>Added documentation for pools</li>
+      </ul>
+
+      <h4>1.13.0</h4>
+      <ul>
+        <li>Changed interface for artists to use new URL system</li>
+        <li>JSON requests now end in a .json suffix</li>
+        <li>Renamed some error reason messages</li>
+        <li>Removed comment/index from API</li>
+        <li>Removed url and md5 parameters from artist search (can just pas=
+s the URL or MD5 hash to the name parameter)</li>
+      </ul>
+    </div>
+
+    <div class=3D"section">
+      <h4>1.8.1</h4>
+      <ul>
+        <li>Removed post[is_flagged] attribute</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+      <div class=3D"footer">
+       =20
+        <ul class=3D"flat-list" id=3D"subnavbar">
+            <li><a href=3D"https://yande.re/help">Help</a></li>
+
+        </ul>
+      </div>
+  </div>
+
+ =20
+
+  <!--[if lt IE 7]>
+    <script type=3D"text/javascript">
+      if(Cookie.get("hide-ie-nag") !=3D "1")
+        $("old-browser").show();
+    </script>
+  <![endif]-->
+
+  <form>
+    <select name=3D"locale">
+        <option value=3D"de">
+          Deutsch
+        </option>
+        <option value=3D"en" selected=3D"">
+          English
+        </option>
+        <option value=3D"es">
+          espa=C3=B1ol
+        </option>
+        <option value=3D"ja">
+          =E6=97=A5=E6=9C=AC=E8=AA=9E
+        </option>
+        <option value=3D"ru">
+          =D1=80=D1=83=D1=81=D1=81=D0=BA=D0=B8=D0=B9
+        </option>
+        <option value=3D"zh_CN">
+          =E7=AE=80=E4=BD=93=E4=B8=AD=E6=96=87
+        </option>
+        <option value=3D"zh_TW">
+          =E7=B9=81=E9=AB=94=E4=B8=AD=E6=96=87=EF=BC=88=E5=8F=B0=E7=81=A3=
+=EF=BC=89
+        </option>
+    </select>
+    <button type=3D"submit">
+      Select
+    </button>
+  </form>
+ =20
+   =20
+
+
+</body><div id=3D"immersive-translate-popup" style=3D"all: initial"><templa=
+te shadowmode=3D"open"><div id=3D"mount" style=3D"display: block;"><div cla=
+ss=3D"imt-fb-container right notranslate " data-theme=3D"dark" style=3D"z-i=
+ndex: 2147483637; pointer-events: none; right: 0px; top: 200px; display: fl=
+ex;"><div class=3D"btn-animate" style=3D"transform: translateX(-5px); opaci=
+ty: 0.7;"><div class=3D"imt-fb-btn imt-fb-more-button imt-fb-side"><div cla=
+ss=3D" btn-animate" style=3D"position: relative; pointer-events: all; displ=
+ay: inline-block;"><div><svg class=3D"imt-fb-icon" xmlns=3D"http://www.w3.o=
+rg/2000/svg" width=3D"24" height=3D"24" viewBox=3D"0 0 24 24" fill=3D"none"=
+><path d=3D"M9.65332 13.3477C10.4097 13.4245 11 14.0632 11 14.8398V18.8398L=
+10.9922 18.9932C10.9205 19.6992 10.3593 20.2604 9.65332 20.332L9.5 20.3398H=
+5.5C4.72334 20.3398 4.08461 19.7496 4.00781 18.9932L4 18.8398V14.8398C4 14.=
+0114 4.67157 13.3398 5.5 13.3398H9.5L9.65332 13.3477ZM18.6533 13.3477C19.40=
+97 13.4245 20 14.0632 20 14.8398V18.8398L19.9922 18.9932C19.9205 19.6992 19=
+.3593 20.2604 18.6533 20.332L18.5 20.3398H14.5C13.7233 20.3398 13.0846 19.7=
+496 13.0078 18.9932L13 18.8398V14.8398C13 14.0114 13.6716 13.3398 14.5 13.3=
+398H18.5L18.6533 13.3477ZM5.5 14.3398C5.22386 14.3398 5 14.5637 5 14.8398V1=
+8.8398C5 19.116 5.22386 19.3398 5.5 19.3398H9.5C9.77614 19.3398 10 19.116 1=
+0 18.8398V14.8398C10 14.5637 9.77614 14.3398 9.5 14.3398H5.5ZM14.5 14.3398C=
+14.2239 14.3398 14 14.5637 14 14.8398V18.8398C14 19.116 14.2239 19.3398 14.=
+5 19.3398H18.5C18.7761 19.3398 19 19.116 19 18.8398V14.8398C19 14.5637 18.7=
+761 14.3398 18.5 14.3398H14.5ZM9.65332 4.34766C10.4097 4.42445 11 5.06318 1=
+1 5.83984V9.83984L10.9922 9.99316C10.9205 10.6992 10.3593 11.2604 9.65332 1=
+1.332L9.5 11.3398H5.5C4.72334 11.3398 4.08461 10.7496 4.00781 9.99316L4 9.8=
+3984V5.83984C4 5.01142 4.67157 4.33984 5.5 4.33984H9.5L9.65332 4.34766ZM16.=
+1484 3.18848C16.2521 2.83834 16.7479 2.83834 16.8516 3.18848L17.3281 4.7978=
+5C17.5079 5.40507 17.9648 5.89104 18.5596 6.1084L20.0576 6.65625C20.3786 6.=
+77361 20.3785 7.22732 20.0576 7.34473L18.5596 7.89258C17.9648 8.10991 17.50=
+79 8.59598 17.3281 9.20312L16.8516 10.8125C16.7479 11.1626 16.2521 11.1626 =
+16.1484 10.8125L15.6719 9.20312C15.4921 8.59598 15.0352 8.10991 14.4404 7.8=
+9258L12.9424 7.34473C12.6215 7.22732 12.6214 6.77361 12.9424 6.65625L14.440=
+4 6.1084C15.0352 5.89104 15.4921 5.40507 15.6719 4.79785L16.1484 3.18848ZM5=
+.5 5.33984C5.22386 5.33984 5 5.5637 5 5.83984V9.83984C5 10.116 5.22386 10.3=
+398 5.5 10.3398H9.5C9.77614 10.3398 10 10.116 10 9.83984V5.83984C10 5.5637 =
+9.77614 5.33984 9.5 5.33984H5.5Z" fill=3D"#ED6D8F"></path></svg><svg class=
+=3D"imt-fb-pin-icon" xmlns=3D"http://www.w3.org/2000/svg" width=3D"14" heig=
+ht=3D"14" viewBox=3D"0 0 14 14" fill=3D"none"><circle cx=3D"7" cy=3D"7" r=
+=3D"7" fill=3D"#B1B1B166"></circle><g transform=3D"translate(2, 2)"><mask i=
+d=3D"mask0_39788_745" maskUnits=3D"userSpaceOnUse" x=3D"0" y=3D"0" width=3D=
+"10" height=3D"10" style=3D"mask-type: alpha;"><rect width=3D"10" height=3D=
+"10" fill=3D"#D9D9D9"></rect></mask><g mask=3D"url(#mask0_39788_745)"><path=
+ d=3D"M6.23958 3.76042C6.28819 3.80903 6.35243 3.88194 6.43229 3.97917C6.51=
+215 4.07639 6.59722 4.18056 6.6875 4.29167C6.6875 4.44444 6.63646 4.57292 6=
+.53438 4.67708C6.43222 4.78125 6.30618 4.83333 6.15625 4.83333C6.00056 4.83=
+333 5.86962 4.78125 5.76344 4.67708C5.65726 4.57292 5.60417 4.44444 5.60417=
+ 4.29167C5.59722 4.28472 5.59201 4.28646 5.58854 4.29688C5.58507 4.30729 5.=
+58333 4.31076 5.58333 4.30729C5.58333 4.30382 5.59028 4.30382 5.60417 4.307=
+29C5.61806 4.31076 5.62153 4.30903 5.61458 4.30208C5.47569 4.30208 5.3559 4=
+.25104 5.25521 4.14896C5.15451 4.04681 5.10417 3.92771 5.10417 3.79167C5.10=
+417 3.65278 5.15451 3.53299 5.25521 3.43229C5.3559 3.3316 5.47569 3.28125 5=
+.61458 3.28125C5.74653 3.35764 5.86111 3.43403 5.95833 3.51042C6.05556 3.58=
+681 6.14931 3.67014 6.23958 3.76042ZM5 2.75C4.94667 2.75 4.89465 2.75017 4.=
+84396 2.75052C4.79326 2.75087 4.74083 2.75035 4.68667 2.74896C4.54139 2.756=
+6 4.39931 2.72049 4.26042 2.64062C4.12153 2.56076 4.03472 2.44618 4 2.29688=
+C3.96528 2.14757 3.98611 2.01389 4.0625 1.89583C4.13889 1.77778 4.25267 1.7=
+1094 4.40385 1.69531C4.50962 1.6901 4.61059 1.68576 4.70677 1.68229C4.80295=
+ 1.67882 4.90069 1.67708 5 1.67708C5.97917 1.67708 6.88368 1.93056 7.71354 =
+2.4375C8.5434 2.94444 9.17059 3.64625 9.5951 4.54292C9.62892 4.61847 9.6545=
+1 4.69451 9.67188 4.77104C9.68924 4.84757 9.69792 4.92389 9.69792 5C9.69792=
+ 5.07611 9.69097 5.15417 9.67708 5.23417C9.66319 5.31417 9.64236 5.39236 9.=
+61458 5.46875C9.49826 5.68972 9.36504 5.89948 9.2149 6.09802C9.06469 6.2965=
+6 8.90278 6.49306 8.72917 6.6875C8.63194 6.79861 8.51042 6.85069 8.36458 6.=
+84375C8.21875 6.83681 8.09375 6.78069 7.98958 6.67542C7.88542 6.57007 7.836=
+81 6.44507 7.84375 6.30042C7.85069 6.15569 7.90278 6.02431 8 5.90625C8.1319=
+4 5.76736 8.25125 5.62153 8.35792 5.46875C8.46465 5.31597 8.5641 5.15972 8.=
+65625 5C8.30208 4.30556 7.79861 3.75694 7.14583 3.35417C6.49306 2.95139 5.7=
+7778 2.75 5 2.75ZM5 8.32292C4.04861 8.32292 3.1684 8.07465 2.35938 7.57812C=
+1.55035 7.0816 0.919896 6.40906 0.468021 5.56052C0.419896 5.46462 0.387153 =
+5.37142 0.369792 5.28094C0.352431 5.19052 0.34375 5.09677 0.34375 4.99969C0=
+.34375 4.90267 0.352431 4.80556 0.369792 4.70833C0.387153 4.61111 0.420139 =
+4.51736 0.46875 4.42708C0.614583 4.13542 0.787361 3.86813 0.987083 3.62521C=
+1.18688 3.38229 1.40646 3.15306 1.64583 2.9375L0.96875 2.27083C0.871528 2.1=
+8056 0.821181 2.07812 0.817708 1.96354C0.814236 1.84896 0.861111 1.74306 0.=
+958333 1.64583C1.05556 1.54861 1.16319 1.5 1.28125 1.5C1.39931 1.5 1.50694 =
+1.54861 1.60417 1.64583L8.19792 8.23958C8.29514 8.33681 8.34201 8.44271 8.3=
+3854 8.55729C8.33507 8.67188 8.28819 8.77431 8.19792 8.86458C8.10069 8.9618=
+1 7.99479 9.01042 7.88021 9.01042C7.76562 9.01042 7.65972 8.96181 7.5625 8.=
+86458L6.70833 8.01042C6.43472 8.12153 6.15382 8.20139 5.86562 8.25C5.57743 =
+8.29861 5.28889 8.32292 5 8.32292ZM2.41667 3.6875C2.20139 3.88194 2.00347 4=
+.08507 1.82292 4.29688C1.64236 4.50868 1.48611 4.74306 1.35417 5C1.69444 5.=
+70139 2.19271 6.25174 2.84896 6.65104C3.50521 7.05035 4.22222 7.25 5 7.25C5=
+.14729 7.25 5.29347 7.24132 5.43854 7.22396C5.58368 7.2066 5.72569 7.18056 =
+5.86458 7.14583L5.39583 6.67708C5.33333 6.70486 5.26736 6.72396 5.19792 6.7=
+3438C5.12847 6.74479 5.0625 6.75 5 6.75C4.51389 6.75 4.10069 6.57986 3.7604=
+2 6.23958C3.42014 5.89931 3.25 5.48611 3.25 5C3.25 4.9375 3.25694 4.87153 3=
+.27083 4.80208C3.28472 4.73264 3.29514 4.66667 3.30208 4.60417L2.41667 3.68=
+75Z" fill=3D"white"></path></g></g></svg></div></div></div></div><div style=
+=3D"display: flex; align-items: center; flex-direction: row; gap: 8px;"><sv=
+g xmlns=3D"http://www.w3.org/2000/svg" width=3D"14" height=3D"14" viewBox=
+=3D"0 0 14 14" fill=3D"none" style=3D"display: block; opacity: 0;"><g clip-=
+path=3D"url(#clip0_38845_9816)"><path d=3D"M7 14C5.14348 14 3.36301 13.2625=
+ 2.05025 11.9497C0.737498 10.637 0 8.85652 0 7C0 5.14348 0.737498 3.36301 2=
+.05025 2.05025C3.36301 0.737498 5.14348 0 7 0C8.85652 0 10.637 0.737498 11.=
+9497 2.05025C13.2625 3.36301 14 5.14348 14 7C14 8.85652 13.2625 10.637 11.9=
+497 11.9497C10.637 13.2625 8.85652 14 7 14Z" fill=3D"#B1B1B1" fill-opacity=
+=3D"0.4"></path><path d=3D"M6.11754 7.00052L4.18254 5.06452C4.06786 4.94725=
+ 4.00406 4.78948 4.00498 4.62546C4.00589 4.46144 4.07145 4.3044 4.18744 4.1=
+8841C4.30342 4.07243 4.46046 4.00687 4.62448 4.00595C4.7885 4.00503 4.94627=
+ 4.06884 5.06354 4.18352L6.99954 6.11852L8.93554 4.18352C8.99315 4.1246 9.0=
+6188 4.07771 9.13774 4.04554C9.2136 4.01337 9.29508 3.99656 9.37748 3.9961C=
+9.45988 3.99564 9.54155 4.01153 9.61777 4.04285C9.69398 4.07417 9.76323 4.1=
+203 9.82149 4.17857C9.87976 4.23683 9.92589 4.30608 9.95721 4.38229C9.98853=
+ 4.45851 10.0044 4.54018 10.004 4.62258C10.0035 4.70497 9.98669 4.78646 9.9=
+5452 4.86232C9.92235 4.93818 9.87545 5.00691 9.81654 5.06452L7.88154 7.0005=
+2L9.81654 8.93652C9.93122 9.05379 9.99502 9.21155 9.99411 9.37557C9.99319 9=
+.5396 9.92763 9.69664 9.81164 9.81262C9.69566 9.9286 9.53862 9.99417 9.3746=
+ 9.99508C9.21058 9.996 9.05281 9.9322 8.93554 9.81752L6.99954 7.88252L5.063=
+54 9.81752C5.00593 9.87643 4.93721 9.92333 4.86135 9.9555C4.78549 9.98767 4=
+.704 10.0045 4.6216 10.0049C4.5392 10.0054 4.45753 9.9895 4.38131 9.95818C4=
+.3051 9.92686 4.23585 9.88073 4.17759 9.82247C4.11932 9.7642 4.0732 9.69496=
+ 4.04188 9.61874C4.01056 9.54253 3.99467 9.46086 3.99513 9.37846C3.99559 9.=
+29606 4.01239 9.21457 4.04456 9.13871C4.07673 9.06285 4.12363 8.99413 4.182=
+54 8.93652L6.11754 7.00052Z" fill=3D"white"></path></g><defs><clipPath id=
+=3D"clip0_38845_9816"><rect width=3D"14" height=3D"14" fill=3D"white"></rec=
+t></clipPath></defs></svg><div style=3D"position: relative;"><div class=3D"=
+imt-fb-btn right btn-animate  " dir=3D"ltr" style=3D"opacity: 0.7;"><div cl=
+ass=3D" " style=3D"position: relative; pointer-events: all; display: inline=
+-block;"><div><div class=3D"imt-fb-btn-content"><svg class=3D"imt-fb-logo-i=
+mg imt-fb-logo-img-big-bg" width=3D"28" height=3D"28" viewBox=3D"0 0 28 28"=
+ fill=3D"none" xmlns=3D"http://www.w3.org/2000/svg"><path d=3D"M0 14C0 6.26=
+801 6.26801 0 14 0C21.732 0 28 6.26801 28 14C28 21.732 21.732 28 14 28C6.26=
+801 28 0 21.732 0 14Z" fill=3D"#ED6D8F"></path><path d=3D"M7.30921 15.6381C=
+7.53044 15.6381 7.70979 15.8175 7.70979 16.0387V19.0088C7.70979 19.934 8.45=
+993 20.684 9.38526 20.684H11.7557C11.9769 20.684 12.1562 20.8634 12.1562 21=
+.0846V22.152C12.1562 22.3732 11.9769 22.5526 11.7557 22.5526H9.38526C7.4278=
+2 22.5526 5.84099 20.966 5.84099 19.0088V16.0387C5.84099 15.8175 6.02034 15=
+.6381 6.24157 15.6381H7.30921ZM18.9876 12.6944C19.1515 12.6944 19.2989 12.7=
+943 19.3597 12.9466L22.9711 22.0036C23.076 22.2667 22.8822 22.5526 22.599 2=
+2.5526H21.4672C21.3016 22.5526 21.153 22.4506 21.0934 22.2961L20.2724 20.16=
+73C20.2128 20.0128 20.0643 19.9108 19.8986 19.9108H16.7508C16.5852 19.9108 =
+16.4366 20.0128 16.377 20.1673L15.556 22.2961C15.4964 22.4506 15.3478 22.55=
+26 15.1822 22.5526H14.0504C13.7672 22.5526 13.5734 22.2667 13.6783 22.0036L=
+17.2897 12.9466C17.3505 12.7943 17.4979 12.6944 17.6618 12.6944H18.9876ZM18=
+.5116 15.6017C18.4456 15.4308 18.2038 15.4308 18.1378 15.6017L17.3016 17.76=
+99C17.251 17.9011 17.3478 18.0423 17.4885 18.0423H19.1609C19.3016 18.0423 1=
+9.3984 17.9012 19.3478 17.7699L18.5116 15.6017ZM9.69589 5.30028C9.79943 4.8=
+999 10.368 4.89991 10.4715 5.30028L11.1086 7.76368C11.3244 8.59845 11.9396 =
+9.27221 12.7513 9.56299L14.9019 10.3334C15.2559 10.4602 15.2559 10.9608 14.=
+9019 11.0876L12.7513 11.8581C11.9396 12.1489 11.3244 12.8226 11.1086 13.657=
+4L10.4715 16.1208C10.368 16.5212 9.79943 16.5212 9.69589 16.1208L9.05884 13=
+.6574C8.84297 12.8226 8.22786 12.1489 7.41615 11.8581L5.26548 11.0876C4.911=
+51 10.9608 4.91151 10.4602 5.26548 10.3334L7.41615 9.56299C8.22786 9.27221 =
+8.84297 8.59844 9.05884 7.76368L9.69589 5.30028ZM18.0064 6.20485C19.9639 6.=
+20485 21.5507 7.79145 21.5507 9.74861V11.281C21.5507 11.5022 21.3713 11.681=
+6 21.1501 11.6816H20.0825C19.8612 11.6816 19.6819 11.5022 19.6819 11.281V9.=
+74861C19.6819 8.82341 18.9318 8.07338 18.0064 8.07338H14.4343C14.2131 8.073=
+38 14.0337 7.89403 14.0337 7.6728V6.60543C14.0337 6.3842 14.2131 6.20486 14=
+.4343 6.20485H18.0064Z" fill=3D"white"></path></svg></div></div></div></div=
+><div title=3D"=E5=85=B3=E9=97=AD=E6=82=AC=E6=B5=AE=E7=90=83" class=3D"imt-=
+fb-close-button" style=3D"opacity: 0; pointer-events: none;"><svg xmlns=3D"=
+http://www.w3.org/2000/svg" width=3D"14" height=3D"14" viewBox=3D"0 0 14 14=
+" fill=3D"none"><g clip-path=3D"url(#clip0_38845_9816)"><path d=3D"M7 14C5.=
+14348 14 3.36301 13.2625 2.05025 11.9497C0.737498 10.637 0 8.85652 0 7C0 5.=
+14348 0.737498 3.36301 2.05025 2.05025C3.36301 0.737498 5.14348 0 7 0C8.856=
+52 0 10.637 0.737498 11.9497 2.05025C13.2625 3.36301 14 5.14348 14 7C14 8.8=
+5652 13.2625 10.637 11.9497 11.9497C10.637 13.2625 8.85652 14 7 14Z" fill=
+=3D"#B1B1B1" fill-opacity=3D"0.4"></path><path d=3D"M6.11754 7.00052L4.1825=
+4 5.06452C4.06786 4.94725 4.00406 4.78948 4.00498 4.62546C4.00589 4.46144 4=
+.07145 4.3044 4.18744 4.18841C4.30342 4.07243 4.46046 4.00687 4.62448 4.005=
+95C4.7885 4.00503 4.94627 4.06884 5.06354 4.18352L6.99954 6.11852L8.93554 4=
+.18352C8.99315 4.1246 9.06188 4.07771 9.13774 4.04554C9.2136 4.01337 9.2950=
+8 3.99656 9.37748 3.9961C9.45988 3.99564 9.54155 4.01153 9.61777 4.04285C9.=
+69398 4.07417 9.76323 4.1203 9.82149 4.17857C9.87976 4.23683 9.92589 4.3060=
+8 9.95721 4.38229C9.98853 4.45851 10.0044 4.54018 10.004 4.62258C10.0035 4.=
+70497 9.98669 4.78646 9.95452 4.86232C9.92235 4.93818 9.87545 5.00691 9.816=
+54 5.06452L7.88154 7.00052L9.81654 8.93652C9.93122 9.05379 9.99502 9.21155 =
+9.99411 9.37557C9.99319 9.5396 9.92763 9.69664 9.81164 9.81262C9.69566 9.92=
+86 9.53862 9.99417 9.3746 9.99508C9.21058 9.996 9.05281 9.9322 8.93554 9.81=
+752L6.99954 7.88252L5.06354 9.81752C5.00593 9.87643 4.93721 9.92333 4.86135=
+ 9.9555C4.78549 9.98767 4.704 10.0045 4.6216 10.0049C4.5392 10.0054 4.45753=
+ 9.9895 4.38131 9.95818C4.3051 9.92686 4.23585 9.88073 4.17759 9.82247C4.11=
+932 9.7642 4.0732 9.69496 4.04188 9.61874C4.01056 9.54253 3.99467 9.46086 3=
+.99513 9.37846C3.99559 9.29606 4.01239 9.21457 4.04456 9.13871C4.07673 9.06=
+285 4.12363 8.99413 4.18254 8.93652L6.11754 7.00052Z" fill=3D"white"></path=
+></g><defs><clipPath id=3D"clip0_38845_9816"><rect width=3D"14" height=3D"1=
+4" fill=3D"white"></rect></clipPath></defs></svg></div></div><svg xmlns=3D"=
+http://www.w3.org/2000/svg" width=3D"14" height=3D"14" viewBox=3D"0 0 14 14=
+" fill=3D"none" style=3D"display: none; opacity: 0;"><g clip-path=3D"url(#c=
+lip0_38845_9816)"><path d=3D"M7 14C5.14348 14 3.36301 13.2625 2.05025 11.94=
+97C0.737498 10.637 0 8.85652 0 7C0 5.14348 0.737498 3.36301 2.05025 2.05025=
+C3.36301 0.737498 5.14348 0 7 0C8.85652 0 10.637 0.737498 11.9497 2.05025C1=
+3.2625 3.36301 14 5.14348 14 7C14 8.85652 13.2625 10.637 11.9497 11.9497C10=
+.637 13.2625 8.85652 14 7 14Z" fill=3D"#B1B1B1" fill-opacity=3D"0.4"></path=
+><path d=3D"M6.11754 7.00052L4.18254 5.06452C4.06786 4.94725 4.00406 4.7894=
+8 4.00498 4.62546C4.00589 4.46144 4.07145 4.3044 4.18744 4.18841C4.30342 4.=
+07243 4.46046 4.00687 4.62448 4.00595C4.7885 4.00503 4.94627 4.06884 5.0635=
+4 4.18352L6.99954 6.11852L8.93554 4.18352C8.99315 4.1246 9.06188 4.07771 9.=
+13774 4.04554C9.2136 4.01337 9.29508 3.99656 9.37748 3.9961C9.45988 3.99564=
+ 9.54155 4.01153 9.61777 4.04285C9.69398 4.07417 9.76323 4.1203 9.82149 4.1=
+7857C9.87976 4.23683 9.92589 4.30608 9.95721 4.38229C9.98853 4.45851 10.004=
+4 4.54018 10.004 4.62258C10.0035 4.70497 9.98669 4.78646 9.95452 4.86232C9.=
+92235 4.93818 9.87545 5.00691 9.81654 5.06452L7.88154 7.00052L9.81654 8.936=
+52C9.93122 9.05379 9.99502 9.21155 9.99411 9.37557C9.99319 9.5396 9.92763 9=
+.69664 9.81164 9.81262C9.69566 9.9286 9.53862 9.99417 9.3746 9.99508C9.2105=
+8 9.996 9.05281 9.9322 8.93554 9.81752L6.99954 7.88252L5.06354 9.81752C5.00=
+593 9.87643 4.93721 9.92333 4.86135 9.9555C4.78549 9.98767 4.704 10.0045 4.=
+6216 10.0049C4.5392 10.0054 4.45753 9.9895 4.38131 9.95818C4.3051 9.92686 4=
+.23585 9.88073 4.17759 9.82247C4.11932 9.7642 4.0732 9.69496 4.04188 9.6187=
+4C4.01056 9.54253 3.99467 9.46086 3.99513 9.37846C3.99559 9.29606 4.01239 9=
+.21457 4.04456 9.13871C4.07673 9.06285 4.12363 8.99413 4.18254 8.93652L6.11=
+754 7.00052Z" fill=3D"white"></path></g><defs><clipPath id=3D"clip0_38845_9=
+816"><rect width=3D"14" height=3D"14" fill=3D"white"></rect></clipPath></de=
+fs></svg></div><div class=3D"btn-animate" style=3D"margin-top: 10px; transf=
+orm: translateX(60px);"><div class=3D" btn-animate" style=3D"position: rela=
+tive; pointer-events: all; display: inline-block;"><div><div class=3D"imt-f=
+b-round-button"><svg class=3D"imt-fb-icon" xmlns=3D"http://www.w3.org/2000/=
+svg" width=3D"24" height=3D"24" viewBox=3D"0 0 24 24" fill=3D"none" style=
+=3D"width: 24px; height: 24px;"><path d=3D"M17 8.66797H11.375" stroke=3D"#E=
+D6D8F" stroke-linecap=3D"round" stroke-linejoin=3D"round"></path><path d=3D=
+"M12.625 15.332L7 15.332" stroke=3D"#ED6D8F" stroke-linecap=3D"round" strok=
+e-linejoin=3D"round"></path><path d=3D"M15.125 17C16.1605 17 17 16.1605 17 =
+15.125C17 14.0895 16.1605 13.25 15.125 13.25C14.0895 13.25 13.25 14.0895 13=
+.25 15.125C13.25 16.1605 14.0895 17 15.125 17Z" stroke=3D"#ED6D8F" stroke-l=
+inecap=3D"round" stroke-linejoin=3D"round"></path><path d=3D"M8.875 10.75C9=
+.91053 10.75 10.75 9.91053 10.75 8.875C10.75 7.83947 9.91053 7 8.875 7C7.83=
+947 7 7 7.83947 7 8.875C7 9.91053 7.83947 10.75 8.875 10.75Z" stroke=3D"#ED=
+6D8F" stroke-linecap=3D"round" stroke-linejoin=3D"round"></path><rect x=3D"=
+3" y=3D"4" width=3D"18" height=3D"16" rx=3D"1.66667" stroke=3D"#ED6D8F"></r=
+ect></svg></div></div></div></div><div class=3D"btn-animate" style=3D"margi=
+n-top: 10px; transform: translateX(60px);"><div class=3D" btn-animate" styl=
+e=3D"position: relative; pointer-events: all; display: inline-block;"><div>=
+<div class=3D"imt-fb-round-button"><svg class=3D"imt-fb-icon" xmlns=3D"http=
+://www.w3.org/2000/svg" width=3D"24" height=3D"24" viewBox=3D"0 0 24 24" fi=
+ll=3D"none"><mask id=3D"mask0_39772_2885" maskUnits=3D"userSpaceOnUse" x=3D=
+"0" y=3D"0" width=3D"24" height=3D"24" style=3D"mask-type: alpha;"><rect wi=
+dth=3D"24" height=3D"24" fill=3D"#D9D9D9"></rect></mask><g mask=3D"url(#mas=
+k0_39772_2885)"><path d=3D"M12 15.423C12.1808 15.423 12.3286 15.3657 12.443=
+3 15.251C12.5581 15.1362 12.6155 14.9884 12.6155 14.8077C12.6155 14.6269 12=
+.5581 14.4792 12.4433 14.3645C12.3286 14.2497 12.1808 14.1923 12 14.1923C11=
+.8192 14.1923 11.6714 14.2497 11.5568 14.3645C11.4419 14.4792 11.3845 14.62=
+69 11.3845 14.8077C11.3845 14.9884 11.4419 15.1362 11.5568 15.251C11.6714 1=
+5.3657 11.8192 15.423 12 15.423ZM12 12.4615C12.1423 12.4615 12.2612 12.4138=
+ 12.3567 12.3183C12.4522 12.2228 12.5 12.1038 12.5 11.9615V6.8845C12.5 6.74=
+233 12.4522 6.6235 12.3567 6.528C12.2612 6.43233 12.1423 6.3845 12 6.3845C1=
+1.8577 6.3845 11.7388 6.43233 11.6433 6.528C11.5478 6.6235 11.5 6.74233 11.=
+5 6.8845V11.9615C11.5 12.1038 11.5478 12.2228 11.6433 12.3183C11.7388 12.41=
+38 11.8577 12.4615 12 12.4615ZM6.077 18L4.373 19.7038C4.1205 19.9564 3.8285=
+ 20.0145 3.497 19.878C3.16567 19.7413 3 19.4929 3 19.1328V5.6155C3 5.15517 =
+3.15417 4.77083 3.4625 4.4625C3.77083 4.15417 4.15517 4 4.6155 4H19.3845C19=
+.8448 4 20.2292 4.15417 20.5375 4.4625C20.8458 4.77083 21 5.15517 21 5.6155=
+V16.3845C21 16.8448 20.8458 17.2292 20.5375 17.5375C20.2292 17.8458 19.8448=
+ 18 19.3845 18H6.077ZM5.65 17H19.3845C19.5385 17 19.6796 16.9359 19.8078 16=
+.8077C19.9359 16.6796 20 16.5385 20 16.3845V5.6155C20 5.4615 19.9359 5.3204=
+2 19.8078 5.19225C19.6796 5.06408 19.5385 5 19.3845 5H4.6155C4.4615 5 4.320=
+42 5.06408 4.19225 5.19225C4.06408 5.32042 4 5.4615 4 5.6155V18.6443L5.65 1=
+7Z" fill=3D"#ED6D8F"></path></g></svg></div></div></div></div></div></div><=
+/template></div></html>
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://assets.yande.re/assets/logo_small-418e8d5ec0229f274edebe4af43b01aa29ed83b715991ba14bb41ba06b5b57b5.png
+
+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
+
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://assets.yande.re/assets/application-c99e88fb51193c7d2860b6be344dbb89c941621f4de743808386a02fad731e9f.css
+
+@charset "utf-8";
+
+.clearfix::after { content: "."; display: block; clear: both; visibility: h=
+idden; line-height: 0; height: 0px; }
+
+.clearfix { display: inline-block; }
+
+html[xmlns] .clearfix { display: block; }
+
+* html .clearfix { height: 1%; }
+
+.input-url1 { display: none; }
+
+div#main-menu { display: block; padding-left: 0px; margin-left: 0px; width:=
+ 100%; }
+
+div#main-menu > ul { float: left; list-style: none; }
+
+div#main-menu ul li { margin: 0px 12px 0px 0px; padding: 0px; float: left; =
+position: relative; }
+
+div#main-menu > ul > li > a { padding: 0px; margin: 0px; }
+
+div#main-menu > ul > li > a.submenu-button { opacity: 0.3; padding: 0px 1px=
+; margin: 0px; }
+
+div#main-menu > ul > li:hover > a.submenu-button { opacity: 0.6; }
+
+div#main-menu > ul > li:hover > a.submenu-button:hover { opacity: 1; }
+
+div#main-menu .search-box { display: none; list-style: none; position: abso=
+lute; background: black; border: 1px solid rgb(102, 102, 102); padding: 5px=
+; }
+
+div#main-menu ul li ul.submenu { z-index: 1000; position: absolute; list-st=
+yle: none; float: none; display: none; background: black; border: 1px solid=
+ rgb(102, 102, 102); margin: 0px; max-width: 200px; }
+
+div#main-menu ul li ul li { float: none; margin: 0px; padding: 0px; }
+
+div#main-menu ul li ul.submenu li a { display: block; padding: 2px 4px; whi=
+te-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+div#main-menu ul li ul.submenu li a.hover { background: rgb(34, 34, 34); }
+
+div#main-menu ul li ul.submenu li:hover a { background: rgb(34, 34, 34); }
+
+div#main-menu .separator { display: block; width: 100%; background: rgb(170=
+, 170, 170); height: 1px; margin: 1px 0px; overflow: hidden; }
+
+div#main-menu a#forum-link.forum-update { font-weight: bold; }
+
+div#main-menu .forum-items-start { display: none; }
+
+div#main-menu #has-mail-notice { display: none; }
+
+div#main-menu ul li ul.submenu li a.help-item { display: none; }
+
+div#pool-show div ul li.mode-browse { float: none !important; }
+
+body .profiler-results * { color: black; }
+
+.cropper-container { direction: ltr; font-size: 0px; line-height: 0; positi=
+on: relative; touch-action: none; user-select: none; }
+
+.cropper-container img { backface-visibility: hidden; display: block; heigh=
+t: 100%; width: 100%; max-height: none !important; max-width: none !importa=
+nt; min-height: 0px !important; min-width: 0px !important; }
+
+.cropper-wrap-box, .cropper-canvas, .cropper-drag-box, .cropper-crop-box, .=
+cropper-modal { inset: 0px; position: absolute; }
+
+.cropper-wrap-box, .cropper-canvas { overflow: hidden; }
+
+.cropper-drag-box { background-color: rgb(255, 255, 255); opacity: 0; }
+
+.cropper-modal { background-color: rgb(0, 0, 0); opacity: 0.5; }
+
+.cropper-view-box { display: block; height: 100%; outline: rgba(51, 153, 25=
+5, 0.75) solid 1px; overflow: hidden; width: 100%; }
+
+.cropper-dashed { border: 0px dashed rgb(238, 238, 238); display: block; op=
+acity: 0.5; position: absolute; }
+
+.cropper-dashed.dashed-h { border-bottom-width: 1px; border-top-width: 1px;=
+ height: calc(33.3333%); left: 0px; top: calc(33.3333%); width: 100%; }
+
+.cropper-dashed.dashed-v { border-left-width: 1px; border-right-width: 1px;=
+ height: 100%; left: calc(33.3333%); top: 0px; width: calc(33.3333%); }
+
+.cropper-center { display: block; height: 0px; left: 50%; opacity: 0.75; po=
+sition: absolute; top: 50%; width: 0px; }
+
+.cropper-center::before, .cropper-center::after { background-color: rgb(238=
+, 238, 238); content: " "; display: block; position: absolute; }
+
+.cropper-center::before { height: 1px; left: -3px; top: 0px; width: 7px; }
+
+.cropper-center::after { height: 7px; left: 0px; top: -3px; width: 1px; }
+
+.cropper-face, .cropper-line, .cropper-point { display: block; height: 100%=
+; opacity: 0.1; position: absolute; width: 100%; }
+
+.cropper-face { background-color: rgb(255, 255, 255); left: 0px; top: 0px; =
+}
+
+.cropper-line { background-color: rgb(51, 153, 255); }
+
+.cropper-line.line-e { cursor: ew-resize; right: -3px; top: 0px; width: 5px=
+; }
+
+.cropper-line.line-n { cursor: ns-resize; height: 5px; left: 0px; top: -3px=
+; }
+
+.cropper-line.line-w { cursor: ew-resize; left: -3px; top: 0px; width: 5px;=
+ }
+
+.cropper-line.line-s { bottom: -3px; cursor: ns-resize; height: 5px; left: =
+0px; }
+
+.cropper-point { background-color: rgb(51, 153, 255); height: 5px; opacity:=
+ 0.75; width: 5px; }
+
+.cropper-point.point-e { cursor: ew-resize; margin-top: -3px; right: -3px; =
+top: 50%; }
+
+.cropper-point.point-n { cursor: ns-resize; left: 50%; margin-left: -3px; t=
+op: -3px; }
+
+.cropper-point.point-w { cursor: ew-resize; left: -3px; margin-top: -3px; t=
+op: 50%; }
+
+.cropper-point.point-s { bottom: -3px; cursor: s-resize; left: 50%; margin-=
+left: -3px; }
+
+.cropper-point.point-ne { cursor: nesw-resize; right: -3px; top: -3px; }
+
+.cropper-point.point-nw { cursor: nwse-resize; left: -3px; top: -3px; }
+
+.cropper-point.point-sw { bottom: -3px; cursor: nesw-resize; left: -3px; }
+
+.cropper-point.point-se { bottom: -3px; cursor: nwse-resize; height: 20px; =
+opacity: 1; right: -3px; width: 20px; }
+
+@media (min-width: 768px) {
+  .cropper-point.point-se { height: 15px; width: 15px; }
+}
+
+@media (min-width: 992px) {
+  .cropper-point.point-se { height: 10px; width: 10px; }
+}
+
+@media (min-width: 1200px) {
+  .cropper-point.point-se { height: 5px; opacity: 0.75; width: 5px; }
+}
+
+.cropper-point.point-se::before { background-color: rgb(51, 153, 255); bott=
+om: -50%; content: " "; display: block; height: 200%; opacity: 0; position:=
+ absolute; right: -50%; width: 200%; }
+
+.cropper-invisible { opacity: 0; }
+
+.cropper-bg { background-image: url("data:image/png;base64,iVBORw0KGgoAAAAN=
+SUhEUgAAABAAAAAQAQMAAAAlPW0iAAAAA3NCSVQICAjb4U/gAAAABlBMVEXMzMz////TjRV2AAA=
+ACXBIWXMAAArrAAAK6wGCiw1aAAAAHHRFWHRTb2Z0d2FyZQBBZG9iZSBGaXJld29ya3MgQ1M26L=
+yyjAAAABFJREFUCJlj+M/AgBVhF/0PAH6/D/HkDxOGAAAAAElFTkSuQmCC"); }
+
+.cropper-hide { display: block; height: 0px; position: absolute; width: 0px=
+; }
+
+.cropper-hidden { display: none !important; }
+
+.cropper-move { cursor: move; }
+
+.cropper-crop { cursor: crosshair; }
+
+.cropper-disabled .cropper-drag-box, .cropper-disabled .cropper-face, .crop=
+per-disabled .cropper-line, .cropper-disabled .cropper-point { cursor: not-=
+allowed; }
+
+.autocomplete { background: white; z-index: 1000; font: 14px / 22px -apple-=
+system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sa=
+ns-serif; overflow: auto; box-sizing: border-box; border: 1px solid rgba(50=
+, 50, 50, 0.6); }
+
+.autocomplete * { font: inherit; }
+
+.autocomplete > div { padding: 0px 4px; }
+
+.autocomplete .group { background: rgb(238, 238, 238); }
+
+.autocomplete > div:hover:not(.group), .autocomplete > div.selected { backg=
+round: rgb(129, 202, 145); cursor: pointer; }
+
+.forum-post-form { display: flex; flex-direction: column; margin: 0px; gap:=
+ var(--gap); width: 900px; max-width: 100%; --body-height: 400px; --gap: 4p=
+x; }
+
+.forum-post-form--reply { --body-height: 200px; }
+
+.forum-post-form__row--body { height: var(--body-height); }
+
+.forum-post-form__row--buttons { display: flex; gap: var(--gap); }
+
+.forum-post-form__row--title { display: flex; }
+
+.forum-post-form__title-input { flex: 1 1 0%; }
+
+.forum-post-form__title-label { flex: 0 0 auto; margin-right: 10px; }
+
+.image-crop-preview { z-index: 30; position: fixed; text-align: center; }
+
+.image-crop-preview__frame { background-color: rgb(51, 51, 51); border: 5px=
+ solid rgb(51, 51, 51); box-sizing: content-box; display: flex; align-items=
+: center; justify-content: center; }
+
+.image-crop-preview__preview { width: 100%; height: 100%; overflow: hidden;=
+ }
+
+.image-crop__image { width: 100%; height: 100%; }
+
+.page-main { display: flex; }
+
+.page-main__content { flex: 1 1 0%; }
+
+.sidebar-menu { flex: 0 0 auto; width: 200px; margin-right: 20px; list-styl=
+e: none; }
+
+.sidebar-menu__item { margin: 0px; }
+
+.wiki-edit { display: flex; flex-wrap: wrap; margin: 0px -10px; max-width: =
+1200px; }
+
+.wiki-edit__col { margin: 0px 10px; flex: 0 0 auto; }
+
+.wiki-edit__col--content { flex: 1 1 0%; min-width: 250px; }
+
+.wiki-edit__col--reference { width: 250px; }
+
+.wiki-edit__col--sidebar { width: 200px; }
+
+.wiki-edit__col--sidebar .sidebar.sidebar { margin: 0px; width: 100%; }
+
+.wiki-edit__reference-example pre { white-space: pre-wrap; }
+
+.wiki-form__actions { display: flex; }
+
+.wiki-form__body { width: 100%; margin-bottom: 1em; resize: vertical; }
+
+.autocomplete { background: rgb(34, 34, 34); }
+
+.autocomplete > div:hover:not(.group), .autocomplete > div.selected { backg=
+round: rgb(238, 136, 119); }
+
+.tag-column h6 { font-style: italic; }
+
+.tag-column ul { list-style: none; }
+
+.tag-column ul li { margin: 0px; }
+
+.tag-column ul li a.highlighted { color: white; background: rgb(0, 111, 250=
+); }
+
+html { box-sizing: border-box; }
+
+*, ::before, ::after { box-sizing: inherit; }
+
+body { overflow-wrap: break-word; }
+
+body, div, h1, h2, h3, h4, h5, h6, p, ul, li, dd, dt { color: white; font-f=
+amily: verdana, sans-serif; margin: 0px; padding: 0px; }
+
+form { margin-bottom: 0px; }
+
+h1, h2, h3, h4 { font-family: Tahoma; }
+
+body { font-size: 80%; background: rgb(34, 34, 34); padding: 1em 3em; margi=
+n: 0px; }
+
+html.progress { cursor: progress !important; }
+
+body.dragging { cursor: pointer !important; }
+
+html.hourglass { cursor: wait !important; }
+
+body.hide-cursor { cursor: url("https://assets.yande.re/assets/blank-cf4724=
+b2f736ed1a0ae6bc28f1ead963d9cd2c1fd87b6ef32e7799fc1c5c8bda.gif"), pointer !=
+important; }
+
+body.n-resize { cursor: n-resize !important; }
+
+body.s-resize { cursor: s-resize !important; }
+
+body.e-resize { cursor: e-resize !important; }
+
+body.w-resize { cursor: w-resize !important; }
+
+body.nw-resize { cursor: nw-resize !important; }
+
+body.ne-resize { cursor: ne-resize !important; }
+
+body.sw-resize { cursor: sw-resize !important; }
+
+body.se-resize { cursor: se-resize !important; }
+
+body.not-moderator .moderator-only { display: none !important; }
+
+body.not-member .member-only { display: none !important; }
+
+.action-post-show > body { background: rgb(0, 0, 0); }
+
+.action-post-browse > body { background: rgb(0, 0, 0); padding: 0px; }
+
+a:link { color: rgb(238, 136, 135); text-decoration: none; }
+
+a.star { background: url("https://assets.yande.re/assets/blank-cf4724b2f736=
+ed1a0ae6bc28f1ead963d9cd2c1fd87b6ef32e7799fc1c5c8bda.gif") no-repeat transp=
+arent; }
+
+.blacklisted-tags-disabled { color: rgb(170, 170, 170) !important; }
+
+a:visited { color: rgb(238, 136, 135); text-decoration: none; }
+
+a:hover { color: rgb(255, 170, 174); text-decoration: none; }
+
+a:active { color: rgb(0, 111, 250); text-decoration: none; }
+
+a.last-page { color: rgb(102, 102, 102); }
+
+span.spoiler { cursor: pointer; }
+
+span.spoiler > .spoilerwarning { color: rgb(255, 64, 32); background: rgb(2=
+4, 24, 24); }
+
+addr { display: block; margin-left: 2em; font-weight: bold; }
+
+blockquote { margin: 0px 0px 1em; padding: 1em; border: 1px solid rgb(102, =
+102, 102); background: rgba(255, 255, 255, 0.15); }
+
+blockquote p, blockquote div { margin-bottom: 0em; }
+
+code { font-family: monospace; font-size: 1.2em; }
+
+dd { margin-bottom: 1em; }
+
+dt { font-weight: bold; }
+
+dt.bad { color: red; }
+
+h1 { font-size: 2em; }
+
+h1#static-index-header { font-size: 4em; margin: 1em 0px 0.5em; text-align:=
+ center; }
+
+h1#static-index-header a { text-align: center; display: block; font-size: 0=
+px; text-indent: -3000em; margin: 0px; padding: 75px 300px; background: url=
+("https://assets.yande.re/assets/logo-69d254b033a02495d0a88043871e3f1234da6=
+4dbf47f7ddce9e6ef02e576a893.png") center center no-repeat scroll transparen=
+t; }
+
+h2 { font-size: 1.8em; }
+
+h2.wiki-title { color: rgb(0, 61, 216); margin-bottom: 0.25em; }
+
+h2#site-title { display: block; text-align: left; }
+
+div#title { margin: 0px 0px 0.5em -3em; height: 75px; }
+
+h2#site-title img#logo { float: left; }
+
+h2#site-title span { display: block; padding: 1em 0px 0px; text-align: left=
+; margin: 0px; }
+
+div#static-more div#title { float: none; margin-top: -1em; }
+
+#site-link { display: block; font-size: 0px; background: url("https://asset=
+s.yande.re/assets/logo_small-418e8d5ec0229f274edebe4af43b01aa29ed83b715991b=
+a14bb41ba06b5b57b5.png") left top no-repeat scroll transparent; margin: 0px=
+ 0px 0.5em; padding: 37px 242px 38px; }
+
+h3 { font-size: 1.6em; }
+
+h4 { font-size: 1.4em; }
+
+h5 { font-size: 1.2em; }
+
+h6 { font-size: 1em; }
+
+img { border: none; vertical-align: middle; }
+
+input { padding: 0px 0.3em; }
+
+input[type=3D"text"], input[type=3D"password"] { background: rgb(255, 255, =
+255); }
+
+input[type=3D"password"]:focus { background: rgb(255, 255, 204); color: rgb=
+(0, 0, 0); }
+
+input[type=3D"text"]:focus { background: rgb(255, 255, 204); color: rgb(0, =
+0, 0); }
+
+label { font-weight: bold; white-space: nowrap; }
+
+li { margin-left: 1em; }
+
+ol { margin-left: 1em; }
+
+p { margin-bottom: 1em; }
+
+span.author { color: gray; }
+
+span.date { color: rgb(170, 170, 170); }
+
+span.date a { color: rgb(170, 170, 170); }
+
+span.group { margin-right: 1em; }
+
+span.locked-topic { color: rgb(102, 102, 102); }
+
+span.informational { cursor: help; }
+
+span.post-count { color: rgb(170, 170, 170); }
+
+a.thumb { display: block; text-align: center; vertical-align: middle; heigh=
+t: 100%; margin-left: auto; margin-right: auto; }
+
+span.plid { display: none; }
+
+span.unread-topic { font-weight: bold; }
+
+span.vote-desc { color: rgb(136, 136, 136); margin-left: 0.5em; position: a=
+bsolute; }
+
+strong.divider { font-weight: bold; color: gray; }
+
+table { margin-bottom: 2em; }
+
+table.form { width: 70em; }
+
+table.form p { font-size: 0.8em; font-weight: normal; margin: 0px; padding:=
+ 0px; }
+
+table.form th { color: white; white-space: normal; padding-right: 1em; text=
+-align: right; background: rgb(51, 51, 51); }
+
+table.highlightable > tbody > tr:hover { background: rgb(103, 16, 15); }
+
+table.highlightable th { margin: 0px; }
+
+table td { padding: 1px 4px; vertical-align: top; }
+
+table th { font-weight: bold; text-align: left; vertical-align: top; paddin=
+g: 0.2em 0.5em; white-space: nowrap; }
+
+table tr.bad { background: rgb(255, 230, 230); }
+
+table tr.even { color: white; background: rgb(68, 68, 68); }
+
+table tr.good { }
+
+tr.odd { color: white; background: rgb(51, 51, 51); }
+
+table tr.selected { background: rgb(0, 68, 68) !important; }
+
+table tr.highlight { background: rgb(103, 16, 15); }
+
+table tr.pending-tag { background: rgb(80, 48, 48); }
+
+textarea { display: block; padding: 0px 0.3em; font-family: sans-serif; fon=
+t-size: 1.2em; background: rgb(255, 255, 255); }
+
+textarea.no-block { display: inline; }
+
+textarea:focus { background: rgb(255, 255, 204); color: rgb(0, 0, 0); }
+
+ul { margin: 0px 0px 1em 0em; }
+
+ul.bare-list li { list-style-type: none; }
+
+.hide-advanced-editing .advanced-editing { display: none !important; }
+
+#main-menu .menu { display: inline; position: relative; padding: 0px 2px 1p=
+x; margin-right: 0.6em; }
+
+#main-menu a:focus { outline: none; }
+
+#main-menu .selected-menu { background: rgb(255, 255, 255); }
+
+#main-menu .current-menu > a { color: rgb(255, 187, 187); }
+
+#main-menu .selected-menu > a { color: rgb(0, 0, 0); }
+
+#main-menu .bolded { font-weight: bold; }
+
+#main-menu .unread-topic { font-weight: bold; }
+
+.dropdown-menu .separator { width: 100%; background: rgb(170, 170, 170); he=
+ight: 1px; margin: 1px 0px; overflow: hidden; }
+
+.dropdown-menu { position: absolute; background: rgb(0, 0, 0); padding: 2px=
+; max-width: 20em; overflow: hidden; z-index: 100; border: 1px solid rgb(85=
+, 85, 85); }
+
+.dropdown-menu .submenu { display: block; width: auto; padding: 0px 2px; fo=
+nt-size: 140%; }
+
+.dropdown-menu .focused-menu-item { background: rgb(255, 255, 255); color: =
+rgb(0, 0, 0); }
+
+ul.flat-list { display: block; margin: 0px; padding: 0px; }
+
+ul.flat-list li { display: inline; list-style-type: none; font-weight: bold=
+; padding: 0px; margin: 0px 1em 0px 0px; }
+
+ul.flat-list li a { font-weight: normal; }
+
+div.forum-update a { font-weight: bold; }
+
+div.comments-update a { font-weight: bold; }
+
+ul.flat-list li a.mod-pending { font-weight: bold; }
+
+ul.link-page { font-size: 1.2em; font-weight: bold; }
+
+ul.link-page a::before { content: "=C2=BB "; }
+
+ul.link-page > li { margin: 0px; padding: 0px; list-style-type: none; }
+
+.tag-type-artist > a, #history .tag-type-artist, .color-tag-types .tag-type=
+-artist { color: rgb(204, 204, 0); }
+
+.tag-type-artist > a:hover { color: rgb(51, 207, 255); }
+
+.tag-type-faults > a, #history .tag-type-faults, .color-tag-types .tag-type=
+-faults { color: rgb(255, 32, 32); }
+
+.tag-type-faults > a:hover { color: rgb(51, 207, 255); }
+
+.tag-type-circle > a, #history .tag-type-circle, .color-tag-types .tag-type=
+-circle { color: rgb(0, 187, 187); }
+
+.tag-type-circle > a:hover { color: rgb(51, 207, 255); }
+
+.tag-type-character > a, #history .tag-type-character, .color-tag-types .ta=
+g-type-character { color: rgb(0, 170, 0); }
+
+.tag-type-character > a:hover { color: rgb(51, 207, 255); }
+
+.tag-type-copyright > a, #history .tag-type-copyright, .color-tag-types .ta=
+g-type-copyright { color: rgb(221, 0, 221); }
+
+.tag-type-copyright > a:hover { color: rgb(51, 207, 255); }
+
+.upload-progress-bar { display: inline-block; width: 100px; height: 1em; bo=
+rder: 1px solid rgb(255, 255, 255); }
+
+.upload-progress-bar-fill { height: 100%; background-color: rgb(68, 136, 25=
+5); }
+
+.tag-completion-box { position: absolute; background-color: rgb(0, 0, 34); =
+top: 0px; left: 0px; z-index: 10; }
+
+.tag-completion-box ul { list-style-type: none; margin: 0.5em; }
+
+.tag-completion-box .completed-tag { margin: 0px; cursor: default; }
+
+.tag-completion-box .completed-tag-alias { float: right; margin-left: 1em; =
+}
+
+.tag-completion-box .completed-tag.focused { background-color: rgb(0, 0, 85=
+); }
+
+.tag-completion-box .completed-tag.recent-tag { font-weight: bold; }
+
+.tag-completion-box .completed-tag { position: relative; }
+
+.tag-completion-box .remove-recent-tag { left: -1.5em; padding-right: 0.5em=
+; padding-left: 0.25em; position: absolute; background-color: rgb(0, 0, 34)=
+; }
+
+.added { color: rgb(0, 204, 0); }
+
+.removed { color: rgb(255, 0, 0); }
+
+.name-change, .name-change a { color: rgb(255, 255, 0); }
+
+#history .obsolete .name-change, #history .obsolete .name-change a { color:=
+ rgb(187, 187, 187); }
+
+#history .id.deleted > a { color: rgb(153, 153, 153); }
+
+#history .id.held > a { color: rgb(0, 187, 187); }
+
+#history .new-user { font-weight: bold; }
+
+#history .obsolete, #history .obsolete span { color: rgb(153, 153, 153); }
+
+.unchanged { font-size: 0.8em; }
+
+.history-search-row { float: left; position: absolute; margin-top: 1em; mar=
+gin-left: 2em; }
+
+div.footer.history-footer { clear: none; }
+
+.history-search-label { width: 10%; float: left; }
+
+div#artist-index > table td { white-space: nowrap; }
+
+div.blocked { border: 2px solid rgb(255, 0, 0); background: rgb(255, 204, 2=
+04); color: rgb(255, 0, 0); font-size: 1.2em; padding: 1em; margin: 1em; te=
+xt-align: center; }
+
+div#comment-list > div.post .preview { margin-bottom: 1em; }
+
+div#comment-list > div.post > div.col1 { width: 200px; float: left; clear: =
+left; }
+
+div#comment-list > div.post > div.col2 { float: left; width: 50em; backgrou=
+nd-color: rgb(51, 51, 51); padding: 1px 4px 3px; margin-bottom: 1em; }
+
+div#comment-list > div.post > div.col2 > div.header { margin-bottom: 1em; }
+
+div#comment-list > div.post > div.col2 > div.header > div > span.info { mar=
+gin-right: 1em; }
+
+div#comment-list > div.post > div.col2 > div.header > div.tags > span { mar=
+gin: 0px 0.5em 0px 0px; }
+
+div.content { float: left; margin: 0px; width: 77%; }
+
+div.footer { margin-top: 1em; text-align: center; font-size: 120%; color: r=
+gb(204, 204, 204); clear: both; }
+
+div.footer.footer-aligned-to-content { clear: none; }
+
+div.footer > .footer-disabled { color: rgb(119, 119, 119); }
+
+div.footer > #label { color: rgb(119, 119, 119); }
+
+div#forum > table th:first-child { text-align: left; }
+
+div#forum > table td:first-child { text-align: left; }
+
+#has-mail-notice { font-weight: bold; color: rgb(238, 238, 0); display: non=
+e; }
+
+.has-deleted-posts { font-weight: bold; }
+
+div#header { margin-bottom: 1em; margin-top: -1em; }
+
+ul.pipe-list { display: inline; }
+
+ul.pipe-list li + li::before { content: "| "; color: rgb(204, 204, 204); }
+
+ul.pipe-list li { display: inline; list-style-type: none; margin: 0px; font=
+-weight: normal; }
+
+ul#subnavbar li + li::before { content: "| "; color: rgb(204, 204, 204); }
+
+ul#subnavbar { display: inline; }
+
+ul#subnavbar li { display: inline; list-style-type: none; margin: 0px; font=
+-weight: normal; }
+
+div#header ul#subnavbar { padding: 5px 20px 5px 15px; background-color: rgb=
+(247, 247, 255); margin: 0px 0px 1em; }
+
+div#header ul#subnavbar li { padding: 0px 5px; }
+
+div.help { width: 40em; margin-top: 2em; }
+
+div.help a.code { font-family: monospace; }
+
+div.help div.code { border: 1px dashed green; margin: 1em 0px; padding: 1em=
+ 2em; background: rgb(238, 238, 238); overflow: hidden; font-family: monosp=
+ace; color: black; }
+
+div.help > div.section { margin-bottom: 4em; }
+
+div.help > div.section > div.section { margin-bottom: 2em; }
+
+div.help h1, div.help h2, div.help h3, div.help h4 { margin: 0px 0px 0.5em;=
+ }
+
+div.help h4 { color: rgb(0, 102, 0); }
+
+div#info { font-style: italic; }
+
+div.mail .received { color: rgb(238, 238, 0); }
+
+div.mail .sent { color: rgb(0, 238, 238); }
+
+div#mail-show div.message { margin-bottom: 4em; }
+
+div#notice { font-size: 1.5em; color: white; font-weight: bold; padding: 0p=
+x 3px; border-right: 1px solid rgb(221, 221, 221); border-bottom: 1px solid=
+ rgb(221, 221, 221); border-left: 1px solid rgb(221, 221, 221); border-imag=
+e: initial; max-width: 800px; border-top: none; background-color: rgb(51, 5=
+1, 51); }
+
+#notice-container { top: 0px; width: 100%; position: fixed; z-index: 1000; =
+text-align: center; pointer-events: none; }
+
+#notice-container > table { margin: auto; }
+
+div#notice-container td { padding-top: 0px; }
+
+div#static_notice { font-size: 1.2em; color: red; font-weight: bold; margin=
+-bottom: 1em; padding-left: 20px; }
+
+div#old-browser { font-size: 1.2em; color: red; font-weight: bold; border: =
+1px solid rgb(234, 234, 234); text-align: center; padding: 1em; margin: 1em=
+; background: black; }
+
+div#old-browser > #old-browser-hide { font-size: 0.8em; }
+
+div.page { width: 40em; }
+
+div#paginator { display: block; padding: 2em 0px 1em; font-size: 1em; text-=
+align: center; font-weight: bold; clear: both; }
+
+div#paginator a { margin: 0px 3px; padding: 2px 6px; font-weight: normal; b=
+order: 1px solid rgb(234, 234, 234); }
+
+div#paginator a.arrow { border: none; }
+
+.text-button { padding: 0px 2px; border: 1px solid rgb(234, 234, 234); }
+
+.text-button:hover { background: rgb(60, 60, 220); color: white; }
+
+div#paginator a.arrow:hover { background: white; color: rgb(51, 207, 255); =
+}
+
+div#paginator .current { font-style: normal; margin: 0px 3px; padding: 2px =
+6px; }
+
+div#paginator a:hover { background: rgb(60, 60, 220); color: white; }
+
+div#paginator span { margin: 0px 3px; padding: 2px 6px; }
+
+div#post-add p#scale { color: rgb(153, 153, 153); font-style: italic; }
+
+div#post-popular > h3 { text-align: center; margin-bottom: 1em; }
+
+div#post-view > div#right-col > div > div#note-container { position: absolu=
+te; }
+
+div#post-view > div#right-col > div > div#note-container > div.note-body { =
+background: rgb(255, 255, 238); border: 1px solid black; display: none; max=
+-width: 300px; min-width: 140px; min-height: 10px; position: absolute; padd=
+ing: 5px; cursor: pointer; overflow: auto; color: rgb(34, 34, 34); }
+
+div#post-view > div#right-col > div > div#note-container > div.note-body > =
+p.tn { font-size: 0.8em; color: gray; }
+
+div#post-view > div#right-col > div > div#note-container > div.note-box { p=
+osition: absolute; border: 1px solid black; width: 150px; height: 150px; cu=
+rsor: move; background: rgb(255, 255, 238); }
+
+div#post-view > div#right-col > div > div#note-container > div.note-box > d=
+iv.note-corner { background: black; width: 7px; height: 7px; position: abso=
+lute; bottom: 0px; right: 0px; cursor: se-resize; }
+
+div#post-view > div#right-col > div > div#note-container > div.unsaved { ba=
+ckground: rgb(255, 255, 255); border: 1px solid red; }
+
+div#post-view > div#right-col > div > div#note-container > div.unsaved > di=
+v.note-corner { background: red; }
+
+div#post-view > div#right-col > div > img { margin-right: 5em; }
+
+div#post-view > div#right-col > div#edit { margin-bottom: 2em; padding: 1em=
+; }
+
+div.quote > a { color: rgb(88, 26, 33); }
+
+div#related { display: flex; flex-wrap: wrap; gap: 10px; }
+
+div#related > div.tag-column { max-width: 12em; }
+
+div#related > div.tag-column > a { margin-right: 1em; }
+
+div.response-list > div.comment { float: left; margin-bottom: 1.5em; }
+
+div.response-list#forum { width: 50em; }
+
+div.response-list > div.comment > div.author { float: left; width: 12em; pa=
+dding-right: 1em; overflow: hidden; }
+
+div.response-list > div.comment > div.author > h6 { font-size: 1.3em; }
+
+div.response-list > div.comment > div.content { float: left; width: 36em; p=
+adding: 0px 0px 0px 10px; margin: 0px; }
+
+.translated-notice { color: rgb(170, 170, 170); font-style: italic; }
+
+div.response-list > div.comment > div.content > div.post-footer { margin-to=
+p: 1em; color: rgb(204, 204, 204); }
+
+div.response-list > div.comment > div.content > div.post-footer a { color: =
+rgb(102, 102, 102); }
+
+div.sidebar { width: 20%; margin-right: 1em; float: left; overflow: visible=
+; }
+
+div.sidebar li { list-style-type: none; margin: 0px; }
+
+a.original-file-changed#highres-show { color: rgb(204, 204, 0); }
+
+div#static-index { text-align: center; }
+
+div#static-index > div#links > a { margin: 0px 0.5em; }
+
+div#static-more > div { float: left; width: 25%; }
+
+div#static-more > div > ul { margin-top: 2em; }
+
+div#static-more > div > ul > li { list-style-type: none; margin: 0px; }
+
+div.status-notice { border: 2px solid rgb(102, 102, 102); padding: 1em; mar=
+gin: 1em; background: black; }
+
+div.status-notice p { margin: 0px; }
+
+div#tag-list { text-align: center; margin-bottom: 2em; }
+
+div#tag-list > a { padding-right: 5px; }
+
+div#upgrade-account { margin: 1em; padding: 1em; font-size: 1.2em; font-wei=
+ght: bold; text-align: center; }
+
+div#upgrade-account a { color: black; }
+
+div#upgrade-account a#hide-upgrade-account-link { font-size: 0.8em; color: =
+rgb(204, 204, 204); display: block; }
+
+div#user-record > table > tbody > tr.positive-record { color: black; backgr=
+ound: rgb(238, 255, 238); }
+
+div#user-record > table > tbody > tr.negative-record { color: black; backgr=
+ound: rgb(255, 238, 238); }
+
+div.wiki > h2.title { color: rgb(153, 153, 255); font-size: 1.6em; }
+
+div#wiki-show > div#body { width: 50em; text-align: left; float: left; padd=
+ing-bottom: 1em; }
+
+div#wiki-show > div#body ul { line-height: 1.2em; margin: 0px 0px 0px 1em; =
+}
+
+div#wiki-show > div#body > ul { margin-bottom: 1em; }
+
+div#wiki-show > div#body > div#byline { color: rgb(102, 102, 102); font-sty=
+le: italic; }
+
+div#wiki-diff > div#body { font-family: monospace; font-size: 1.2em; margin=
+-top: 1em; }
+
+div#wiki-diff del { background-color: rgb(255, 136, 136); text-decoration: =
+line-through; }
+
+table#history { margin-bottom: 0px; }
+
+#history .text-block { color: rgb(170, 170, 170); padding-left: 0.35em; mar=
+gin-left: 0.05em; border-left: 1px dashed rgb(255, 255, 255); }
+
+#history .initial-diff { color: rgb(255, 255, 255); }
+
+#history .diff ins { color: rgb(255, 255, 255); text-decoration: none; }
+
+#history .diff ins::before { content: "+"; color: rgb(204, 204, 204); }
+
+#history .diff del { text-decoration: none; color: rgb(255, 51, 51); }
+
+#history .diff del::before { content: "-"; color: rgb(204, 204, 204); }
+
+ul.history-header { margin-top: 0.5em; }
+
+.history-header li { list-style-type: none; }
+
+div#wiki-diff ins { background-color: rgb(136, 255, 136); }
+
+ul#post-list-posts { display: inline; list-style-type: none; }
+
+ul#post-list-posts .deleted { opacity: 0.5; }
+
+ul#post-list-posts .inner { margin-left: auto; margin-right: auto; overflow=
+: hidden; }
+
+ul#post-list-posts li { list-style-type: none; float: left; margin: 0px 0px=
+ 10px; display: inline-block; vertical-align: bottom; zoom: 1; }
+
+img.preview { vertical-align: top; }
+
+a.directlink { background: rgb(85, 85, 85); display: block; height: 15px; p=
+adding: 1px 0px; margin-top: 15px; text-align: center; font-size: 10px; whi=
+te-space: nowrap; }
+
+a.largeimg { background: rgb(17, 17, 17); }
+
+.highlighted-post > a.directlink { background: rgb(68, 0, 0); }
+
+a.directlink:hover { background-image: none; }
+
+a.largeimg:hover { background-image: none; }
+
+a.directlink > span.directlink-res { display: none; margin: 0px; padding: 0=
+px; color: rgb(238, 136, 135); vertical-align: top; }
+
+a.directlink:hover > span.directlink-res { display: inline; }
+
+a.directlink:hover > .directlink-icon { display: none; }
+
+a.directlink:hover > .directlink-info { display: none; }
+
+.parent-display { display: none; height: 16px; width: 14px; }
+
+.has-children .parent-display { display: inline; }
+
+.child-display { display: none; height: 16px; width: 14px; }
+
+.has-parent .child-display { display: inline; }
+
+.flagged-display { display: none; height: 16px; width: 14px; }
+
+.flagged .flagged-display { display: inline; }
+
+.pending-display { display: none; height: 16px; width: 14px; }
+
+.pending .pending-display { display: inline; }
+
+.has-children .directlink-icon { display: none; }
+
+.has-parent .directlink-icon { display: none; }
+
+.flagged .directlink-icon { display: none; }
+
+.pending .directlink-icon { display: none; }
+
+.largeimg .directlink-icon-small { display: none; }
+
+.smallimg .directlink-icon-large { display: none; }
+
+.similar .directlink-icon { display: none; }
+
+.top-corner-float { position: fixed; background: rgb(34, 34, 34); border: 2=
+px solid rgb(0, 0, 0); padding: 6px; top: 2px; right: 2px; z-index: 5; }
+
+.post-hover { border: 2px solid rgb(0, 0, 0); min-width: 20em; max-width: 3=
+0em; padding: 2px; background: rgb(34, 34, 34); position: absolute; z-index=
+: 2; }
+
+.post-hover-overlay { position: absolute; z-index: 2; }
+
+.post-hover-overlay > a > img { vertical-align: top; border-width: 0px 2px =
+2px; border-style: solid; border-color: rgb(0, 0, 0); margin-left: -2px; }
+
+.clickable { cursor: pointer; }
+
+.no-focus-outline:focus { outline: none; }
+
+.post-hover #hover-top-line { background: rgb(51, 51, 51); white-space: now=
+rap; width: 100%; }
+
+#hover-is-parent { color: rgb(0, 255, 0); }
+
+#hover-is-child { color: rgb(255, 255, 0); }
+
+#hover-is-pending { color: rgb(0, 255, 255); }
+
+#hover-is-flagged .flagged-text { color: rgb(255, 0, 0); }
+
+a.tag-script-applied { background-color: rgb(136, 136, 0) !important; }
+
+body.dragging-to-post, body.dragging-to-post * { cursor: no-drop; }
+
+body.dragging-to-post .thumb * { cursor: pointer; }
+
+.similar-original { background-color: rgb(0, 0, 0); }
+
+.similar-match span.similar-text { font-weight: bold; }
+
+img.service-icon { height: 15px; }
+
+img.service-icon#list { margin: 1px 0px 0px; }
+
+img.service-icon#source { vertical-align: top; margin: -1px 5px 0px 0px; }
+
+.service-active { font-weight: bold; }
+
+.score:focus { outline: none; }
+
+.score > span { display: none; }
+
+.score > .score-visible { display: inline; }
+
+.star:focus { outline: none; }
+
+.star[data-star=3D"1"] { color: rgb(0, 170, 0); }
+
+.star[data-star=3D"2"] { color: rgb(0, 255, 0); }
+
+.star[data-star=3D"3"] { color: rgb(255, 255, 0); }
+
+.standard-vote-widget .star-set-upto::after { content: "=E2=98=85"; }
+
+.standard-vote-widget .star-set-after::after { content: "=E2=98=86"; }
+
+.standard-vote-widget .star-hovered-upto::after { content: "=E2=98=85"; }
+
+.standard-vote-widget .star-hovered-after::after { content: "=E2=98=86"; }
+
+.standard-vote-widget [data-star=3D"0"]::after { content: "=E2=86=B6 "; }
+
+.standard-vote-widget .star.vote-up::after { content: "vote up"; }
+
+.standard-vote-widget .vote-up-block::before { content: " ("; }
+
+.standard-vote-widget .vote-up-block::after { content: ")"; }
+
+.post-info .standard-vote-widget .vote-up-block { display: none; }
+
+.vote-popup-expand { position: absolute; bottom: 0px; left: 0px; width: 100=
+px; height: 100px; user-select: none; }
+
+.vote-popup-container { position: absolute; bottom: 0px; left: 100px; verti=
+cal-align: top; user-select: none; }
+
+.vote-popup-container .star { display: inline-block; font-size: 5em; paddin=
+g-top: 50px; padding-bottom: 50px; margin-top: -50px; margin-bottom: -50px;=
+ }
+
+.vote-popup-container .vote-desc { display: none; }
+
+.vote-popup-container .star-0::after { content: "=E2=86=B6"; }
+
+.vote-popup-container .star-set { transform: scale(1.35); }
+
+.vote-popup-container .vote-up-block { display: none; }
+
+.vote-popup-container .vote-up-block-anonymous { display: none; }
+
+.vote-popup-container .star { transition: -webkit-transform 0.15s ease-in-o=
+ut; }
+
+.vote-popup-container.vote-popup-hidden .star { transform: scale(1e-06); }
+
+.vote-popup-flash { position: absolute; font-size: 10em; }
+
+.vote-popup-flash.star-0 .flash-item::after { content: "=E2=86=B6"; }
+
+.vote-popup-flash .flash-item::after { content: "=E2=98=85"; }
+
+.vote-popup-flash.star-1 .flash-item { color: rgb(0, 170, 0); }
+
+.vote-popup-flash.star-2 .flash-item { color: rgb(0, 255, 0); }
+
+.vote-popup-flash.star-3 .flash-item { color: rgb(255, 255, 0); }
+
+.vote-popup-flash.flash-star .flash-item { transition: 0.75s cubic-bezier(0=
+, 0.3, 0.5, 1); transform: translateY(0px) scale(2); opacity: 0; }
+
+.del-mode { color: rgb(238, 136, 135); }
+
+.del-mode > label { font-weight: normal; }
+
+.post-browser { width: 100%; background-color: rgb(34, 34, 34); position: a=
+bsolute; bottom: 0px; left: 0px; overflow: visible; z-index: 11; }
+
+#post-content .image-box { position: absolute; user-select: none; }
+
+.browser-bottom-bar { text-align: center; }
+
+.post-browser-tags-form { margin-bottom: 5px; padding: 0px; }
+
+.post-browser-posts-container { overflow: hidden; position: relative; user-=
+select: none; }
+
+.disable-selection { user-select: none; }
+
+.post-browser-scroller { height: 100%; position: relative; }
+
+.post-browser-posts { list-style-type: none; white-space: nowrap; height: 1=
+00%; margin: 0px; }
+
+.post-browser-posts .inner { overflow: hidden; }
+
+.post-browser-posts li { list-style-type: none; position: relative; margin:=
+ 5px; display: inline-block; vertical-align: bottom; zoom: 1; }
+
+input.edit-item { border: none; }
+
+textarea.edit-item { border: none; }
+
+.edit-item { padding: 0px; margin: 0px; }
+
+.edit-tags { padding: 1px; }
+
+.browser-thumb-hover-overlay { position: absolute; z-index: 2; overflow: hi=
+dden; outline: none; }
+
+.browser-thumb-hover-overlay > img { vertical-align: top; border-width: 2px=
+; border-style: solid; border-color: rgb(0, 0, 0); }
+
+.post-info { position: absolute; top: 0px; width: 40%; min-width: 250px; ma=
+x-width: 500px; height: auto; background-color: rgb(0, 0, 85); }
+
+.post-info ul { list-style-type: none; }
+
+.post-info .post-frames.no-frames { display: none; }
+
+.post-info .post-frame-list { display: inline-block; }
+
+.post-info .post-frame-link { display: inline-block; border: 1px solid rgb(=
+255, 255, 255); margin: 0px 2px; padding: 0px 2px; }
+
+.post-info .post-frame-link.current-post-frame { background: rgb(60, 60, 22=
+0); color: rgb(255, 255, 255); }
+
+.frame-editor .frame-label { cursor: pointer; }
+
+.frame-editor td { padding: 0px; vertical-align: middle; }
+
+.frame-editor .frame-button-box { margin: 0px 0.25em; font-weight: bold; pa=
+dding: 0px 2px; border: 1px solid rgb(255, 255, 255); background-color: rgb=
+(0, 0, 85); }
+
+.frame-editor .frame-down { margin-right: 1em; }
+
+.frame-editor .frame-label { margin: 0px 0.5em; }
+
+.frame-editor tr.frame-focused .frame-label { color: rgb(0, 0, 0); }
+
+.frame-editor tr.frame-focused { background: rgb(170, 170, 170); }
+
+.frame-editor .frame-dims { padding: 0px; margin: 0.25em 0px; }
+
+.frame-editor-frame-box { position: absolute; border: 1px solid rgb(119, 11=
+9, 119); margin-top: -1px; margin-left: -1px; background-color: rgba(0, 0, =
+0, 0.1); }
+
+.frame-editor-popup-div .frame-editor-frame-box { position: absolute; top: =
+0px; left: 0px; }
+
+body.not-dragging .frame-box-handle.n-resize { cursor: n-resize; }
+
+body.not-dragging .frame-box-handle.s-resize { cursor: s-resize; }
+
+body.not-dragging .frame-box-handle.e-resize { cursor: e-resize; }
+
+body.not-dragging .frame-box-handle.w-resize { cursor: w-resize; }
+
+body.not-dragging .frame-box-handle.nw-resize { cursor: nw-resize; }
+
+body.not-dragging .frame-box-handle.ne-resize { cursor: ne-resize; }
+
+body.not-dragging .frame-box-handle.sw-resize { cursor: sw-resize; }
+
+body.not-dragging .frame-box-handle.se-resize { cursor: se-resize; }
+
+.frame-editor-main-frame .focused-frame-box { background-color: rgba(0, 0, =
+0, 0.3); }
+
+.frame-editor-popup-container { position: absolute; right: 0px; }
+
+.frame-editor-popup { width: 240px; height: 240px; }
+
+.frame-editor-popup-box { position: absolute; overflow: hidden; width: 120p=
+x; height: 120px; background-color: rgb(0, 0, 0); }
+
+.frame-editor-popup-div { position: relative; }
+
+.frame-editor-nw { left: 0px; top: 0px; }
+
+.frame-editor-ne { right: 0px; top: 0px; }
+
+.frame-editor-sw { left: 0px; bottom: 0px; }
+
+.frame-editor-se { right: 0px; bottom: 0px; }
+
+.image-navigator { overflow: hidden; position: absolute; top: 0px; right: 0=
+px; }
+
+.image-navigator-box { border: 1px solid rgb(0, 0, 0); }
+
+.navigator-cursor { border: 2px solid rgb(0, 255, 255); }
+
+#post-content a.disabled { color: rgb(85, 85, 85); }
+
+.comment-avatar-container { margin-top: 0.5em; margin-left: 0.5em; }
+
+.forum-avatar-container { margin-top: 0.5em; margin-left: 0.5em; }
+
+.avatar { }
+
+.avatar-container:hover .avatar { }
+
+#login-background { z-index: 500; width: 100%; height: 100%; position: fixe=
+d; left: 0px; top: 0px; background: rgba(0, 0, 0, 0.1); }
+
+#login-container { z-index: 500; width: 100%; height: 100%; position: fixed=
+; display: table; left: 0px; top: 0px; }
+
+#login-container-inner { display: table-cell; vertical-align: middle; text-=
+align: center; width: 100%; height: 100%; }
+
+#login-container-with-tabs { margin-left: auto; margin-right: auto; max-wid=
+th: 40em; min-width: 30em; width: 50%; }
+
+#login { margin-left: auto; margin-right: auto; background: rgb(17, 17, 17)=
+; border: 1px solid rgb(17, 17, 17); height: 18em; }
+
+ul.login-tabs { padding-left: 1em; left: 0px; text-align: left; height: 1.4=
+em; }
+
+ul.login-tabs li { display: block; float: left; }
+
+ul.login-tabs li > a { display: block; height: 1.4em; background: rgb(17, 1=
+7, 17); padding: 2px 6px 0px; border-width: 1px 1px 0px; border-style: soli=
+d; border-color: rgb(68, 68, 68); font-weight: bold; color: white; }
+
+ul.login-tabs .selected > a { background: rgb(17, 17, 17); color: white; bo=
+rder-color: rgb(238, 238, 238); }
+
+ul.login-tabs li > a:hover { background: rgb(60, 60, 220); color: white; }
+
+#login-popup-submit { padding: 2px 6px; border: 1px solid rgb(234, 234, 234=
+); margin: 10px; }
+
+#login-popup-submit:hover { background: rgb(60, 60, 220); color: white; }
+
+#login-popup-notices { padding: 1em; margin-left: auto; margin-right: auto;=
+ }
+
+.tab-header-text { text-align: center; padding: 1em 1.5em 0.5em; }
+
+.inline-image > .inline-thumb { float: left; clear: left; }
+
+p, .inline-image + .inline-image > .inline-thumb { clear: none; }
+
+.inline-image + p { clear: left; }
+
+.inline-image + br + br { clear: left; }
+
+.inline-image > .inline-thumb { cursor: pointer; }
+
+.inline-image > .inline-thumb img { margin: 0.5em; }
+
+.inline-image .expanded-image .main-inline-image > img { border: 2px solid =
+rgb(0, 0, 0); }
+
+.inline-image .expanded-image-ui > .expanded-image { clear: both; }
+
+.inline-image .expanded-image-ui { padding: 0.75em 0px 0.25em; clear: both;=
+ }
+
+.inline-image .expanded-image-ui .select-image { margin: 1px 3px; padding: =
+2px 6px; font-weight: normal; border: 1px solid rgb(234, 234, 234); display=
+: inline-block; }
+
+.inline-image .expanded-image-ui .select-image:hover { background: rgb(40, =
+40, 180); color: white; }
+
+.inline-image .expanded-image-ui .select-image:focus { outline: none; }
+
+.inline-image .expanded-image-ui .select-image.selected-image-tab { backgro=
+und: rgb(60, 60, 220); color: white; }
+
+.inline-image .expanded-image-ui .edit-link { margin-left: 0.5em; }
+
+.batch-buttons form { float: left; }
+
+#hosting-referral { position: absolute; width: 25em; margin-left: -12.5em; =
+left: 50%; padding: 0.5em; font-size: 150%; text-align: center; background-=
+color: rgb(0, 0, 136); transition: top 0.2s ease-out; top: -8em; }
+
+#hosting-referral.shown { top: 1em; }
+
+table#history { white-space: nowrap; }
+
+table#history td.change { width: 100%; white-space: normal; }
+
+table .center { text-align: center; }
+
+table.nowrap { white-space: nowrap; }
+
+table td.wrap { white-space: normal; }
+
+table td.full { width: 100%; }
+
+div#news-ticker { padding: 5px; background: rgb(34, 34, 34); border-bottom:=
+ 2px solid rgb(102, 102, 102); overflow: hidden; margin: -1em -3em 1em; pos=
+ition: relative; }
+
+div#news-ticker ul { float: left; margin: 0px; padding: 0px; }
+
+div#news-ticker li { list-style-type: none; float: left; margin: 0px 2em 0p=
+x 0px; padding: 0px; }
+
+div#news-ticker .close-link { float: right; }
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-29fb5044-a291-4307-9000-7423f8cb42af@mhtml.blink
+
+@charset "utf-8";
+
+.immersive-translate-input { position: absolute; inset: 0px; z-index: 21474=
+83647; display: flex; justify-content: center; align-items: center; }
+
+.immersive-translate-attach-loading::after { content: " "; --loading-color:=
+ #f78fb6; width: 6px; height: 6px; border-radius: 50%; display: block; marg=
+in: 12px auto; color: white; box-sizing: border-box; animation: 1.5s linear=
+ 0s infinite normal none running immersiveTranslateShadowRolling; position:=
+ absolute; top: 50%; left: 50%; transform: translate(-2000%, -50%); z-index=
+: 100; }
+
+.immersive-translate-loading-spinner { vertical-align: middle !important; w=
+idth: 10px !important; height: 10px !important; display: inline-block !impo=
+rtant; margin: 0px 4px !important; border-width: 2px !important; border-sty=
+le: solid !important; border-color: rgba(0, 0, 0, 0.376) rgba(221, 244, 255=
+, 0.6) rgba(221, 244, 255, 0.6) rgba(0, 0, 0, 0.376) !important; border-ima=
+ge: initial !important; border-radius: 50% !important; padding: 0px !import=
+ant; animation: 0.6s linear 0s infinite normal none running immersive-trans=
+late-loading-animation !important; }
+
+@-webkit-keyframes immersive-translate-loading-animation {=20
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(359deg); }
+}
+
+@keyframes immersive-translate-loading-animation {=20
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(359deg); }
+}
+
+.immersive-translate-input-loading { --loading-color: #f78fb6; width: 6px; =
+height: 6px; border-radius: 50%; display: block; margin: 12px auto; positio=
+n: relative; color: white; left: -100px; box-sizing: border-box; animation:=
+ 1.5s linear 0s infinite normal none running immersiveTranslateShadowRollin=
+g; }
+
+@keyframes immersiveTranslateShadowRolling {=20
+  0% { box-shadow: rgba(255, 255, 255, 0) 0px 0px, rgba(255, 255, 255, 0) 0=
+px 0px, rgba(255, 255, 255, 0) 0px 0px, rgba(255, 255, 255, 0) 0px 0px; }
+  12% { box-shadow: 100px 0 var(--loading-color), 0px 0 rgba(255, 255, 255,=
+ 0),
+      0px 0 rgba(255, 255, 255, 0), 0px 0 rgba(255, 255, 255, 0); }
+  25% { box-shadow: 110px 0 var(--loading-color), 100px 0 var(--loading-col=
+or),
+      0px 0 rgba(255, 255, 255, 0), 0px 0 rgba(255, 255, 255, 0); }
+  36% { box-shadow: 120px 0 var(--loading-color), 110px 0 var(--loading-col=
+or),
+      100px 0 var(--loading-color), 0px 0 rgba(255, 255, 255, 0); }
+  50% { box-shadow: 130px 0 var(--loading-color), 120px 0 var(--loading-col=
+or),
+      110px 0 var(--loading-color), 100px 0 var(--loading-color); }
+  62% { box-shadow: 200px 0 rgba(255, 255, 255, 0), 130px 0 var(--loading-c=
+olor),
+      120px 0 var(--loading-color), 110px 0 var(--loading-color); }
+  75% { box-shadow: 200px 0 rgba(255, 255, 255, 0), 200px 0 rgba(255, 255, =
+255, 0),
+      130px 0 var(--loading-color), 120px 0 var(--loading-color); }
+  87% { box-shadow: 200px 0 rgba(255, 255, 255, 0), 200px 0 rgba(255, 255, =
+255, 0),
+      200px 0 rgba(255, 255, 255, 0), 130px 0 var(--loading-color); }
+  100% { box-shadow: rgba(255, 255, 255, 0) 200px 0px, rgba(255, 255, 255, =
+0) 200px 0px, rgba(255, 255, 255, 0) 200px 0px, rgba(255, 255, 255, 0) 200p=
+x 0px; }
+}
+
+.immersive-translate-modal { position: fixed; z-index: 2147483647; left: 0p=
+x; top: 0px; width: 100%; height: 100%; overflow: auto; background-color: r=
+gba(0, 0, 0, 0.4); font-size: 15px; }
+
+.immersive-translate-modal-content { background-color: rgb(254, 254, 254); =
+margin: 10% auto; padding: 40px 24px 24px; border-radius: 12px; width: 350p=
+x; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Canta=
+rell, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Sego=
+e UI Symbol", "Noto Color Emoji"; position: relative; }
+
+@media screen and (max-width: 768px) {
+  .immersive-translate-modal-content { margin: 25% auto !important; }
+}
+
+@media screen and (max-width: 480px) {
+  .immersive-translate-modal-content { width: 80vw !important; margin: 20vh=
+ auto !important; padding: 20px 12px 12px !important; }
+  .immersive-translate-modal-title { font-size: 14px !important; }
+  .immersive-translate-modal-body { font-size: 13px !important; max-height:=
+ 60vh !important; }
+  .immersive-translate-btn { font-size: 13px !important; padding: 8px 16px =
+!important; margin: 0px 4px !important; }
+  .immersive-translate-modal-footer { gap: 6px !important; margin-top: 16px=
+ !important; }
+}
+
+.immersive-translate-modal .immersive-translate-modal-content-in-input { ma=
+x-width: 500px; }
+
+.immersive-translate-modal-content-in-input .immersive-translate-modal-body=
+ { text-align: left; max-height: unset; }
+
+.immersive-translate-modal-title { text-align: center; font-size: 16px; fon=
+t-weight: 700; color: rgb(51, 51, 51); }
+
+.immersive-translate-modal-body { text-align: center; font-size: 14px; font=
+-weight: 400; color: rgb(51, 51, 51); margin-top: 24px; }
+
+@media screen and (max-width: 768px) {
+  .immersive-translate-modal-body { max-height: 250px; overflow-y: auto; }
+}
+
+.immersive-translate-close { color: rgb(102, 102, 102); position: absolute;=
+ right: 16px; top: 16px; font-size: 20px; font-weight: bold; }
+
+.immersive-translate-close:hover, .immersive-translate-close:focus { text-d=
+ecoration: none; cursor: pointer; }
+
+.immersive-translate-modal-footer { display: flex; justify-content: center;=
+ flex-wrap: wrap; margin-top: 24px; }
+
+.immersive-translate-btn { width: fit-content; color: rgb(255, 255, 255); b=
+ackground-color: rgb(234, 76, 137); border: none; font-size: 14px; margin: =
+0px 8px; padding: 9px 30px; border-radius: 5px; display: flex; align-items:=
+ center; justify-content: center; cursor: pointer; transition: background-c=
+olor 0.3s; }
+
+.immersive-translate-btn-container { display: flex; flex-direction: column;=
+ align-items: center; justify-content: center; gap: 8px; }
+
+.immersive-translate-btn:hover { background-color: rgb(240, 130, 172); }
+
+.immersive-translate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.immersive-translate-btn:disabled:hover { background-color: rgb(234, 76, 13=
+7); }
+
+.immersive-translate-link-btn { background-color: transparent; color: rgb(2=
+34, 76, 137); border: none; cursor: pointer; height: 30px; line-height: 30p=
+x; }
+
+.immersive-translate-cancel-btn { background-color: rgb(89, 107, 120); }
+
+.immersive-translate-cancel-btn:hover { background-color: rgb(65, 84, 98); =
+}
+
+.immersive-translate-action-btn { background-color: transparent; color: rgb=
+(234, 76, 137); border: 1px solid rgb(234, 76, 137); }
+
+.immersive-translate-btn svg { margin-right: 5px; }
+
+.immersive-translate-link { cursor: pointer; user-select: none; -webkit-use=
+r-drag: none; text-decoration: none; color: rgb(234, 76, 137); -webkit-tap-=
+highlight-color: rgba(0, 0, 0, 0.1); }
+
+.immersive-translate-primary-link { cursor: pointer; user-select: none; -we=
+bkit-user-drag: none; text-decoration: none; color: rgb(234, 76, 137); -web=
+kit-tap-highlight-color: rgba(0, 0, 0, 0.1); }
+
+.immersive-translate-modal input[type=3D"radio"] { margin: 0px 6px; cursor:=
+ pointer; }
+
+.immersive-translate-modal label { cursor: pointer; }
+
+.immersive-translate-close-action { position: absolute; top: 2px; right: 0p=
+x; cursor: pointer; }
+
+.imt-image-status { background-color: rgba(0, 0, 0, 0.5) !important; displa=
+y: flex !important; flex-direction: column !important; align-items: center =
+!important; justify-content: center !important; border-radius: 16px !import=
+ant; }
+
+.imt-image-status img, .imt-image-status svg, .imt-img-loading { width: 28p=
+x !important; height: 28px !important; margin: 0px 0px 8px !important; min-=
+height: 28px !important; min-width: 28px !important; position: relative !im=
+portant; }
+
+.imt-img-loading { background-image: url("data:image/png;base64,iVBORw0KGgo=
+AAAANSUhEUgAAADgAAAA4CAMAAACfWMssAAAAtFBMVEUAAAD///////////////////////////=
+///////////////////////////////////////////////////////////////////////////=
+///////////////////////////////////////////////////////////////////////////=
+///////////////////////////////////////////////////////////oK74hAAAAPHRSTlM=
+ABBMIDyQXHwyBfFdDMSw+OjXCb+5RG51IvV/k0rOqlGRM6KKMhdvNyZBz9MaupmxpWyj437iYd/=
+yJVNZeuUC7AAACt0lEQVRIx53T2XKiUBCA4QYOiyCbiAsuuGBcYtxiYtT3f6/pbqoYHVFO5r+ii=
+vpo6DpAWYpqeoFfr9f90DsYAuRSWkFnPO50OgR9PwiCUFcl2GEcx+N/YBh6pvKaefHlUgZd1zVe=
+0NbYcQjGBfzrPE8Xz8aF+71D8gG6DHFPpc4a7xFiCDuhaWgKgGIJQ3d5IMGDrpS4S5KgpIm+en9=
+f6PlAhKby4JwEIxlYJV9h5k5nee9GoxHJ2IDSNB0dwdad1NAxDJ/uXDHYmebdk4PdbkS58CIVHd=
+YSUHTYYRWOJblWSyu2lmy3KNFVJNBhxcuGW4YBVCbYGRZwIooipHsNqjM4FbgOQqQqSKQQU9V8x=
+mi1QlgHqQQ6DDBvRUVCDirs+EzGDGOQTCATgtYTnbCVLgsVgRE0T1QE0qHCFAht2z6dLvJQs3Lo=
+2FQoDxWNUiBhaP4eRgwNkI+dAjVOA/kUrIDwf3CG8NfNOE0eiFotSuo+rBiq8tD9oY4Qzc6YJw9=
+9hl1wzpQvD7ef2M8QgnOGJfJw+EltQc+oX2yn907QB22WZcvlUpd143dqQu+8pCJZuGE4xCuPXJ=
+qqcs5sNpsI93Rmzym1k4Npk+oD1SH3/a3LOK/JpUBpWfqNySxWzCfNCUITuDG5dtuphrUJ1myeI=
+E9bIsPiKrfqTai5WZxbhtNphYx6GEIHihyGFTI69lje/rxajdh0s0msZ0zYxyPLhYCb1CyHm9Qs=
+d2H37Y3lugVwL9kNh8Ot8cha6fUNQ8nuXi5z9/ExsAO4zQrb/ev1yrCB7lGyQzgYDGuxq1toDN/=
+JGvN+HyWNHKB7zEoK+PX11e12G431erGYzwmytAWU56fkMHY5JJnDRR2eZji3AwtIcrEV8Cojat=
+/BdQ7XOwGV1e1hDjGGjXbdArm8uJZtCH5MbcctVX8A1WpqumJHwckAAAAASUVORK5CYII=3D");=
+ background-size: 28px 28px; animation: 1s linear 0s infinite normal none r=
+unning image-loading-rotate !important; }
+
+.imt-image-status span { color: var(--bg-2, #fff) !important; font-size: 14=
+px !important; line-height: 14px !important; font-weight: 500 !important; f=
+ont-family: "PingFang SC", Arial, sans-serif !important; }
+
+.imt-primary-button { display: flex; padding: 12px 80px; justify-content: c=
+enter; align-items: center; gap: 8px; border-radius: 8px; background: rgb(2=
+34, 76, 137); color: rgb(255, 255, 255); font-size: 16px; font-style: norma=
+l; font-weight: 700; line-height: 24px; border: none; cursor: pointer; }
+
+.imt-retry-text { color: rgb(153, 153, 153); text-align: center; font-size:=
+ 14px; font-style: normal; font-weight: 400; line-height: 21px; cursor: poi=
+nter; }
+
+.imt-action-container { display: flex; flex-direction: column; gap: 12px; }
+
+.imt-modal-content-text { text-align: left; color: rgb(51, 51, 51); font-si=
+ze: 16px; font-weight: 400; line-height: 24px; }
+
+@keyframes image-loading-rotate {=20
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.imt-linear-gradient-text { background: linear-gradient(90deg, rgb(0, 166, =
+255) 0%, rgb(195, 105, 255) 52.4%, rgb(255, 69, 144) 100%) text; -webkit-te=
+xt-fill-color: transparent; }
+
+.imt-flex-center { display: flex; align-items: center; justify-content: cen=
+ter; }
+
+.imt-linear-black-btn { border-radius: 50px; background: linear-gradient(66=
+deg, rgb(34, 34, 34) 19%, rgb(105, 105, 105) 94.25%); height: 48px; width: =
+100%; color: rgb(255, 255, 255); font-size: 16px; font-weight: 700; display=
+: flex; align-items: center; cursor: pointer; justify-content: center; }
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-80bbd2be-fc03-4593-9a8b-87b0a148a969@mhtml.blink
+
+@charset "utf-8";
+
+#blacklisted-sidebar { display: none !important; }
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-0b69724e-9470-4671-9af9-3e27d80a65a2@mhtml.blink
+
+@charset "utf-8";
+
+.javascript-hide { display: none !important; }
+------MultipartBoundary--GKDJTmgvQstg8HKDd2jPqGW1NwXMhdhRwFoMAsSgU8------

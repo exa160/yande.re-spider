@@ -114,5 +114,18 @@ class MariaDBClient:
         if self.insert_check_by_id(_id):
             self.insert_data(sql_data)
 
+    def update_down_flag(self, _id: int, down_flag: bool = True):
+        try:
+            record = self.session.query(self.YandeData).filter_by(id=_id).first()
+            if record:
+                record.down_flag = down_flag
+                self.session.commit()
+                return True
+            return False
+        except Exception as e:
+            self.session.rollback()
+            print(f"Update down_flag failed: {e}")
+            return False
+
     def close(self):
         self.session.close()

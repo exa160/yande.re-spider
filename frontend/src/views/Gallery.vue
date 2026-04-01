@@ -1,8 +1,5 @@
 <template>
   <div class="gallery-page">
-    <!-- 高级查询组件 -->
-    <AdvancedQuery @search="handleSearch" ref="queryRef" />
-
     <!-- 数据源选择工具栏 -->
     <div class="source-toolbar">
       <el-card shadow="never" class="source-card">
@@ -141,6 +138,9 @@
         </el-row>
       </div>
     </el-dialog>
+
+    <!-- 高级搜索组件 - 固定在底部 -->
+    <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
   </div>
 </template>
 
@@ -170,11 +170,19 @@ const selectedImages = ref([])
 const selectAll = ref(false)
 const isIndeterminate = ref(false)
 
-const handleSearch = async (params) => {
-  queryParams.value = { ...params, source: querySource.value }
+const handleSearch = async (searchData) => {
+  let params
+  if (searchData.mode) {
+    // 来自高级搜索组件的新格式
+    params = { ...searchData.params, source: searchData.mode }
+  } else {
+    // 兼容旧格式
+    params = { ...searchData, source: querySource.value }
+  }
+  queryParams.value = params
   currentPage.value = 1
   images.value = []
-  selectedImages.value = []  // 清空选择
+  selectedImages.value = []
   selectAll.value = false
   await loadImages()
 }

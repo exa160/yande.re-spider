@@ -138,6 +138,41 @@ npm run dev
 - `PUT /api/v1/config/downloader` - 更新下载器配置
 - `PUT /api/v1/config/database` - 更新数据库配置
 
+## 高级搜索语法
+
+支持 yande.re API 高级搜索语法：
+
+### 标签语法
+- `keyword` - 包含该标签
+- `-keyword` - 排除该标签
+
+### 字段比较
+- `rating:e` - 评分为 Explicit
+- `rating:q` - 评分为 Questionable
+- `rating:s` - 评分为 Safe
+- `width:>=1000` - 宽度大于等于 1000
+- `height:>=1000` - 高度大于等于 1000
+- `ext:png` - 文件格式为 PNG
+- `score:>=100` - 评分大于等于 100
+- `filesize:>=5000` - 文件大小大于等于 5000KB
+
+### 组合示例
+```
+rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
+```
+
+## 数据流程
+
+### 在线模式
+1. 用户浏览时，数据自动保存到数据库（down_flag=False）
+2. 下载完成后，down_flag 更新为 True
+3. 支持按评分、分辨率、格式等条件过滤
+
+### 本地模式
+1. 仅显示数据库中 down_flag=True 的记录
+2. 从本地文件加载预览图和原图
+3. 支持省流模式（不加载预览图）
+
 ## 架构设计
 
 详见 [docs/design.md](docs/design.md)
