@@ -53,6 +53,7 @@ class DownloadTaskInfo(BaseModel):
     progress: float
     downloaded_size: int
     total_size: Optional[int]
+    speed: Optional[float] = None
     thread_num: int
     error_message: Optional[str]
     created_at: str
@@ -89,6 +90,7 @@ class TaskStore:
                 "progress": 0.0,
                 "downloaded_size": 0,
                 "total_size": task_data.get("total_size", 0),
+                "speed": 0.0,
                 "error_message": None,
                 "created_at": datetime.now().isoformat(),
                 "started_at": None,
@@ -139,6 +141,9 @@ task_store = TaskStore()
 
 def run_download(task_id: str):
     """后台执行下载"""
+    import threading
+    import time as time_module
+
     task = task_store.get_task(task_id)
     if not task:
         return
@@ -168,6 +173,8 @@ def run_download(task_id: str):
 
         expected_md5 = task.get("md5")
         need_download = True
+        download_failed = False
+        error_message = None
 
         if original_path.exists() and expected_md5:
             file_md5 = hashlib.md5(open(original_path, "rb").read()).hexdigest()
@@ -178,34 +185,63 @@ def run_download(task_id: str):
                 need_download = False
             else:
                 print(f"Original exists but MD5 mismatch, re-downloading")
+                original_path.unlink()  # 删除旧文件
 
         if need_download:
             total_size = task.get("total_size", 0)
             downloaded_size = 0
+            last_update_time = time_module.time()
+            last_downloaded_size = 0
+            download_speed = 0.0
+
+            # 线程安全的进度更新
+            progress_lock = threading.Lock()
 
             def progress_callback(chunk_mb: float):
-                nonlocal downloaded_size
-                downloaded_size += chunk_mb
-                if total_size > 0:
-                    progress = min(downloaded_size / (total_size / 1024 / 1024), 1.0)
-                    task_store.update_task(
-                        task_id,
-                        {
-                            "downloaded_size": int(downloaded_size * 1024 * 1024),
-                            "progress": progress,
-                        },
-                    )
+                nonlocal \
+                    downloaded_size, \
+                    last_update_time, \
+                    last_downloaded_size, \
+                    download_speed
+                current_time = time_module.time()
+                with progress_lock:
+                    downloaded_size += chunk_mb
+                    # 计算速度 (MB/s)
+                    time_diff = current_time - last_update_time
+                    if time_diff >= 0.5:  # 至少0.5秒更新一次
+                        size_diff = downloaded_size - last_downloaded_size
+                        download_speed = size_diff / time_diff if time_diff > 0 else 0
+                        last_downloaded_size = downloaded_size
+                        last_update_time = current_time
 
-            MultiDown(
-                url=task["file_url"],
-                file_path=str(originals_dir),
-                file_name=f"{task['image_id']}.{file_ext}",
-                file_size=total_size,
-                _md5=task.get("md5"),
-                _id=task["image_id"],
-                _show_progress=False,
-                _progress_callback=progress_callback,
-            )
+                    if total_size > 0:
+                        progress = min(
+                            downloaded_size / (total_size / 1024 / 1024), 1.0
+                        )
+                        task_store.update_task(
+                            task_id,
+                            {
+                                "downloaded_size": int(downloaded_size * 1024 * 1024),
+                                "progress": progress,
+                                "speed": download_speed,
+                            },
+                        )
+
+            try:
+                MultiDown(
+                    url=task["file_url"],
+                    file_path=str(originals_dir),
+                    file_name=f"{task['image_id']}.{file_ext}",
+                    file_size=total_size,
+                    _md5=task.get("md5"),
+                    _id=task["image_id"],
+                    _show_progress=False,
+                    _progress_callback=progress_callback,
+                )
+            except Exception as download_err:
+                download_failed = True
+                error_message = f"下载失败: {str(download_err)}"
+                print(error_message)
 
         preview_url = task.get("preview_url")
         if preview_url:
@@ -279,14 +315,24 @@ def run_download(task_id: str):
         except Exception as db_err:
             print(f"Failed to update database: {db_err}")
 
-        task_store.update_task(
-            task_id,
-            {
-                "status": TaskStatus.COMPLETED,
-                "progress": 1.0,
-                "completed_at": datetime.now().isoformat(),
-            },
-        )
+        if download_failed:
+            task_store.update_task(
+                task_id,
+                {
+                    "status": TaskStatus.FAILED,
+                    "error_message": error_message or "下载失败",
+                    "completed_at": datetime.now().isoformat(),
+                },
+            )
+        else:
+            task_store.update_task(
+                task_id,
+                {
+                    "status": TaskStatus.COMPLETED,
+                    "progress": 1.0,
+                    "completed_at": datetime.now().isoformat(),
+                },
+            )
     except Exception as e:
         task_store.update_task(
             task_id, {"status": TaskStatus.FAILED, "error_message": str(e)}
@@ -356,6 +402,7 @@ async def get_task_progress(task_id: str):
         progress=task["progress"],
         downloaded_size=task["downloaded_size"],
         total_size=task["total_size"],
+        speed=task.get("speed"),
     )
 
 

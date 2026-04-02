@@ -230,6 +230,8 @@ class MultiDown:
         writer_t.join()
         if self.show_progress:
             self.progress.stop()
+        if self.file_info.md5 and not os.path.exists(file_path):
+            raise Exception(f"MD5 check failed for {file_path}, file was removed")
 
 
 class SpeedColumn(TextColumn):
