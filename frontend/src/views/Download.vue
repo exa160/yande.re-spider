@@ -1,101 +1,89 @@
 <template>
   <div class="download-page">
-    <el-card>
-      <template #header>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span>下载任务管理</span>
-          <el-button type="primary" size="small" @click="loadTasks">
-            <el-icon><Refresh /></el-icon>
-            刷新
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <span class="title">下载任务</span>
+      <el-button type="primary" size="small" @click="loadTasks">
+        <el-icon><Refresh /></el-icon>
+        刷新
+      </el-button>
+    </div>
+
+    <!-- 任务列表 -->
+    <el-table :data="tasks" style="width: 100%" v-loading="loading" size="small">
+      <el-table-column prop="image_id" label="图片ID" width="100" />
+      <el-table-column prop="file_name" label="文件名" show-overflow-tooltip />
+      <el-table-column prop="status" label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="getStatusType(row.status)" size="small">
+            {{ row.status }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="progress" label="进度" width="140">
+        <template #default="{ row }">
+          <el-progress
+            :percentage="Math.round(row.progress * 100)"
+            :status="getProgressStatus(row.status)"
+            :stroke-width="8"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="大小" width="120">
+        <template #default="{ row }">
+          {{ formatFileSize(row.downloaded_size) }} / {{ row.total_size ? formatFileSize(row.total_size) : '-' }}
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="150" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            v-if="row.status === 'pending'"
+            type="primary"
+            size="small"
+            link
+            @click="startTask(row.task_id)"
+          >
+            启动
           </el-button>
-        </div>
-      </template>
+          <el-button
+            v-if="row.status === 'downloading'"
+            type="warning"
+            size="small"
+            link
+            @click="pauseTask(row.task_id)"
+          >
+            暂停
+          </el-button>
+          <el-button
+            v-if="row.status === 'paused'"
+            type="success"
+            size="small"
+            link
+            @click="resumeTask(row.task_id)"
+          >
+            恢复
+          </el-button>
+          <el-button
+            type="danger"
+            size="small"
+            link
+            @click="deleteTask(row.task_id)"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
 
-      <!-- 任务列表 -->
-      <el-table :data="tasks" style="width: 100%" v-loading="loading">
-        <el-table-column prop="task_id" label="任务ID" width="280" />
-        <el-table-column prop="image_id" label="图片ID" width="100" />
-        <el-table-column prop="file_name" label="文件名" />
-        <el-table-column prop="status" label="状态" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ row.status }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="progress" label="进度" width="200">
-          <template #default="{ row }">
-            <el-progress
-              :percentage="row.progress * 100"
-              :status="getProgressStatus(row.status)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="downloaded_size" label="已下载" width="120">
-          <template #default="{ row }">
-            {{ formatFileSize(row.downloaded_size) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="total_size" label="总大小" width="120">
-          <template #default="{ row }">
-            {{ row.total_size ? formatFileSize(row.total_size) : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'pending'"
-              type="primary"
-              size="small"
-              @click="startTask(row.task_id)"
-            >
-              启动
-            </el-button>
-            <el-button
-              v-if="row.status === 'downloading'"
-              type="warning"
-              size="small"
-              @click="pauseTask(row.task_id)"
-            >
-              暂停
-            </el-button>
-            <el-button
-              v-if="row.status === 'paused'"
-              type="success"
-              size="small"
-              @click="resumeTask(row.task_id)"
-            >
-              恢复
-            </el-button>
-            <el-button
-              v-if="['downloading', 'paused', 'pending'].includes(row.status)"
-              type="danger"
-              size="small"
-              @click="cancelTask(row.task_id)"
-            >
-              取消
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click="deleteTask(row.task_id)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- 分页 -->
-      <el-pagination
-        v-model:current-page="currentPage"
-        :page-size="pageSize"
-        :total="total"
-        layout="total, prev, pager, next"
-        style="margin-top: 20px; justify-content: center;"
-        @current-change="loadTasks"
-      />
-    </el-card>
+    <!-- 分页 -->
+    <el-pagination
+      v-model:current-page="currentPage"
+      :page-size="pageSize"
+      :total="total"
+      layout="total, prev, pager, next"
+      style="margin-top: 15px;"
+      @current-change="loadTasks"
+    />
   </div>
 </template>
 
@@ -258,6 +246,28 @@ onUnmounted(() => {
 
 <style scoped>
 .download-page {
-  padding: 20px;
+  padding: 15px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+:deep(.el-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.el-progress__text) {
+  font-size: 11px !important;
 }
 </style>

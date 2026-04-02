@@ -1,10 +1,10 @@
 <template>
-  <div class="waterfall-gallery">
+  <div class="waterfall-gallery" ref="galleryRef">
     <!-- 骨架屏加载状态 -->
     <div 
       v-if="loading" 
-      class="skeleton-container" 
-      :style="`column-count: ${columnCount}; width: ${containerWidth}px`"
+      class="skeleton-container"
+      :style="`column-count: ${columnCount}`"
     >
       <div
         v-for="i in skeletonCount"
@@ -21,8 +21,12 @@
       <div
         v-for="image in reorderedImages"
         :key="image.id"
+        :data-image-id="image.id"
         class="waterfall-item"
-        :class="{ 'selected': isSelected(image) }"
+        :class="{ 
+          'selected': isSelected(image),
+          'image-loaded': pendingImages.has(image.id) || image.local_preview_path
+        }"
         @click="handleImageClick(image)"
       >
         <!-- 选择框 -->
@@ -39,18 +43,18 @@
           :src="getPreviewUrl(image)"
           :alt="image.id.toString()"
           fit="cover"
+          class="waterfall-image"
+          :class="{ 'fade-in': pendingImages.has(image.id) || image.local_preview_path }"
           @error="handleImageError(image)"
           @load="handleImageLoad(image)"
         >
           <template #error>
-            <div class="image-error">
+            <div class="image-error" :style="{ height: getPlaceholderHeight(image) + 'px' }">
               <el-icon><Picture /></el-icon>
             </div>
           </template>
           <template #placeholder>
-            <div class="image-placeholder">
-              <el-icon class="is-loading"><Loading /></el-icon>
-            </div>
+            <div class="image-placeholder skeleton-shimmer" :style="{ height: getPlaceholderHeight(image) + 'px' }"></div>
           </template>
         </el-image>
 
@@ -92,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Loading, Picture, Check, RefreshRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
@@ -137,7 +141,12 @@ const retryKeys = ref(0)
 const retryingImages = ref(new Set())
 const displayedImages = ref([])
 
+// 懒加载：追踪已进入可视区的图片
+const visibleImages = ref(new Set())
+let observer = null
+
 const containerRef = ref(null)
+const galleryRef = ref(null)
 const columnCount = ref(4)
 const columnHeights = ref([])
 const containerWidth = ref(1200)
@@ -153,10 +162,12 @@ const skeletonRatios = [
 ]
 
 // 根据容器宽度和比例计算骨架屏高度
-const skeletonContainerRef = ref(null)
-
 const getSkeletonWidth = () => {
   const gap = 15
+  // 使用 galleryRef 获取实际容器宽度
+  if (galleryRef.value) {
+    containerWidth.value = galleryRef.value.offsetWidth
+  }
   return (containerWidth.value - gap * (columnCount.value - 1)) / columnCount.value
 }
 
@@ -168,11 +179,13 @@ const skeletonHeights = computed(() => {
 // 监听 loading 状态变化，确保骨架屏显示时宽度正确
 watch(() => props.loading, (isLoading) => {
   if (isLoading) {
-    // 骨架屏显示时，使用窗口宽度或预设宽度
-    const winWidth = window.innerWidth
-    const newCount = getColumnCount(winWidth)
-    columnCount.value = newCount
-    containerWidth.value = winWidth
+    // 骨架屏显示时，使用 galleryRef 获取实际宽度
+    nextTick(() => {
+      if (galleryRef.value) {
+        containerWidth.value = galleryRef.value.offsetWidth
+        columnCount.value = getColumnCount(containerWidth.value)
+      }
+    })
   }
 }, { immediate: true })
 
@@ -187,6 +200,18 @@ const getColumnCount = (width) => {
 const estimateImageHeight = (image) => {
   if (image.width && image.height) {
     return (200 / image.width) * image.height
+  }
+  return 200
+}
+
+// 计算骨架屏占位图高度（基于图片宽高比和列宽）
+const getPlaceholderHeight = (image) => {
+  if (image.width && image.height) {
+    const gap = 15
+    const galleryWidth = galleryRef.value?.offsetWidth || containerWidth.value
+    const cols = getColumnCount(galleryWidth)
+    const columnWidth = (galleryWidth - gap * (cols - 1)) / cols
+    return (columnWidth / image.width) * image.height
   }
   return 200
 }
@@ -216,6 +241,7 @@ watch(() => props.images.length, () => {
   const newImages = props.images
   if (newImages.length === 0) {
     displayedImages.value = []
+    visibleImages.value.clear()
     return
   }
   const existingIds = new Set(displayedImages.value.map(img => img.id))
@@ -223,7 +249,36 @@ watch(() => props.images.length, () => {
   if (newItems.length > 0) {
     displayedImages.value = [...displayedImages.value, ...newItems]
   }
+  // 新图片加入后，重新观察
+  nextTick(() => observeNewImages())
 }, { immediate: true })
+
+// 懒加载：观察图片是否进入可视区
+const observeNewImages = () => {
+  if (!observer && typeof IntersectionObserver !== 'undefined') {
+    observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          const imageId = parseInt(entry.target.dataset.imageId)
+          if (entry.isIntersecting) {
+            visibleImages.value.add(imageId)
+          }
+        })
+      },
+      { rootMargin: '200px' }
+    )
+  }
+  
+  if (observer) {
+    const items = containerRef.value?.querySelectorAll('.waterfall-item')
+    items?.forEach(item => {
+      const imageId = parseInt(item.dataset.imageId)
+      if (!visibleImages.value.has(imageId)) {
+        observer.observe(item)
+      }
+    })
+  }
+}
 
 const updateColumnCount = () => {
   if (containerRef.value) {
@@ -295,7 +350,10 @@ const getPreviewUrl = (image) => {
     }
     return ''
   }
-  // 在线模式
+  // 在线模式：懒加载，未进入可视区时不加载
+  if (props.sourceMode === 'yande' && !visibleImages.value.has(image.id)) {
+    return ''
+  }
   if (props.saveDataMode && !isPending) {
     return ''
   }
@@ -367,31 +425,41 @@ const handleScroll = () => {
 }
 
 onMounted(() => {
+  updateColumnCount()
+  window.addEventListener('resize', updateColumnCount)
   window.addEventListener('scroll', handleScroll)
+  nextTick(() => observeNewImages())
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateColumnCount)
   window.removeEventListener('scroll', handleScroll)
+  if (observer) {
+    observer.disconnect()
+    observer = null
+  }
 })
 </script>
 
 <style scoped>
 .waterfall-gallery {
   min-height: 400px;
+  width: 100%;
 }
 
 .skeleton-container {
   column-gap: 15px;
+  width: 100%;
 }
 
 .skeleton-item {
   break-inside: avoid;
   margin-bottom: 15px;
-  background: #f5f7fa;
+  background: var(--skeleton-bg, #f0f0f0);
   border-radius: 8px;
   overflow: hidden;
   position: relative;
+  width: 100%;
 }
 
 .skeleton-shimmer {
@@ -403,7 +471,7 @@ onUnmounted(() => {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0.5) 50%,
     transparent 100%
   );
   animation: shimmer 1.5s infinite;
@@ -452,6 +520,37 @@ onUnmounted(() => {
   background: #f5f7fa;
 }
 
+/* 懒加载骨架屏 */
+.waterfall-item .el-image__placeholder {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 0%,
+    #e0e0e0 50%,
+    #f0f0f0 100%
+  );
+  background-size: 200% 100%;
+  animation: placeholder-shimmer 1.5s infinite;
+}
+
+@keyframes placeholder-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* 图片淡入效果 */
+.waterfall-image {
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+}
+
+.waterfall-image.fade-in {
+  opacity: 1;
+}
+
 .selection-checkbox {
   position: absolute;
   top: 10px;
@@ -484,13 +583,21 @@ onUnmounted(() => {
 
 .image-error,
 .image-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: var(--skeleton-bg, #f0f0f0);
+  background-size: 200% 100%;
+  animation: placeholder-shimmer 1.5s infinite;
+}
+
+.image-error {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 200px;
-  background: #f5f7fa;
-  color: #909399;
+  color: var(--text-muted, #909399);
+  background: var(--skeleton-bg, #f0f0f0);
 }
 
 .image-info {

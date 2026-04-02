@@ -436,31 +436,31 @@ defineExpose({
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(20, 20, 20, 0.6);
+  background: var(--bg-secondary);
   backdrop-filter: blur(30px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: white;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  color: var(--text-primary);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   transition: all 0.2s ease;
 }
 
 .collapsed-button:hover {
-  background: rgba(40, 40, 40, 0.7);
+  background: var(--bg-primary);
   transform: scale(1.05);
 }
 
 /* 搜索面板 */
 .search-panel {
-  background: rgba(20, 20, 20, 0.55);
+  background: var(--bg-secondary);
   backdrop-filter: blur(30px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 12px 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
 }
 
@@ -476,8 +476,8 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 0 12px;
 }
@@ -489,15 +489,15 @@ defineExpose({
 }
 
 .search-input-wrapper :deep(.el-input__inner) {
-  color: white;
+  color: var(--text-primary);
 }
 
 .search-input-wrapper :deep(.el-input__inner::placeholder) {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
 }
 
 .search-icon {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -508,9 +508,9 @@ defineExpose({
 }
 
 .search-tags :deep(.el-tag) {
-  background: rgba(0, 120, 212, 0.25);
-  border: 1px solid rgba(0, 120, 212, 0.4);
-  color: white;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
 }
 
 .search-actions {
@@ -519,20 +519,22 @@ defineExpose({
 }
 
 .search-actions :deep(.el-button) {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
 }
 
 .search-actions :deep(.el-button:hover) {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-tertiary);
+  border-color: #409EFF;
+  color: #409EFF;
 }
 
 /* 高级筛选面板 */
 .advanced-panel {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-color);
 }
 
 .panel-row {
@@ -555,7 +557,7 @@ defineExpose({
 }
 
 .row-item label {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
   font-size: 13px;
   white-space: nowrap;
   min-width: 50px;
@@ -574,7 +576,7 @@ defineExpose({
 }
 
 .range-separator {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
 }
 
 .checkbox-group {
@@ -594,13 +596,13 @@ defineExpose({
 
 /* 输入框样式 */
 .row-item :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-primary);
   box-shadow: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
 }
 
 .row-item :deep(.el-input__inner) {
-  color: white;
+  color: var(--text-primary);
 }
 
 .row-item :deep(.el-input-number) {
@@ -608,28 +610,28 @@ defineExpose({
 }
 
 .row-item :deep(.el-input-number .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-primary);
   box-shadow: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
 }
 
 .row-item :deep(.el-select .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-primary);
   box-shadow: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
 }
 
 .row-item :deep(.el-checkbox-button__inner) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.7);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   padding: 4px 10px;
   font-size: 12px;
 }
 
 .row-item :deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
-  background: rgba(0, 120, 212, 0.4);
-  border-color: rgba(0, 120, 212, 0.6);
+  background: #409EFF;
+  border-color: #409EFF;
   color: white;
 }
 
@@ -639,22 +641,23 @@ defineExpose({
   justify-content: flex-end;
   gap: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-color);
 }
 
 .panel-footer :deep(.el-button) {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
 }
 
 .panel-footer :deep(.el-button--primary) {
-  background: rgba(0, 120, 212, 0.6);
-  border-color: rgba(0, 120, 212, 0.6);
+  background: #409EFF;
+  border-color: #409EFF;
   color: white;
 }
 
 .panel-footer :deep(.el-button--primary:hover) {
-  background: rgba(0, 120, 212, 0.8);
+  background: #66b1ff;
+  border-color: #66b1ff;
 }
 </style>
