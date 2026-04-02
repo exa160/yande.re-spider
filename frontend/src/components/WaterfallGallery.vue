@@ -146,6 +146,8 @@ const touchFocusedId = ref(null)
 const longPressTimer = ref(null)
 const isLongPress = ref(false)
 const LONG_PRESS_DURATION = 500
+const MOVE_THRESHOLD = 10 // 移动阈值，超过则不触发长按
+const touchStartPos = ref({ x: 0, y: 0 })
 
 // 懒加载：追踪已进入可视区的图片
 const visibleImages = ref(new Set())
@@ -327,6 +329,14 @@ const handleTouchStart = (image, event) => {
   isLongPress.value = false
   touchFocusedId.value = image.id
   
+  // 记录初始触摸位置
+  if (event.touches && event.touches.length > 0) {
+    touchStartPos.value = {
+      x: event.touches[0].clientX,
+      y: event.touches[0].clientY
+    }
+  }
+  
   longPressTimer.value = setTimeout(() => {
     handleLongPress(image)
   }, LONG_PRESS_DURATION)
@@ -336,21 +346,26 @@ const handleTouchStart = (image, event) => {
 const handleTouchMove = (image, event) => {
   if (!props.selectable || !event.touches || event.touches.length === 0) return
   
-  // 清除长按计时器
-  if (longPressTimer.value) {
-    clearTimeout(longPressTimer.value)
-    longPressTimer.value = null
-  }
-  
   const touch = event.touches[0]
-  const target = document.elementFromPoint(touch.clientX, touch.clientY)
+  const deltaX = Math.abs(touch.clientX - touchStartPos.value.x)
+  const deltaY = Math.abs(touch.clientY - touchStartPos.value.y)
   
-  if (target) {
-    const waterfallItem = target.closest('.waterfall-item')
-    if (waterfallItem) {
-      const imageId = parseInt(waterfallItem.dataset.imageId)
-      if (imageId && imageId !== touchFocusedId.value) {
-        touchFocusedId.value = imageId
+  // 移动超过阈值，取消长按计时器
+  if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
+    if (longPressTimer.value) {
+      clearTimeout(longPressTimer.value)
+      longPressTimer.value = null
+    }
+    
+    // 同时更新聚焦的图片
+    const target = document.elementFromPoint(touch.clientX, touch.clientY)
+    if (target) {
+      const waterfallItem = target.closest('.waterfall-item')
+      if (waterfallItem) {
+        const imageId = parseInt(waterfallItem.dataset.imageId)
+        if (imageId && imageId !== touchFocusedId.value) {
+          touchFocusedId.value = imageId
+        }
       }
     }
   }

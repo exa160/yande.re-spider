@@ -85,7 +85,7 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 无框样式 -->
+    <!-- 图片预览对话框 - 全屏图片+底部信息悬浮 -->
     <el-dialog
       v-model="previewVisible"
       fullscreen
@@ -93,7 +93,7 @@
       class="preview-dialog-frameless"
     >
       <div v-if="currentImage" class="preview-frameless">
-        <!-- 顶部工具栏 -->
+        <!-- 顶部简洁工具栏 -->
         <div class="preview-toolbar">
           <div class="preview-toolbar-left">
             <span class="preview-id">ID: {{ currentImage.id }}</span>
@@ -109,69 +109,74 @@
           </div>
         </div>
 
-        <!-- 主内容区 -->
-        <div class="preview-main">
-          <!-- 左侧图片 -->
-          <div class="preview-image-area">
-            <el-image
-              :src="getDetailUrl(currentImage)"
-              :preview-src-list="[getDetailUrl(currentImage)]"
-              fit="contain"
-              class="preview-image"
-              :zoom-rate="1.2"
-              :preview-teleported="true"
-            />
-          </div>
+        <!-- 全屏图片区域 -->
+        <div class="preview-image-container">
+          <el-image
+            :src="getDetailUrl(currentImage)"
+            :preview-src-list="[getDetailUrl(currentImage)]"
+            fit="contain"
+            class="preview-image"
+            :zoom-rate="1.2"
+            :preview-teleported="true"
+          />
+        </div>
 
-          <!-- 右侧信息面板 -->
-          <div class="preview-info-panel">
-            <div class="info-section">
-              <div class="info-label">文件信息</div>
-              <div class="info-grid">
+        <!-- 底部信息悬浮面板 -->
+        <div class="preview-info-overlay" @click="toggleInfoPanel">
+          <div class="info-toggle-bar">
+            <div class="toggle-icon">
+              <el-icon><ArrowUp v-if="!infoPanelExpanded" /><ArrowDown v-else /></el-icon>
+            </div>
+            <span class="toggle-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+          </div>
+          
+          <transition name="slide-up">
+            <div v-if="infoPanelExpanded" class="info-panel-content">
+              <div class="info-row">
                 <div class="info-item">
-                  <span class="info-item-label">大小</span>
-                  <span class="info-item-value">{{ formatFileSize(currentImage.file_size) }}</span>
+                  <span class="info-label">大小</span>
+                  <span class="info-value">{{ formatFileSize(currentImage.file_size) }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-item-label">作者</span>
-                  <span class="info-item-value">{{ currentImage.author }}</span>
+                  <span class="info-label">作者</span>
+                  <span class="info-value">{{ currentImage.author }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-item-label">MD5</span>
-                  <span class="info-item-value md5">{{ currentImage.md5 }}</span>
+                  <span class="info-label">MD5</span>
+                  <span class="info-value md5">{{ currentImage.md5 }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-item-label">时间</span>
-                  <span class="info-item-value">{{ currentImage.created_at }}</span>
+                  <span class="info-label">时间</span>
+                  <span class="info-value">{{ currentImage.created_at }}</span>
                 </div>
               </div>
-            </div>
-
-            <div class="info-section tags-section">
-              <div class="info-label">标签 ({{ currentImage.tags?.length || 0 }})</div>
-              <div class="tags-cloud">
-                <el-tag
-                  v-for="tag in currentImage.tags"
-                  :key="tag"
-                  size="small"
-                  class="tag-item"
-                >
-                  {{ tag }}
-                </el-tag>
+              
+              <div class="tags-section">
+                <div class="tags-label">标签 ({{ currentImage.tags?.length || 0 }})</div>
+                <div class="tags-scroll">
+                  <el-tag
+                    v-for="tag in currentImage.tags"
+                    :key="tag"
+                    size="small"
+                    class="tag-item"
+                  >
+                    {{ tag }}
+                  </el-tag>
+                </div>
+              </div>
+              
+              <div class="action-buttons">
+                <el-button type="primary" @click.stop="handleDownload" :loading="downloading" class="download-btn">
+                  <el-icon><Download /></el-icon>
+                  下载原图
+                </el-button>
+                <el-button v-if="currentImage.is_downloaded" type="success" disabled>
+                  <el-icon><Check /></el-icon>
+                  已下载
+                </el-button>
               </div>
             </div>
-
-            <div class="info-section actions-section">
-              <el-button type="primary" @click="handleDownload" :loading="downloading" class="download-btn">
-                <el-icon><Download /></el-icon>
-                下载原图
-              </el-button>
-              <el-button v-if="currentImage.is_downloaded" type="success" disabled>
-                <el-icon><Check /></el-icon>
-                已下载
-              </el-button>
-            </div>
-          </div>
+          </transition>
         </div>
       </div>
     </el-dialog>
@@ -201,7 +206,7 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
@@ -222,6 +227,7 @@ const previewVisible = ref(false)
 const currentImage = ref(null)
 const downloading = ref(false)
 const tagsExpanded = ref(false)
+const infoPanelExpanded = ref(false)
 
 // 多选相关
 const selectedImages = ref([])
@@ -318,7 +324,12 @@ const loadMore = async () => {
 const handleImageClick = (image) => {
   currentImage.value = image
   tagsExpanded.value = false
+  infoPanelExpanded.value = false
   previewVisible.value = true
+}
+
+const toggleInfoPanel = () => {
+  infoPanelExpanded.value = !infoPanelExpanded.value
 }
 
 const handleImageSelect = (image, selected) => {
@@ -676,13 +687,7 @@ html.dark-mode .selection-count {
   color: var(--text-primary);
 }
 
-.preview-main {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.preview-image-area {
+.preview-image-container {
   flex: 1;
   display: flex;
   align-items: center;
@@ -701,66 +706,94 @@ html.dark-mode .selection-count {
   max-height: 100%;
 }
 
-.preview-info-panel {
-  width: 320px;
+/* 底部信息悬浮面板 */
+.preview-info-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   background: var(--bg-secondary);
-  border-left: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-color);
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
   flex-shrink: 0;
 }
 
-.info-section {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-color);
+.info-toggle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  cursor: pointer;
+  user-select: none;
 }
 
-.info-label {
-  font-size: 12px;
-  font-weight: bold;
+.toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-secondary);
-  margin-bottom: 12px;
-  text-transform: uppercase;
 }
 
-.info-grid {
+.toggle-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.info-panel-content {
+  padding: 0 16px 16px;
+  overflow-y: auto;
+  max-height: calc(70vh - 50px);
+}
+
+.info-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+  margin-bottom: 16px;
 }
 
-.info-item {
+.info-panel-content .info-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.info-item-label {
+.info-panel-content .info-label {
   font-size: 11px;
   color: var(--text-muted);
 }
 
-.info-item-value {
+.info-panel-content .info-value {
   font-size: 13px;
   color: var(--text-primary);
   word-break: break-all;
 }
 
-.info-item-value.md5 {
+.info-panel-content .info-value.md5 {
   font-size: 11px;
   font-family: monospace;
 }
 
 .tags-section {
-  flex: 1;
-  overflow-y: auto;
+  margin-bottom: 16px;
 }
 
-.tags-cloud {
+.tags-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.tags-scroll {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .tag-item {
@@ -771,13 +804,25 @@ html.dark-mode .selection-count {
   opacity: 0.8;
 }
 
-.actions-section {
-  margin-top: auto;
-  border-bottom: none;
+.action-buttons {
+  display: flex;
+  gap: 12px;
 }
 
 .download-btn {
-  width: 100%;
+  flex: 1;
+}
+
+/* 过渡动画 */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
 }
 
 /* 中心对话框样式 */
@@ -828,25 +873,21 @@ html.dark-mode .preview-toolbar-left .preview-id {
   color: var(--text-primary);
 }
 
-html.dark-mode .preview-info-panel {
+html.dark-mode .preview-info-overlay {
   background: var(--bg-secondary);
-  border-left-color: var(--border-color);
+  border-top-color: var(--border-color);
 }
 
-html.dark-mode .info-section {
-  border-bottom-color: var(--border-color);
-}
-
-html.dark-mode .info-label {
+html.dark-mode .info-panel-content .info-label {
   color: var(--text-secondary);
 }
 
-html.dark-mode .info-item-label {
-  color: var(--text-muted);
+html.dark-mode .info-panel-content .info-value {
+  color: var(--text-primary);
 }
 
-html.dark-mode .info-item-value {
-  color: var(--text-primary);
+html.dark-mode .tags-label {
+  color: var(--text-secondary);
 }
 
 html.dark-mode .preview-toolbar-right :deep(.el-button) {
