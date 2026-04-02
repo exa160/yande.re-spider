@@ -64,6 +64,9 @@
         <el-icon><Download /></el-icon>
         批量下载 ({{ selectedImages.length }})
       </el-button>
+      <el-button size="small" @click="selectedImages = []">
+        取消
+      </el-button>
     </div>
 
     <!-- 瀑布流图库组件 -->
@@ -79,84 +82,98 @@
         @image-click="handleImageClick"
         @image-select="handleImageSelect"
         @load-more="loadMore"
+        @multi-select-start="handleMultiSelectStart"
       />
     </div>
 
-    <!-- 图片预览对话框 -->
+    <!-- 图片预览对话框 - 无框样式 -->
     <el-dialog
       v-model="previewVisible"
-      width="80%"
-      top="5vh"
-      :show-close="true"
-      class="preview-dialog"
+      fullscreen
+      :show-close="false"
+      class="preview-dialog-frameless"
     >
-      <template #header>
-        <span>图片详情 - ID: {{ currentImage?.id }}</span>
-      </template>
-      <div v-if="currentImage" class="preview-content">
-        <el-row :gutter="20">
-          <el-col :span="16">
+      <div v-if="currentImage" class="preview-frameless">
+        <!-- 顶部工具栏 -->
+        <div class="preview-toolbar">
+          <div class="preview-toolbar-left">
+            <span class="preview-id">ID: {{ currentImage.id }}</span>
+            <el-tag :type="getRatingType(currentImage.rating)" size="small">
+              {{ currentImage.rating }}
+            </el-tag>
+            <span class="preview-size">{{ currentImage.width }} x {{ currentImage.height }}</span>
+          </div>
+          <div class="preview-toolbar-right">
+            <el-button circle @click="previewVisible = false">
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="preview-main">
+          <!-- 左侧图片 -->
+          <div class="preview-image-area">
             <el-image
               :src="getDetailUrl(currentImage)"
               :preview-src-list="[getDetailUrl(currentImage)]"
               fit="contain"
-              style="width: 100%; max-height: 70vh;"
+              class="preview-image"
+              :zoom-rate="1.2"
+              :preview-teleported="true"
             />
-          </el-col>
-          <el-col :span="8">
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="ID">{{ currentImage.id }}</el-descriptions-item>
-              <el-descriptions-item label="分辨率">
-                {{ currentImage.width }} x {{ currentImage.height }}
-              </el-descriptions-item>
-              <el-descriptions-item label="评分">
-                <el-tag :type="getRatingType(currentImage.rating)">
-                  {{ currentImage.rating }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="文件大小">
-                {{ formatFileSize(currentImage.file_size) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="作者">{{ currentImage.author }}</el-descriptions-item>
-              <el-descriptions-item label="创建时间">{{ currentImage.created_at }}</el-descriptions-item>
-              <el-descriptions-item label="MD5">{{ currentImage.md5 }}</el-descriptions-item>
-              <el-descriptions-item label="Tags">
-                <div class="tags-container">
-                  <div class="tags-list" :class="{ collapsed: !tagsExpanded && currentImage.tags?.length > 10 }">
-                    <el-tag
-                      v-for="tag in (tagsExpanded ? currentImage.tags : currentImage.tags?.slice(0, 10))"
-                      :key="tag"
-                      size="small"
-                      style="margin-right: 5px; margin-bottom: 5px;"
-                    >
-                      {{ tag }}
-                    </el-tag>
-                  </div>
-                  <el-button
-                    v-if="currentImage.tags?.length > 10"
-                    size="small"
-                    text
-                    @click="tagsExpanded = !tagsExpanded"
-                    style="margin-top: 5px;"
-                  >
-                    {{ tagsExpanded ? '收起' : `展开更多 (${currentImage.tags.length})` }}
-                  </el-button>
-                </div>
-              </el-descriptions-item>
-            </el-descriptions>
+          </div>
 
-            <div style="margin-top: 20px;">
-              <el-button type="primary" @click="handleDownload" :loading="downloading">
+          <!-- 右侧信息面板 -->
+          <div class="preview-info-panel">
+            <div class="info-section">
+              <div class="info-label">文件信息</div>
+              <div class="info-grid">
+                <div class="info-item">
+                  <span class="info-item-label">大小</span>
+                  <span class="info-item-value">{{ formatFileSize(currentImage.file_size) }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-item-label">作者</span>
+                  <span class="info-item-value">{{ currentImage.author }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-item-label">MD5</span>
+                  <span class="info-item-value md5">{{ currentImage.md5 }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-item-label">时间</span>
+                  <span class="info-item-value">{{ currentImage.created_at }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="info-section tags-section">
+              <div class="info-label">标签 ({{ currentImage.tags?.length || 0 }})</div>
+              <div class="tags-cloud">
+                <el-tag
+                  v-for="tag in currentImage.tags"
+                  :key="tag"
+                  size="small"
+                  class="tag-item"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
+            </div>
+
+            <div class="info-section actions-section">
+              <el-button type="primary" @click="handleDownload" :loading="downloading" class="download-btn">
                 <el-icon><Download /></el-icon>
-                下载
+                下载原图
               </el-button>
               <el-button v-if="currentImage.is_downloaded" type="success" disabled>
                 <el-icon><Check /></el-icon>
                 已下载
               </el-button>
             </div>
-          </el-col>
-        </el-row>
+          </div>
+        </div>
       </div>
     </el-dialog>
 
@@ -185,7 +202,7 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Check, Connection, Setting, Sunny, Moon } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon, Close } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
@@ -327,6 +344,10 @@ const handleSelectAll = (checked) => {
 
 const updateSelectionState = () => {
   isIndeterminate.value = selectedImages.value.length > 0 && selectedImages.value.length < images.value.length
+}
+
+const handleMultiSelectStart = () => {
+  // 长按开始多选时的回调
 }
 
 const batchDownload = async () => {
@@ -557,37 +578,160 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   overflow-y: auto;
 }
 
-.preview-content {
-  min-height: 400px;
+/* 无框预览对话框样式 */
+.preview-dialog-frameless {
+  background: rgba(0, 0, 0, 0.95) !important;
 }
 
-.tags-container {
-  max-height: none;
-}
-
-.tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.tags-list.collapsed {
-  max-height: 120px;
+.preview-dialog-frameless :deep(.el-dialog__body) {
+  padding: 0;
   overflow: hidden;
 }
 
-.preview-dialog :deep(.el-dialog__header) {
-  margin-right: 0;
-  padding: 15px 20px;
+.preview-frameless {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  flex-shrink: 0;
 }
 
-.preview-dialog :deep(.el-dialog__body) {
-  padding: 20px;
-  background: var(--bg-secondary);
+.preview-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
+.preview-id {
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.preview-size {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.preview-toolbar-right :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.preview-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.preview-image-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.preview-image :deep(.el-image__inner) {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.preview-info-panel {
+  width: 320px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.info-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.info-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-item-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.info-item-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.info-item-value.md5 {
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.tags-section {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.tags-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-item {
+  cursor: pointer;
+}
+
+.tag-item:hover {
+  opacity: 0.8;
+}
+
+.actions-section {
+  margin-top: auto;
+  border-bottom: none;
+}
+
+.download-btn {
+  width: 100%;
+}
+
+/* 中心对话框样式 */
 .center-dialog {
   border-radius: 12px;
 }
@@ -615,5 +759,50 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   padding: 15px 20px;
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);
+}
+
+/* 深色模式下无框预览对话框 */
+html.dark-mode .preview-dialog-frameless {
+  background: rgba(0, 0, 0, 0.98) !important;
+}
+
+html.dark-mode .preview-frameless {
+  background: var(--bg-primary);
+}
+
+html.dark-mode .preview-toolbar {
+  background: var(--bg-secondary);
+  border-bottom-color: var(--border-color);
+}
+
+html.dark-mode .preview-toolbar-left .preview-id {
+  color: var(--text-primary);
+}
+
+html.dark-mode .preview-info-panel {
+  background: var(--bg-secondary);
+  border-left-color: var(--border-color);
+}
+
+html.dark-mode .info-section {
+  border-bottom-color: var(--border-color);
+}
+
+html.dark-mode .info-label {
+  color: var(--text-secondary);
+}
+
+html.dark-mode .info-item-label {
+  color: var(--text-muted);
+}
+
+html.dark-mode .info-item-value {
+  color: var(--text-primary);
+}
+
+html.dark-mode .preview-toolbar-right :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 </style>
