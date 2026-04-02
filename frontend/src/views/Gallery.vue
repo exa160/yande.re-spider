@@ -85,16 +85,34 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 适应图片大小+底部信息悬浮 -->
+    <!-- 图片预览对话框 - 非全屏，图片自适应+底部悬浮信息 -->
     <el-dialog
       v-model="previewVisible"
       :show-close="false"
+      class="preview-dialog-frameless"
       :close-on-click-modal="true"
-      class="preview-dialog-adaptive"
+      :width="'90%'"
+      top="5vh"
     >
-      <div v-if="currentImage" class="preview-adaptive">
-        <!-- 图片区域 -->
-        <div class="preview-image-wrapper">
+      <div v-if="currentImage" class="preview-frameless">
+        <!-- 顶部简洁工具栏 -->
+        <div class="preview-toolbar">
+          <div class="preview-toolbar-left">
+            <span class="preview-id">ID: {{ currentImage.id }}</span>
+            <el-tag :type="getRatingType(currentImage.rating)" size="small">
+              {{ currentImage.rating }}
+            </el-tag>
+            <span class="preview-size">{{ currentImage.width }} x {{ currentImage.height }}</span>
+          </div>
+          <div class="preview-toolbar-right">
+            <el-button circle @click="previewVisible = false">
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 图片区域 - 自适应高度，留出底部空间给信息面板 -->
+        <div class="preview-image-container">
           <el-image
             :src="getDetailUrl(currentImage)"
             :preview-src-list="[getDetailUrl(currentImage)]"
@@ -103,14 +121,9 @@
             :zoom-rate="1.2"
             :preview-teleported="true"
           />
-          
-          <!-- 关闭按钮 -->
-          <el-button circle class="close-btn" @click="previewVisible = false">
-            <el-icon><Close /></el-icon>
-          </el-button>
         </div>
 
-        <!-- 底部信息悬浮面板 -->
+        <!-- 底部半透明悬浮信息面板 -->
         <div class="preview-info-overlay" @click="toggleInfoPanel">
           <div class="info-toggle-bar">
             <div class="toggle-icon">
@@ -121,14 +134,6 @@
           
           <transition name="slide-up">
             <div v-if="infoPanelExpanded" class="info-panel-content">
-              <div class="info-header">
-                <span class="preview-id">ID: {{ currentImage.id }}</span>
-                <el-tag :type="getRatingType(currentImage.rating)" size="small">
-                  {{ currentImage.rating }}
-                </el-tag>
-                <span class="preview-size">{{ currentImage.width }} x {{ currentImage.height }}</span>
-              </div>
-              
               <div class="info-row">
                 <div class="info-item">
                   <span class="info-label">大小</span>
@@ -453,8 +458,9 @@ const getDetailUrl = (image) => {
     const filename = `${image.id}.${image.file_ext || 'jpg'}`
     return `/api/v1/gallery/cache/preview/${filename}`
   }
+  // 在线模式：使用缓存的预览图API
   if (image.preview_url) {
-    return image.preview_url
+    return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}`
   }
   return image.file_url
 }
@@ -635,80 +641,92 @@ html.dark-mode .selection-count {
   background: var(--el-color-primary);
 }
 
-/* 自适应预览对话框样式 */
-.preview-dialog-adaptive {
-  background: transparent !important;
-  box-shadow: none !important;
+/* 无框预览对话框样式 */
+.preview-dialog-frameless {
+  background: rgba(0, 0, 0, 0.95) !important;
 }
 
-.preview-dialog-adaptive :deep(.el-dialog__body) {
+.preview-dialog-frameless :deep(.el-dialog__body) {
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
-.preview-dialog-adaptive :deep(.el-dialog) {
+.preview-frameless {
+  background: var(--bg-primary);
+  position: relative;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.preview-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preview-id {
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.preview-size {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.preview-toolbar-right :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* 图片容器 - 透明背景，无黑边 */
+.preview-image-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
-  border: none;
-  box-shadow: none;
-  max-width: 90vw;
-}
-
-.preview-adaptive {
-  position: relative;
-  display: inline-block;
-  max-width: 100%;
-}
-
-/* 图片容器 */
-.preview-image-wrapper {
-  position: relative;
-  display: block;
-  max-width: 100%;
-  max-height: 80vh;
-  background: #000;
-  border-radius: 8px;
+  min-height: 300px;
+  max-height: calc(90vh - 120px);
   overflow: hidden;
 }
 
 .preview-image {
-  display: block;
   max-width: 100%;
-  max-height: 80vh;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .preview-image :deep(.el-image__inner) {
-  display: block;
   max-width: 100%;
-  max-height: 80vh;
+  max-height: 100%;
+  object-fit: contain;
 }
 
-/* 关闭按钮 */
-.close-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  background: rgba(0, 0, 0, 0.6) !important;
-  border: none !important;
-  color: white !important;
-  z-index: 10;
-  opacity: 0.8;
+.preview-image :deep(.el-image__error) {
+  background: transparent;
 }
 
-.close-btn:hover {
-  opacity: 1;
-  background: rgba(0, 0, 0, 0.8) !important;
-}
-
-/* 底部信息悬浮面板 - 半透明 */
+/* 底部半透明悬浮信息面板 */
 .preview-info-overlay {
-  background: rgba(var(--bg-secondary-rgb, 28, 28, 28), 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 0 0 8px 8px;
-  margin-top: -4px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
+  max-height: 50vh;
 }
 
 .info-toggle-bar {
@@ -716,7 +734,7 @@ html.dark-mode .selection-count {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px;
+  padding: 12px;
   cursor: pointer;
   user-select: none;
 }
@@ -736,33 +754,14 @@ html.dark-mode .selection-count {
 .info-panel-content {
   padding: 0 16px 16px;
   overflow-y: auto;
-  max-height: 50vh;
-}
-
-.info-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 0 12px;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 12px;
-}
-
-.info-header .preview-id {
-  font-weight: bold;
-  color: var(--text-primary);
-}
-
-.info-header .preview-size {
-  color: var(--text-secondary);
-  font-size: 13px;
+  max-height: calc(70vh - 50px);
 }
 
 .info-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .info-panel-content .info-item {
@@ -865,21 +864,32 @@ html.dark-mode .selection-count {
   background: var(--bg-secondary);
 }
 
-/* 深色模式下自适应预览对话框 */
-html.dark-mode .preview-dialog-adaptive {
+/* 深色模式下无框预览对话框 */
+html.dark-mode .preview-dialog-frameless {
   background: transparent !important;
 }
 
-html.dark-mode .preview-info-overlay {
-  background: rgba(28, 28, 28, 0.95);
+html.dark-mode .preview-dialog-frameless :deep(.el-dialog) {
+  background: transparent;
 }
 
-html.dark-mode .info-header {
+html.dark-mode .preview-frameless {
+  background: var(--bg-primary);
+}
+
+html.dark-mode .preview-toolbar {
+  background: rgba(30, 30, 30, 0.9);
   border-bottom-color: var(--border-color);
 }
 
-html.dark-mode .info-header .preview-id {
+html.dark-mode .preview-toolbar-left .preview-id {
   color: var(--text-primary);
+}
+
+html.dark-mode .preview-info-overlay {
+  background: rgba(30, 30, 30, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 html.dark-mode .info-panel-content .info-label {
@@ -894,11 +904,9 @@ html.dark-mode .tags-label {
   color: var(--text-secondary);
 }
 
-html.dark-mode .close-btn {
-  background: rgba(0, 0, 0, 0.7) !important;
-}
-
-html.dark-mode .close-btn:hover {
-  background: rgba(0, 0, 0, 0.9) !important;
+html.dark-mode .preview-toolbar-right :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 </style>
