@@ -1,9 +1,19 @@
 <template>
   <div class="waterfall-gallery">
-    <!-- 加载状态 -->
-    <div v-if="loading" class="loading-container">
-      <el-icon class="is-loading" :size="40"><Loading /></el-icon>
-      <p>加载中...</p>
+    <!-- 骨架屏加载状态 -->
+    <div 
+      v-if="loading" 
+      class="skeleton-container" 
+      :style="`column-count: ${columnCount}; width: ${containerWidth}px`"
+    >
+      <div
+        v-for="i in skeletonCount"
+        :key="i"
+        class="skeleton-item"
+        :style="{ height: skeletonHeights[i - 1] + 'px' }"
+      >
+        <div class="skeleton-shimmer"></div>
+      </div>
     </div>
 
     <!-- 瀑布流布局 -->
@@ -130,8 +140,44 @@ const displayedImages = ref([])
 const containerRef = ref(null)
 const columnCount = ref(4)
 const columnHeights = ref([])
+const containerWidth = ref(1200)
+
+// 骨架屏数量和宽高比（模拟真实图片比例分布）
+const skeletonCount = 20
+// 宽高比数组（height/width），模拟不同比例的图片
+const skeletonRatios = [
+  0.75, 1.2, 0.6, 1.5, 0.8,
+  1.33, 0.67, 1.0, 1.4, 0.7,
+  0.85, 1.6, 0.9, 1.25, 0.65,
+  1.45, 0.72, 1.1, 0.55, 1.35
+]
+
+// 根据容器宽度和比例计算骨架屏高度
+const skeletonContainerRef = ref(null)
+
+const getSkeletonWidth = () => {
+  const gap = 15
+  return (containerWidth.value - gap * (columnCount.value - 1)) / columnCount.value
+}
+
+const skeletonHeights = computed(() => {
+  const width = getSkeletonWidth()
+  return skeletonRatios.map(ratio => Math.round(width * ratio))
+})
+
+// 监听 loading 状态变化，确保骨架屏显示时宽度正确
+watch(() => props.loading, (isLoading) => {
+  if (isLoading) {
+    // 骨架屏显示时，使用窗口宽度或预设宽度
+    const winWidth = window.innerWidth
+    const newCount = getColumnCount(winWidth)
+    columnCount.value = newCount
+    containerWidth.value = winWidth
+  }
+}, { immediate: true })
 
 const getColumnCount = (width) => {
+  containerWidth.value = width
   if (width >= 1200) return 4
   if (width >= 768) return 3
   if (width >= 480) return 2
@@ -228,15 +274,19 @@ const getPreviewUrl = (image) => {
   const ts = isPending && retryKeys.value > 0 ? `&t=${retryKeys.value}` : ''
   
   if (props.sourceMode === 'local') {
+    // 重试后或已缓存的图片，优先使用缓存的预览图
     if (isPending && image.local_preview_path) {
       return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}?t=${retryKeys.value}`
     }
+    // 重试后没有预览图但有原图，生成缩略图
     if (isPending && image.local_file_path) {
       return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${ts}`
     }
+    // 省流模式且未缓存，不加载图片
     if (props.saveDataMode) {
       return ''
     }
+    // 非省流模式，正常显示
     if (image.local_preview_path) {
       return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}`
     }
@@ -245,6 +295,7 @@ const getPreviewUrl = (image) => {
     }
     return ''
   }
+  // 在线模式
   if (props.saveDataMode && !isPending) {
     return ''
   }
@@ -330,12 +381,41 @@ onUnmounted(() => {
   min-height: 400px;
 }
 
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
+.skeleton-container {
+  column-gap: 15px;
+}
+
+.skeleton-item {
+  break-inside: avoid;
+  margin-bottom: 15px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .waterfall-container {
