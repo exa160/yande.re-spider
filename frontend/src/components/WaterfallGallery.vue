@@ -308,8 +308,9 @@ const isSelected = (image) => {
 }
 
 const handleImageClick = (image) => {
+  // 如果刚完成长按选择，忽略这次点击
+  // isLongPress 会在 handleLongPress 的 setTimeout 中自动重置
   if (isLongPress.value) {
-    isLongPress.value = false
     return
   }
   emit('image-click', image)
@@ -321,6 +322,11 @@ const handleLongPress = (image) => {
   isLongPress.value = true
   emit('multi-select-start')
   handleSelect(image, !isSelected(image))
+  
+  // 延迟重置isLongPress，让点击事件能正确检测到长按状态
+  setTimeout(() => {
+    isLongPress.value = false
+  }, 300)
 }
 
 // 触控开始
@@ -339,6 +345,9 @@ const handleTouchStart = (image, event) => {
   
   longPressTimer.value = setTimeout(() => {
     handleLongPress(image)
+    // 长按成功后阻止后续的点击事件
+    event.stopPropagation()
+    event.preventDefault()
   }, LONG_PRESS_DURATION)
 }
 
@@ -371,13 +380,13 @@ const handleTouchMove = (image, event) => {
   }
 }
 
-// 触控结束 - 保持聚焦状态不清除
+// 触控结束
 const handleTouchEnd = (image) => {
   if (longPressTimer.value) {
     clearTimeout(longPressTimer.value)
     longPressTimer.value = null
   }
-  // 触摸结束后保持聚焦状态，让用户能看到当前聚焦的图片
+  // isLongPress 会在 handleLongPress 的 setTimeout 中重置
 }
 
 const handleSelect = (image, checked) => {
