@@ -114,6 +114,7 @@ class YandeDataRepository:
         file_type: Optional[str] = None,
         sort_by: str = "created_at",
         sort_order: str = "desc",
+        downloaded_only: bool = False,
     ) -> Tuple[List[dict], int]:
         Model = self._get_model()
         query_stmt = select(Model)
@@ -158,6 +159,10 @@ class YandeDataRepository:
 
         if file_type:
             query_stmt = query_stmt.filter(Model.file_ext == file_type.lower())
+
+        if downloaded_only:
+            query_stmt = query_stmt.filter(Model.down_flag == True)
+            count_stmt = count_stmt.filter(Model.down_flag == True)
 
         sort_column = getattr(Model, sort_by, Model.id)
         if sort_order.lower() == "desc":

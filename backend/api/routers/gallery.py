@@ -100,6 +100,7 @@ def query_local_database(params: dict) -> tuple[List[dict], int]:
         file_type=params.get("file_type"),
         sort_by=params.get("sort_by", "created_at"),
         sort_order=params.get("sort_order", "desc"),
+        downloaded_only=True,
     )
     return images, total
 
