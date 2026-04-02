@@ -25,16 +25,18 @@
         class="waterfall-item"
         :class="{ 
           'selected': isSelected(image),
-          'image-loaded': pendingImages.has(image.id) || image.local_preview_path
+          'image-loaded': pendingImages.has(image.id) || image.local_preview_path,
+          'touch-focused': touchFocusedId === image.id
         }"
         @click="handleImageClick(image)"
+        @touchstart="handleTouchStart(image, $event)"
+        @touchmove="handleTouchMove(image, $event)"
+        @touchend="handleTouchEnd(image)"
+        @contextmenu.prevent="handleLongPress(image)"
       >
-        <!-- 选择框 -->
-        <div v-if="selectable" class="selection-checkbox" @click.stop>
-          <el-checkbox
-            :model-value="isSelected(image)"
-            @change="(checked) => handleSelect(image, checked)"
-          />
+        <!-- 长按选择提示 -->
+        <div v-if="isSelected(image)" class="selection-indicator">
+          <el-icon><Check /></el-icon>
         </div>
 
         <!-- 图片 -->
@@ -64,17 +66,15 @@
           <el-icon v-else><RefreshRight /></el-icon>
         </div>
 
-        <!-- 图片信息 -->
-        <div class="image-info">
-          <div class="image-id">ID: {{ image.id }}</div>
-          <div class="image-size">{{ image.width }} x {{ image.height }}</div>
-          <div class="image-rating">
-            <el-tag :type="getRatingType(image.rating)" size="small">
+        <!-- 图片信息悬浮层 -->
+        <div class="image-info-overlay">
+          <div class="image-info-content">
+            <span class="info-id">ID: {{ image.id }}</span>
+            <span class="info-size">{{ image.width }}x{{ image.height }}</span>
+            <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
               {{ image.rating }}
             </el-tag>
-          </div>
-          <div v-if="image.local_file_path || image.local_preview_path" class="downloaded-badge">
-            <el-icon><Check /></el-icon>
+            <div v-if="image.local_file_path || image.local_preview_path" class="downloaded-dot"></div>
           </div>
         </div>
 
@@ -132,7 +132,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['image-click', 'image-select', 'load-more'])
+const emit = defineEmits(['image-click', 'image-select', 'load-more', 'multi-select-start'])
 
 const loadingMore = ref(false)
 const failedImages = ref(new Set())
@@ -140,6 +140,12 @@ const pendingImages = ref(new Set())
 const retryKeys = ref(0)
 const retryingImages = ref(new Set())
 const displayedImages = ref([])
+
+// 长按选择相关
+const touchFocusedId = ref(null)
+const longPressTimer = ref(null)
+const isLongPress = ref(false)
+const LONG_PRESS_DURATION = 500
 
 // 懒加载：追踪已进入可视区的图片
 const visibleImages = ref(new Set())
@@ -300,7 +306,66 @@ const isSelected = (image) => {
 }
 
 const handleImageClick = (image) => {
+  if (isLongPress.value) {
+    isLongPress.value = false
+    return
+  }
   emit('image-click', image)
+}
+
+// 长按处理
+const handleLongPress = (image) => {
+  if (!props.selectable) return
+  isLongPress.value = true
+  emit('multi-select-start')
+  handleSelect(image, !isSelected(image))
+}
+
+// 触控开始
+const handleTouchStart = (image, event) => {
+  if (!props.selectable) return
+  isLongPress.value = false
+  touchFocusedId.value = image.id
+  
+  longPressTimer.value = setTimeout(() => {
+    handleLongPress(image)
+  }, LONG_PRESS_DURATION)
+}
+
+// 触控移动 - 追踪触摸位置，聚焦当前触摸的图片
+const handleTouchMove = (image, event) => {
+  if (!props.selectable || !event.touches || event.touches.length === 0) return
+  
+  // 清除长按计时器
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  
+  const touch = event.touches[0]
+  const target = document.elementFromPoint(touch.clientX, touch.clientY)
+  
+  if (target) {
+    const waterfallItem = target.closest('.waterfall-item')
+    if (waterfallItem) {
+      const imageId = parseInt(waterfallItem.dataset.imageId)
+      if (imageId && imageId !== touchFocusedId.value) {
+        touchFocusedId.value = imageId
+      }
+    }
+  }
+}
+
+// 触控结束
+const handleTouchEnd = (image) => {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  
+  setTimeout(() => {
+    touchFocusedId.value = null
+  }, 300)
 }
 
 const handleSelect = (image, checked) => {
@@ -508,6 +573,12 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px #409EFF;
 }
 
+.waterfall-item.touch-focused {
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.5);
+  z-index: 10;
+}
+
 .waterfall-item .el-image {
   width: 100%;
   display: block;
@@ -551,24 +622,22 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-.selection-checkbox {
+/* 选中指示器 - 右上角圆形勾选 */
+.selection-indicator {
   position: absolute;
   top: 10px;
-  left: 10px;
+  right: 10px;
   z-index: 10;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  padding: 2px;
-}
-
-.selection-checkbox :deep(.el-checkbox__inner) {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.selection-checkbox :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-  background-color: rgba(64, 158, 255, 0.7);
-  border-color: rgba(64, 158, 255, 0.7);
+  width: 24px;
+  height: 24px;
+  background: rgba(64, 158, 255, 0.85);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .selection-overlay {
@@ -577,7 +646,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(64, 158, 255, 0.2);
+  background: rgba(64, 158, 255, 0.15);
   pointer-events: none;
 }
 
@@ -600,43 +669,48 @@ onUnmounted(() => {
   background: var(--skeleton-bg, #f0f0f0);
 }
 
-.image-info {
+/* 图片信息悬浮层 */
+.image-info-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
   color: white;
-  padding: 10px;
-  font-size: 12px;
+  padding: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
-.image-id {
-  font-weight: bold;
-  margin-bottom: 5px;
+.waterfall-item:hover .image-info-overlay {
+  opacity: 1;
 }
 
-.image-size {
-  margin-bottom: 5px;
-}
-
-.downloaded-badge {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background: rgba(103, 194, 58, 0.9);
-  color: white;
-  border-radius: 12px;
-  padding: 4px 10px;
-  font-size: 12px;
+.image-info-content {
   display: flex;
   align-items: center;
-  gap: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  gap: 8px;
+  font-size: 11px;
 }
 
-.downloaded-badge .el-icon {
-  font-size: 14px;
+.info-id {
+  font-weight: bold;
+}
+
+.info-size {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.info-rating {
+  font-size: 10px;
+}
+
+.downloaded-dot {
+  width: 8px;
+  height: 8px;
+  background: #67C23A;
+  border-radius: 50%;
+  margin-left: auto;
 }
 
 .retry-button {
