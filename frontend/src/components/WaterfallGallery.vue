@@ -356,16 +356,13 @@ const handleTouchMove = (image, event) => {
   }
 }
 
-// 触控结束
+// 触控结束 - 保持聚焦状态不清除
 const handleTouchEnd = (image) => {
   if (longPressTimer.value) {
     clearTimeout(longPressTimer.value)
     longPressTimer.value = null
   }
-  
-  setTimeout(() => {
-    touchFocusedId.value = null
-  }, 300)
+  // 触摸结束后保持聚焦状态，让用户能看到当前聚焦的图片
 }
 
 const handleSelect = (image, checked) => {
@@ -563,6 +560,9 @@ onUnmounted(() => {
   border-radius: 8px;
   overflow: hidden;
   transition: transform 0.3s;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .waterfall-item:hover {
@@ -575,7 +575,6 @@ onUnmounted(() => {
 
 .waterfall-item.touch-focused {
   transform: scale(1.02);
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.5);
   z-index: 10;
 }
 
@@ -669,7 +668,7 @@ onUnmounted(() => {
   background: var(--skeleton-bg, #f0f0f0);
 }
 
-/* 图片信息悬浮层 */
+/* 图片信息悬浮层 - 始终显示 */
 .image-info-overlay {
   position: absolute;
   bottom: 0;
@@ -678,12 +677,6 @@ onUnmounted(() => {
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
   color: white;
   padding: 8px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.waterfall-item:hover .image-info-overlay {
-  opacity: 1;
 }
 
 .image-info-content {
