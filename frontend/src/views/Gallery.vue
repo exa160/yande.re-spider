@@ -67,21 +67,23 @@
       />
     </div>
 
-    <!-- 右下角多选操作栏 -->
+    <!-- 左下角多选操作栏 -->
     <transition name="el-fade-in-linear">
       <div v-if="selectedImages.length > 0" class="multi-select-actions">
-        <div class="action-buttons">
-          <el-button type="primary" circle @click="handleSelectAll" class="action-btn">
-            <el-icon><Select /></el-icon>
-          </el-button>
-          <el-button type="primary" circle @click="batchDownload" class="action-btn">
+        <div class="action-column">
+          <el-button type="primary" circle @click="batchDownload" class="action-btn download-btn-large">
             <el-icon><Download /></el-icon>
+          </el-button>
+          <div class="selection-count">{{ selectedImages.length }}</div>
+        </div>
+        <div class="action-buttons-vertical">
+          <el-button circle @click="handleSelectAll" class="action-btn">
+            <el-icon><Select /></el-icon>
           </el-button>
           <el-button circle @click="selectedImages = []" class="action-btn">
             <el-icon><Close /></el-icon>
           </el-button>
         </div>
-        <div class="selection-count">{{ selectedImages.length }}</div>
       </div>
     </transition>
 
@@ -126,10 +128,41 @@
         <!-- 底部半透明悬浮信息面板 -->
         <div class="preview-info-overlay" @click="toggleInfoPanel">
           <div class="info-toggle-bar">
-            <div class="toggle-icon">
-              <el-icon><ArrowUp v-if="!infoPanelExpanded" /><ArrowDown v-else /></el-icon>
+            <div class="toggle-bar-left">
+              <el-button 
+                v-if="!currentImage.is_downloaded"
+                type="primary" 
+                size="small" 
+                @click.stop="handleDownload" 
+                :loading="downloading" 
+                class="download-action-btn"
+              >
+                <el-icon><Download /></el-icon>
+                下载原图
+              </el-button>
+              <template v-else>
+                <el-button type="success" size="small" disabled>
+                  <el-icon><Check /></el-icon>
+                  已下载
+                </el-button>
+                <el-button 
+                  size="small" 
+                  @click.stop="handleDownload" 
+                  :loading="downloading" 
+                  class="re-download-btn"
+                  title="重新下载"
+                >
+                  <el-icon><Download /></el-icon>
+                </el-button>
+              </template>
             </div>
-            <span class="toggle-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+            <div class="toggle-bar-center">
+              <div class="toggle-icon">
+                <el-icon><ArrowUp v-if="!infoPanelExpanded" /><ArrowDown v-else /></el-icon>
+              </div>
+              <span class="toggle-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+            </div>
+            <div class="toggle-bar-right"></div>
           </div>
           
           <transition name="slide-up">
@@ -165,17 +198,6 @@
                     {{ tag }}
                   </el-tag>
                 </div>
-              </div>
-              
-              <div class="action-buttons">
-                <el-button type="primary" @click.stop="handleDownload" :loading="downloading" class="download-btn">
-                  <el-icon><Download /></el-icon>
-                  下载原图
-                </el-button>
-                <el-button v-if="currentImage.is_downloaded" type="success" disabled>
-                  <el-icon><Check /></el-icon>
-                  已下载
-                </el-button>
               </div>
             </div>
           </transition>
@@ -591,19 +613,32 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   overflow-y: auto;
 }
 
-/* 右下角多选操作按钮 */
+/* 左下角多选操作按钮 */
 .multi-select-actions {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 80px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12px;
+  z-index: 1000;
+}
+
+.action-column {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  z-index: 1000;
 }
 
-.action-buttons {
+.download-btn-large {
+  width: 52px;
+  height: 52px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.action-buttons-vertical {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -625,7 +660,8 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-html.dark-mode .action-btn {
+html.dark-mode .action-btn,
+html.dark-mode .download-btn-large {
   background: var(--bg-secondary);
   border-color: var(--border-color);
   color: var(--text-primary);
@@ -732,11 +768,27 @@ html.dark-mode .selection-count {
 .info-toggle-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
+  justify-content: space-between;
+  padding: 12px 16px;
   cursor: pointer;
   user-select: none;
+}
+
+.toggle-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.toggle-bar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-bar-right {
+  flex: 1;
 }
 
 .toggle-icon {
@@ -749,6 +801,21 @@ html.dark-mode .selection-count {
 .toggle-text {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.download-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.re-download-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .info-panel-content {
@@ -905,6 +972,17 @@ html.dark-mode .tags-label {
 }
 
 html.dark-mode .preview-toolbar-right :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html.dark-mode .toggle-icon,
+html.dark-mode .toggle-text {
+  color: var(--text-secondary);
+}
+
+html.dark-mode .re-download-btn {
   background: var(--bg-tertiary);
   border-color: var(--border-color);
   color: var(--text-primary);
