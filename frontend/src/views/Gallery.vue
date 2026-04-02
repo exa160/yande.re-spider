@@ -50,25 +50,6 @@
       </div>
     </div>
 
-    <!-- 批量选择工具栏 -->
-    <div v-if="querySource === 'yande' && selectedImages.length > 0" class="selection-toolbar">
-      <el-checkbox 
-        :indeterminate="isIndeterminate" 
-        v-model="selectAll" 
-        @change="handleSelectAll"
-      >
-        全选当页
-      </el-checkbox>
-      <span class="selection-info">已选择 {{ selectedImages.length }} 张图片</span>
-      <el-button type="primary" size="small" @click="batchDownload">
-        <el-icon><Download /></el-icon>
-        批量下载 ({{ selectedImages.length }})
-      </el-button>
-      <el-button size="small" @click="selectedImages = []">
-        取消
-      </el-button>
-    </div>
-
     <!-- 瀑布流图库组件 -->
     <div class="gallery-content">
       <WaterfallGallery
@@ -85,6 +66,24 @@
         @multi-select-start="handleMultiSelectStart"
       />
     </div>
+
+    <!-- 右下角多选操作栏 -->
+    <transition name="el-fade-in-linear">
+      <div v-if="selectedImages.length > 0" class="multi-select-actions">
+        <div class="action-buttons">
+          <el-button type="primary" circle @click="handleSelectAll" class="action-btn">
+            <el-icon><Select /></el-icon>
+          </el-button>
+          <el-button type="primary" circle @click="batchDownload" class="action-btn">
+            <el-icon><Download /></el-icon>
+          </el-button>
+          <el-button circle @click="selectedImages = []" class="action-btn">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+        <div class="selection-count">{{ selectedImages.length }}</div>
+      </div>
+    </transition>
 
     <!-- 图片预览对话框 - 无框样式 -->
     <el-dialog
@@ -202,7 +201,7 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Check, Connection, Setting, Sunny, Moon, Close } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
@@ -534,14 +533,14 @@ html.dark-mode .mode-buttons :deep(.el-button--primary) {
 
 /* 深色模式下省流按钮 */
 html.dark-mode .toolbar-left :deep(.el-button--warning) {
-  background: #8B5A00;
-  border-color: #8B5A00;
+  background: #CC5500;
+  border-color: #CC5500;
   color: white;
 }
 
 html.dark-mode .toolbar-left :deep(.el-button--warning:hover) {
-  background: #A06900;
-  border-color: #A06900;
+  background: #DD6600;
+  border-color: #DD6600;
   color: white;
 }
 
@@ -576,6 +575,56 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   flex: 1;
   padding: 15px 20px;
   overflow-y: auto;
+}
+
+/* 右下角多选操作按钮 */
+.multi-select-actions {
+  position: fixed;
+  right: 20px;
+  bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 44px;
+  height: 44px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.selection-count {
+  background: var(--el-color-primary);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+html.dark-mode .action-btn {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html.dark-mode .action-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+html.dark-mode .selection-count {
+  background: var(--el-color-primary);
 }
 
 /* 无框预览对话框样式 */
