@@ -1,46 +1,57 @@
 <template>
   <div class="gallery-page">
-    <!-- 数据源选择工具栏 -->
-    <div class="source-toolbar">
-      <el-card shadow="never" class="source-card">
-        <div class="source-controls">
-          <el-switch
-            v-model="querySource"
-            active-text="在线 (yande.re)"
-            inactive-text="本地 (已下载)"
-            active-value="yande"
-            inactive-value="local"
-            @change="handleSourceChange"
-          />
-          <el-divider direction="vertical" />
-          <el-tooltip content="开启后不加载远程缩略图，节省流量" placement="bottom">
-            <el-switch
-              v-model="saveDataMode"
-              active-text="省流"
-              inactive-text=""
-            />
-          </el-tooltip>
-          <el-divider direction="vertical" />
-          <span class="source-hint">
-            <el-icon><InfoFilled /></el-icon>
-            {{ querySource === 'yande' ? '从 yande.re 获取最新图片' : '从本地数据库读取已下载图片' }}
-          </span>
-          <el-divider direction="vertical" />
+    <!-- 顶部工具栏 -->
+    <div class="top-toolbar">
+      <!-- 搜索框 + 模式按钮 -->
+      <div class="toolbar-left">
+        <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
+        <el-button-group class="mode-buttons">
           <el-button 
-            v-if="querySource === 'yande' && selectedImages.length > 0" 
-            type="primary" 
-            size="small"
-            @click="batchDownload"
+            :type="querySource === 'yande' ? 'primary' : ''"
+            @click="handleSourceChange('yande')"
           >
-            <el-icon><Download /></el-icon>
-            批量下载 ({{ selectedImages.length }})
+            在线
           </el-button>
-        </div>
-      </el-card>
+          <el-button 
+            :type="querySource === 'local' ? 'primary' : ''"
+            @click="handleSourceChange('local')"
+          >
+            本地
+          </el-button>
+        </el-button-group>
+        <el-tooltip content="省流模式">
+          <el-button 
+            :type="saveDataMode ? 'warning' : ''"
+            circle
+            @click="saveDataMode = !saveDataMode"
+          >
+            <el-icon><Connection /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
+      <!-- 右侧工具按钮 -->
+      <div class="toolbar-right">
+        <el-tooltip content="夜间模式">
+          <el-button circle @click="toggleDarkMode">
+            <el-icon v-if="isDarkMode"><Sunny /></el-icon>
+            <el-icon v-else><Moon /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="下载管理">
+          <el-button circle @click="showDownloadDialog = true">
+            <el-icon><Download /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="配置">
+          <el-button circle @click="showConfigDialog = true">
+            <el-icon><Setting /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
     </div>
 
     <!-- 批量选择工具栏 -->
-    <div v-if="querySource === 'yande'" class="selection-toolbar">
+    <div v-if="querySource === 'yande' && selectedImages.length > 0" class="selection-toolbar">
       <el-checkbox 
         :indeterminate="isIndeterminate" 
         v-model="selectAll" 
@@ -49,29 +60,39 @@
         全选当页
       </el-checkbox>
       <span class="selection-info">已选择 {{ selectedImages.length }} 张图片</span>
+      <el-button type="primary" size="small" @click="batchDownload">
+        <el-icon><Download /></el-icon>
+        批量下载 ({{ selectedImages.length }})
+      </el-button>
     </div>
 
     <!-- 瀑布流图库组件 -->
-    <WaterfallGallery
-      :images="images"
-      :loading="loading"
-      :has-more="hasMore"
-      :selected-images="selectedImages"
-      :selectable="querySource === 'yande'"
-      :source-mode="querySource"
-      :save-data-mode="saveDataMode"
-      @image-click="handleImageClick"
-      @image-select="handleImageSelect"
-      @load-more="loadMore"
-    />
+    <div class="gallery-content">
+      <WaterfallGallery
+        :images="images"
+        :loading="loading"
+        :has-more="hasMore"
+        :selected-images="selectedImages"
+        :selectable="querySource === 'yande'"
+        :source-mode="querySource"
+        :save-data-mode="saveDataMode"
+        @image-click="handleImageClick"
+        @image-select="handleImageSelect"
+        @load-more="loadMore"
+      />
+    </div>
 
     <!-- 图片预览对话框 -->
     <el-dialog
       v-model="previewVisible"
-      :title="`图片详情 - ID: ${currentImage?.id}`"
       width="80%"
       top="5vh"
+      :show-close="true"
+      class="preview-dialog"
     >
+      <template #header>
+        <span>图片详情 - ID: {{ currentImage?.id }}</span>
+      </template>
       <div v-if="currentImage" class="preview-content">
         <el-row :gutter="20">
           <el-col :span="16">
@@ -139,17 +160,36 @@
       </div>
     </el-dialog>
 
-    <!-- 高级搜索组件 - 固定在底部 -->
-    <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
+    <!-- 下载管理对话框 -->
+    <el-dialog
+      v-model="showDownloadDialog"
+      title="下载管理"
+      width="80%"
+      class="center-dialog"
+    >
+      <DownloadManager />
+    </el-dialog>
+
+    <!-- 配置对话框 -->
+    <el-dialog
+      v-model="showConfigDialog"
+      title="配置"
+      width="80%"
+      class="center-dialog"
+    >
+      <ConfigPanel />
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Check, InfoFilled } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
+import DownloadManager from '@/views/Download.vue'
+import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
 
 const images = ref([])
@@ -157,8 +197,10 @@ const loading = ref(false)
 const hasMore = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
-const querySource = ref('local')
-const saveDataMode = ref(true)
+
+// 从 localStorage 读取保存的设置，默认本地模式
+const querySource = ref(localStorage.getItem('gallery_source') || 'local')
+const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 
 const previewVisible = ref(false)
 const currentImage = ref(null)
@@ -169,6 +211,32 @@ const tagsExpanded = ref(false)
 const selectedImages = ref([])
 const selectAll = ref(false)
 const isIndeterminate = ref(false)
+
+// 弹框状态
+const showDownloadDialog = ref(false)
+const showConfigDialog = ref(false)
+
+// 夜间模式
+const isDarkMode = ref(localStorage.getItem('dark_mode') === 'true')
+const toggleDarkMode = () => {
+  isDarkMode.value = !isDarkMode.value
+  localStorage.setItem('dark_mode', isDarkMode.value ? 'true' : 'false')
+  document.documentElement.classList.toggle('dark-mode', isDarkMode.value)
+}
+
+// 监听模式变化，保存到 localStorage
+const stopSourceWatch = watch(querySource, (val) => {
+  localStorage.setItem('gallery_source', val)
+})
+
+const stopSaveDataWatch = watch(saveDataMode, (val) => {
+  localStorage.setItem('gallery_saveData', val ? 'true' : 'false')
+})
+
+onUnmounted(() => {
+  stopSourceWatch()
+  stopSaveDataWatch()
+})
 
 const handleSearch = async (searchData) => {
   let params
@@ -371,50 +439,122 @@ onMounted(() => {
 
 <style scoped>
 .gallery-page {
-  padding: 20px;
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
 }
 
-.source-toolbar {
-  margin-bottom: 15px;
+.top-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  z-index: 100;
 }
 
-.source-card {
-  background: #f5f7fa;
-  border: 1px solid #e4e7ed;
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
 }
 
-.source-card :deep(.el-card__body) {
-  padding: 10px 20px;
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-.source-controls {
+.toolbar-right :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.toolbar-right :deep(.el-button:hover) {
+  background: var(--bg-primary);
+  border-color: #409EFF;
+  color: #409EFF;
+}
+
+.mode-buttons {
+  flex-shrink: 0;
+}
+
+.mode-buttons :deep(.el-button) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.mode-buttons :deep(.el-button:hover) {
+  color: #409EFF;
+  border-color: #409EFF;
+}
+
+.mode-buttons :deep(.el-button--primary) {
+  background: #409EFF;
+  border-color: #409EFF;
+  color: white;
+}
+
+/* 深色模式下选中按钮 */
+html.dark-mode .mode-buttons :deep(.el-button--primary) {
+  background: #1a4fc4;
+  border-color: #1a4fc4;
+  color: white;
+}
+
+/* 深色模式下省流按钮 */
+html.dark-mode .toolbar-left :deep(.el-button--warning) {
+  background: #8B5A00;
+  border-color: #8B5A00;
+  color: white;
+}
+
+html.dark-mode .toolbar-left :deep(.el-button--warning:hover) {
+  background: #A06900;
+  border-color: #A06900;
+  color: white;
+}
+
+/* 深色模式下省流按钮未选中状态 */
+html.dark-mode .toolbar-left :deep(.el-button.is-circle) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
+  background: var(--bg-primary);
+  border-color: #E6A23C;
+  color: #E6A23C;
+}
+
+.selection-toolbar {
+  padding: 8px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   gap: 15px;
 }
 
-.source-hint {
-  font-size: 13px;
-  color: #909399;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.selection-toolbar {
-  margin-bottom: 15px;
-  padding: 10px 15px;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
 .selection-info {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
+}
+
+.gallery-content {
+  flex: 1;
+  padding: 15px 20px;
+  overflow-y: auto;
 }
 
 .preview-content {
@@ -434,5 +574,46 @@ onMounted(() => {
 .tags-list.collapsed {
   max-height: 120px;
   overflow: hidden;
+}
+
+.preview-dialog :deep(.el-dialog__header) {
+  margin-right: 0;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.preview-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+  background: var(--bg-secondary);
+}
+
+.center-dialog {
+  border-radius: 12px;
+}
+
+.center-dialog :deep(.el-dialog) {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.center-dialog :deep(.el-dialog__header) {
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.center-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+}
+
+.center-dialog :deep(.el-dialog__footer) {
+  padding: 15px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
 }
 </style>
