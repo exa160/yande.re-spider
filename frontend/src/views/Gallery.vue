@@ -129,22 +129,19 @@
         <div class="preview-info-overlay" @click="toggleInfoPanel">
           <div class="info-toggle-bar">
             <div class="toggle-bar-left">
-              <el-button 
-                v-if="!currentImage.is_downloaded"
-                type="primary" 
-                size="small" 
-                @click.stop="handleDownload" 
-                :loading="downloading" 
-                class="download-action-btn"
-              >
-                <el-icon><Download /></el-icon>
-                下载原图
-              </el-button>
-              <template v-else>
-                <el-button type="success" size="small" disabled>
-                  <el-icon><Check /></el-icon>
-                  已下载
+              <template v-if="!currentImage.is_downloaded">
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  @click.stop="handleDownload" 
+                  :loading="downloading" 
+                  class="download-action-btn"
+                >
+                  <el-icon><Download /></el-icon>
+                  下载原图
                 </el-button>
+              </template>
+              <template v-else>
                 <el-button 
                   size="small" 
                   @click.stop="handleDownload" 
@@ -154,15 +151,16 @@
                 >
                   <el-icon><Download /></el-icon>
                 </el-button>
+                <el-button type="success" size="small" disabled class="downloaded-btn">
+                  <el-icon><Check /></el-icon>
+                  已下载
+                </el-button>
               </template>
             </div>
-            <div class="toggle-bar-center">
-              <div class="toggle-icon">
-                <el-icon><ArrowUp v-if="!infoPanelExpanded" /><ArrowDown v-else /></el-icon>
-              </div>
+            <div class="toggle-bar-right">
               <span class="toggle-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+              <el-icon class="toggle-icon"><ArrowUp v-if="!infoPanelExpanded" /><ArrowDown v-else /></el-icon>
             </div>
-            <div class="toggle-bar-right"></div>
           </div>
           
           <transition name="slide-up">
@@ -788,7 +786,10 @@ html.dark-mode .selection-count {
 }
 
 .toggle-bar-right {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
 }
 
 .toggle-icon {
@@ -804,18 +805,31 @@ html.dark-mode .selection-count {
 }
 
 .download-action-btn {
+  height: 28px;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
+.download-btn {
+  height: 28px;
+}
+
 .re-download-btn {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
+  margin-left: -1px;
+  border-left: none;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.downloaded-btn {
+  height: 28px;
+  margin-left: -1px;
+  border-left: none;
 }
 
 .info-panel-content {
