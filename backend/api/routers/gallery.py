@@ -42,7 +42,7 @@ class GalleryLoadRequest(BaseModel):
     page: int = Field(1, ge=1, description="页码")
     page_size: int = Field(20, ge=1, le=100, description="每页数量")
     tags: Optional[str] = Field(None, description="标签过滤")
-    rating: Optional[str] = Field(None, description="评分过滤")
+    ratings: List[str] = Field(default_factory=list, description="评分过滤列表")
     author: Optional[str] = Field(None, description="作者过滤")
     min_width: Optional[int] = Field(None, description="最小宽度")
     max_width: Optional[int] = Field(None, description="最大宽度")
@@ -50,9 +50,11 @@ class GalleryLoadRequest(BaseModel):
     max_height: Optional[int] = Field(None, description="最大高度")
     min_file_size: Optional[int] = Field(None, description="最小文件大小(KB)")
     max_file_size: Optional[int] = Field(None, description="最大文件大小(KB)")
-    file_type: Optional[str] = Field(None, description="文件类型")
-    sort_by: Optional[str] = Field("created_at", description="排序字段")
-    sort_order: Optional[str] = Field("desc", description="排序方向")
+    file_types: List[str] = Field(default_factory=list, description="文件类型列表")
+    min_score: Optional[int] = Field(None, description="最小评分")
+    max_score: Optional[int] = Field(None, description="最大评分")
+    order: Optional[str] = Field("date", description="排序: date, id, score")
+    sort_order: Optional[str] = Field("desc", description="排序方向: desc, asc")
     source: Optional[str] = Field(
         "local", description="数据源: yande=在线, local=本地数据库"
     )
@@ -107,29 +109,31 @@ def query_local_database(params: dict) -> tuple[List[dict], int]:
 
 def query_yande_api(params: dict) -> tuple[List[dict], int]:
     from backend.dao.yande_data import YandeDataRepository, _check_local_file
-    from backend.services.advanced_search import build_search_string
     from backend.dao.database import MariaDBClient
-    from backend.models.yande import Rating
+    from backend.models.yande import Rating, YandeSearchTags
     from datetime import datetime as dt
 
     yande_api = YandeApi()
     page = params.get("page", 1)
 
-    api_tags = build_search_string(
-        tags=params.get("tags", ""),
-        author=params.get("author"),
+    search_tags = YandeSearchTags(
         min_width=params.get("min_width"),
         max_width=params.get("max_width"),
         min_height=params.get("min_height"),
         max_height=params.get("max_height"),
-        rating=params.get("rating"),
         min_score=params.get("min_score"),
-        file_type=params.get("file_type"),
-        min_file_size=params.get("min_file_size"),
-        max_file_size=params.get("max_file_size"),
+        max_score=params.get("max_score"),
+        min_filesize=params.get("min_file_size"),
+        max_filesize=params.get("max_file_size"),
+        ratings=params.get("ratings", []),
+        file_exts=params.get("file_types", []),
+        order=params.get("order", "date"),
     )
 
-    success, yande_data = yande_api.get_ranking(page, api_tags)
+    author_tags = params.get("author", "")
+    success, yande_data = yande_api.get_ranking(
+        page, tags=author_tags, search_tags=search_tags
+    )
 
     if not success:
         return [], 0

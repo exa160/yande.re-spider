@@ -71,8 +71,19 @@ class YandePostData(RootModel):
 
 
 class YandeSearchTags(BaseModel):
-    width: str = None
-    rating: Rating = None
+    """Yande.re 高级搜索标签转换模型"""
+
+    min_width: Optional[int] = None
+    max_width: Optional[int] = None
+    min_height: Optional[int] = None
+    max_height: Optional[int] = None
+    min_score: Optional[int] = None
+    max_score: Optional[int] = None
+    min_filesize: Optional[int] = None
+    max_filesize: Optional[int] = None
+    ratings: List[str] = []
+    file_exts: List[str] = []
+    order: str = "date"
 
 
 class YandeRunningConfig(BaseModel):
