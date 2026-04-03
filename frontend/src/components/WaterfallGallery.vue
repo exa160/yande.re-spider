@@ -629,7 +629,6 @@ onUnmounted(() => {
 
 .waterfall-container {
   column-gap: 15px;
-  overflow: hidden;
 }
 
 .waterfall-item {
@@ -639,7 +638,7 @@ onUnmounted(() => {
   cursor: pointer;
   border-radius: 8px;
   overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.3s;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -655,7 +654,6 @@ onUnmounted(() => {
 
 .waterfall-item.touch-focused {
   transform: scale(1.02);
-  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.4);
   z-index: 10;
 }
 
