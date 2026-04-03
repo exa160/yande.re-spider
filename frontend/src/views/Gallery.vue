@@ -609,7 +609,6 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   flex: 1;
   padding: 15px 20px;
   overflow-y: auto;
-  overflow-x: hidden;
 }
 
 /* 左下角多选操作按钮 */
