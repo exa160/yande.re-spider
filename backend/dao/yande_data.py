@@ -141,19 +141,22 @@ class YandeDataRepository:
                 "q": "q",
                 "e": "e",
             }
-            # 支持逗号分隔的多个评分值，使用 OR 逻辑
+            # 支持逗号分隔的多个评分，如 "q,e" 表示 OR 查询
             rating_values = []
             for r in rating.split(","):
-                rv = rating_map.get(r.strip(), r.strip())
-                if rv:
-                    rating_values.append(rv)
+                r = r.strip()
+                if r:
+                    mapped = rating_map.get(r, r)
+                    if mapped:
+                        rating_values.append(mapped)
+
             if rating_values:
                 if len(rating_values) == 1:
                     query_stmt = query_stmt.filter(Model.rating == rating_values[0])
                 else:
-                    query_stmt = query_stmt.filter(
-                        or_(*[Model.rating == rv for rv in rating_values])
-                    )
+                    # OR 查询
+                    rating_filters = [Model.rating == rv for rv in rating_values]
+                    query_stmt = query_stmt.filter(or_(*rating_filters))
 
         if min_width:
             query_stmt = query_stmt.filter(Model.width >= min_width)
@@ -170,15 +173,14 @@ class YandeDataRepository:
             query_stmt = query_stmt.filter(Model.file_size <= max_file_size * 1024)
 
         if file_type:
-            file_exts = [
+            ext_values = [
                 ext.strip().lower() for ext in file_type.split(",") if ext.strip()
             ]
-            if len(file_exts) == 1:
-                query_stmt = query_stmt.filter(Model.file_ext == file_exts[0])
-            elif len(file_exts) > 1:
-                query_stmt = query_stmt.filter(
-                    or_(*[Model.file_ext == ext for ext in file_exts])
-                )
+            if len(ext_values) == 1:
+                query_stmt = query_stmt.filter(Model.file_ext == ext_values[0])
+            elif len(ext_values) > 1:
+                ext_filters = [Model.file_ext == ext for ext in ext_values]
+                query_stmt = query_stmt.filter(or_(*ext_filters))
 
         if downloaded_only:
             query_stmt = query_stmt.filter(Model.down_flag == True)
