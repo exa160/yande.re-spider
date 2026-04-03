@@ -1,8 +1,20 @@
 <template>
   <div class="advanced-query-container">
-    <!-- 收缩状态：右下角圆形按钮 -->
-    <div v-if="collapsed" class="collapsed-button" @click="expand">
-      <el-icon :size="20"><Search /></el-icon>
+    <!-- 收缩状态：展开的搜索栏 -->
+    <div v-if="collapsed" class="collapsed-search-bar">
+      <div class="search-input-wrapper">
+        <el-icon class="search-icon"><Search /></el-icon>
+        <el-input
+          v-model="searchText"
+          placeholder="输入标签搜索..."
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <el-button type="primary" @click="handleSearch" class="search-btn">搜索</el-button>
+      <el-button circle @click="expand" class="expand-btn">
+        <el-icon><Setting /></el-icon>
+      </el-button>
     </div>
 
     <!-- 展开状态 -->
@@ -431,26 +443,43 @@ defineExpose({
   max-width: 900px;
 }
 
-/* 收缩状态按钮 */
-.collapsed-button {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+/* 收缩状态搜索栏 */
+.collapsed-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: var(--bg-secondary);
   backdrop-filter: blur(30px);
   border: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-primary);
+  border-radius: 24px;
+  padding: 8px 8px 8px 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
 }
 
-.collapsed-button:hover {
-  background: var(--bg-primary);
-  transform: scale(1.05);
+.collapsed-search-bar .search-input-wrapper {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.collapsed-search-bar .search-icon {
+  color: var(--text-muted);
+}
+
+.search-btn {
+  border-radius: 20px;
+  padding: 8px 20px;
+}
+
+.expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+}
+
+.expand-btn:hover {
+  color: var(--el-color-primary);
 }
 
 /* 搜索面板 */
