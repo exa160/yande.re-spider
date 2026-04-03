@@ -87,18 +87,18 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 全屏透明浮层，图片自适应 -->
+    <!-- 图片预览对话框 - 尺寸跟随图片 -->
     <el-dialog
       v-model="previewVisible"
       :show-close="false"
       class="preview-immersive-dialog"
       :close-on-click-modal="true"
-      :width="'90%'"
+      :width="'auto'"
       :fullscreen="false"
       top="5vh"
     >
       <div v-if="currentImage" class="preview-immersive">
-        <!-- 顶部信息栏 - 悬浮在图片顶部，减少透明和模糊 -->
+        <!-- 顶部信息栏 - 悬浮在图片顶部 -->
         <div class="immersive-header">
           <div class="header-left">
             <span class="preview-id">ID: {{ currentImage.id }}</span>
@@ -114,7 +114,7 @@
           </div>
         </div>
 
-        <!-- 图片区域 - 填满整个弹框 -->
+        <!-- 图片区域 - 自适应图片尺寸 -->
         <div class="immersive-image-area">
           <el-image
             :src="getDetailUrl(currentImage)"
@@ -689,6 +689,9 @@ html.dark-mode .selection-count {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
   border-radius: 12px;
   overflow: visible;
+  width: auto !important;
+  max-width: 90vw;
+  max-height: 90vh;
 }
 
 .preview-immersive-dialog :deep(.el-dialog__body) {
@@ -698,9 +701,6 @@ html.dark-mode .selection-count {
 
 .preview-immersive {
   position: relative;
-  width: 100%;
-  height: 85vh;
-  max-height: 85vh;
   background: #1a1a1a;
   border-radius: 12px;
   overflow: hidden;
@@ -708,25 +708,23 @@ html.dark-mode .selection-count {
   flex-direction: column;
 }
 
-/* 图片区域 - 完全填满弹框 */
+/* 图片区域 - 自适应图片尺寸 */
 .immersive-image-area {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #1a1a1a;
-  min-height: 0;
   overflow: hidden;
 }
 
 .immersive-image {
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 70vh;
 }
 
 .immersive-image :deep(.el-image__inner) {
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 70vh;
   object-fit: contain;
 }
 
@@ -734,7 +732,7 @@ html.dark-mode .selection-count {
   background: #1a1a1a;
 }
 
-/* 顶部信息栏 - 悬浮在图片顶部，5%透明，减少模糊 */
+/* 顶部信息栏 - 悬浮在图片顶部，减少模糊 */
 .immersive-header {
   position: absolute;
   top: 0;
@@ -744,10 +742,10 @@ html.dark-mode .selection-count {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   border-radius: 12px 12px 0 0;
 }
 
@@ -785,7 +783,7 @@ html.dark-mode .selection-count {
   background: rgba(255, 255, 255, 0.15) !important;
 }
 
-/* 底部操作栏 - 悬浮在图片底部，5%透明 */
+/* 底部操作栏 - 悬浮在图片底部 */
 .immersive-footer {
   position: absolute;
   bottom: 0;
@@ -795,10 +793,10 @@ html.dark-mode .selection-count {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   border-radius: 0 0 12px 12px;
 }
 
@@ -864,15 +862,15 @@ html.dark-mode .selection-count {
 /* 详情面板 - 悬浮在底部操作栏上方，向上展开 */
 .immersive-detail-panel {
   position: absolute;
-  bottom: 48px;
+  bottom: 44px;
   left: 0;
   right: 0;
   z-index: 15;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  max-height: 35vh;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  max-height: 30vh;
   overflow-y: auto;
 }
 
@@ -961,11 +959,11 @@ html.dark-mode .immersive-image-area {
 
 html.dark-mode .immersive-header,
 html.dark-mode .immersive-footer {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 html.dark-mode .immersive-detail-panel {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 /* 浅色模式适配 - 弹框背景 */
@@ -979,11 +977,11 @@ html:not(.dark-mode) .immersive-image-area {
 
 html:not(.dark-mode) .immersive-header,
 html:not(.dark-mode) .immersive-footer {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 html:not(.dark-mode) .immersive-detail-panel {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 html:not(.dark-mode) .preview-id,
@@ -997,28 +995,28 @@ html:not(.dark-mode) .detail-value {
 
 html:not(.dark-mode) .immersive-close-btn,
 html:not(.dark-mode) .immersive-redownload-btn {
-  background: rgba(0, 0, 0, 0.06) !important;
-  border-color: rgba(0, 0, 0, 0.1) !important;
-  color: rgba(0, 0, 0, 0.8) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: rgba(0, 0, 0, 0.7) !important;
 }
 
 html:not(.dark-mode) .immersive-close-btn:hover,
 html:not(.dark-mode) .immersive-redownload-btn:hover {
-  background: rgba(0, 0, 0, 0.12) !important;
+  background: rgba(0, 0, 0, 0.08) !important;
 }
 
 html:not(.dark-mode) .footer-right:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 html:not(.dark-mode) .detail-tag {
-  background: rgba(0, 0, 0, 0.06) !important;
-  border-color: rgba(0, 0, 0, 0.1) !important;
-  color: rgba(0, 0, 0, 0.8) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: rgba(0, 0, 0, 0.7) !important;
 }
 
 html:not(.dark-mode) .detail-tag:hover {
-  background: rgba(0, 0, 0, 0.12) !important;
+  background: rgba(0, 0, 0, 0.08) !important;
 }
 
 /* 中心对话框样式 */
