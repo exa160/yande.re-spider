@@ -87,120 +87,125 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 全屏透明浮层，图片自适应 -->
+    <!-- 图片预览对话框 - 无边框，四周10%边距 -->
     <el-dialog
       v-model="previewVisible"
       :show-close="false"
-      class="preview-immersive-dialog"
+      class="preview-frameless-dialog"
       :close-on-click-modal="true"
-      :width="'94%'"
-      top="2vh"
+      :width="'80%'"
+      top="10vh"
+      bottom="10vh"
     >
-      <div v-if="currentImage" class="preview-immersive">
-        <!-- 顶部信息栏 - 悬浮在图片上方，10%透明 -->
-        <div class="immersive-header">
-          <div class="header-left">
-            <span class="preview-id">ID: {{ currentImage.id }}</span>
-            <el-tag :type="getRatingType(currentImage.rating)" size="small">
-              {{ currentImage.rating }}
-            </el-tag>
-            <span class="preview-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
+      <div v-if="currentImage" class="preview-frameless">
+        <!-- 图片区域 - 顶部信息栏悬浮在图片上方 -->
+        <div class="frameless-image-wrapper">
+          <!-- 顶部信息栏 - 悬浮在图片顶部 -->
+          <div class="frameless-header">
+            <div class="header-left">
+              <span class="preview-id">ID: {{ currentImage.id }}</span>
+              <el-tag :type="getRatingType(currentImage.rating)" size="small">
+                {{ currentImage.rating }}
+              </el-tag>
+              <span class="preview-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
+            </div>
+            <div class="header-right">
+              <el-button circle @click="previewVisible = false" class="frameless-close-btn">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
           </div>
-          <div class="header-right">
-            <el-button circle @click="previewVisible = false" class="immersive-close-btn">
-              <el-icon><Close /></el-icon>
-            </el-button>
-          </div>
-        </div>
 
-        <!-- 图片区域 - 完全透明背景，图片自适应 -->
-        <div class="immersive-image-area">
+          <!-- 图片 -->
           <el-image
             :src="getDetailUrl(currentImage)"
             :preview-src-list="[getDetailUrl(currentImage)]"
             fit="contain"
-            class="immersive-image"
+            class="frameless-image"
             :zoom-rate="1.1"
             :preview-teleported="true"
           />
         </div>
 
-        <!-- 底部操作栏 - 悬浮在图片下方，10%透明 -->
-        <div class="immersive-footer">
-          <div class="footer-left">
-            <template v-if="!currentImage.is_downloaded">
-              <el-button 
-                type="primary" 
-                @click.stop="handleDownload" 
-                :loading="downloading" 
-                class="immersive-download-btn"
-              >
-                <el-icon><Download /></el-icon>
-                下载原图
-              </el-button>
-            </template>
-            <template v-else>
-              <el-button 
-                @click.stop="handleDownload" 
-                :loading="downloading" 
-                class="immersive-redownload-btn"
-                title="重新下载"
-              >
-                <el-icon><Download /></el-icon>
-              </el-button>
-              <el-tag type="success" class="immersive-downloaded-tag">
-                <el-icon><Check /></el-icon>
-                已下载
-              </el-tag>
-            </template>
-          </div>
-          
-          <div class="footer-right" @click="toggleInfoPanel">
-            <span class="footer-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
-            <el-icon class="footer-expand-icon">
-              <ArrowUp v-if="infoPanelExpanded" />
-              <ArrowDown v-else />
-            </el-icon>
-          </div>
-        </div>
-
-        <!-- 详情面板 - 悬浮在底部操作栏下方 -->
-        <transition name="detail-fade">
-          <div v-if="infoPanelExpanded" class="immersive-detail-panel">
-            <div class="detail-grid">
-              <div class="detail-item">
-                <span class="detail-label">大小</span>
-                <span class="detail-value">{{ formatFileSize(currentImage.file_size) }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">作者</span>
-                <span class="detail-value">{{ currentImage.author }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">MD5</span>
-                <span class="detail-value md5">{{ currentImage.md5 }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">时间</span>
-                <span class="detail-value">{{ currentImage.created_at }}</span>
-              </div>
+        <!-- 底部面板 - 半透明，包含操作栏和详情 -->
+        <div class="frameless-bottom-panel">
+          <!-- 操作栏 -->
+          <div class="frameless-actions">
+            <div class="actions-left">
+              <template v-if="!currentImage.is_downloaded">
+                <el-button 
+                  type="primary" 
+                  @click.stop="handleDownload" 
+                  :loading="downloading" 
+                  class="frameless-download-btn"
+                >
+                  <el-icon><Download /></el-icon>
+                  下载原图
+                </el-button>
+              </template>
+              <template v-else>
+                <el-button 
+                  @click.stop="handleDownload" 
+                  :loading="downloading" 
+                  class="frameless-redownload-btn"
+                  title="重新下载"
+                >
+                  <el-icon><Download /></el-icon>
+                </el-button>
+                <el-tag type="success" class="frameless-downloaded-tag">
+                  <el-icon><Check /></el-icon>
+                  已下载
+                </el-tag>
+              </template>
             </div>
             
-            <div class="detail-tags-section">
-              <div class="detail-tags-title">标签 ({{ currentImage.tags?.length || 0 }})</div>
-              <div class="detail-tags-wrap">
-                <el-tag
-                  v-for="tag in currentImage.tags"
-                  :key="tag"
-                  size="default"
-                  class="detail-tag"
-                >
-                  {{ tag }}
-                </el-tag>
-              </div>
+            <div class="actions-right" @click="toggleInfoPanel">
+              <span class="actions-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+              <el-icon class="actions-expand-icon">
+                <ArrowUp v-if="infoPanelExpanded" />
+                <ArrowDown v-else />
+              </el-icon>
             </div>
           </div>
-        </transition>
+
+          <!-- 详情面板 -->
+          <transition name="panel-slide">
+            <div v-if="infoPanelExpanded" class="frameless-detail">
+              <div class="detail-grid">
+                <div class="detail-item">
+                  <span class="detail-label">大小</span>
+                  <span class="detail-value">{{ formatFileSize(currentImage.file_size) }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">作者</span>
+                  <span class="detail-value">{{ currentImage.author }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">MD5</span>
+                  <span class="detail-value md5">{{ currentImage.md5 }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">时间</span>
+                  <span class="detail-value">{{ currentImage.created_at }}</span>
+                </div>
+              </div>
+              
+              <div class="detail-tags-section">
+                <div class="detail-tags-title">标签 ({{ currentImage.tags?.length || 0 }})</div>
+                <div class="detail-tags-wrap">
+                  <el-tag
+                    v-for="tag in currentImage.tags"
+                    :key="tag"
+                    size="default"
+                    class="detail-tag"
+                  >
+                    {{ tag }}
+                  </el-tag>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </div>
       </div>
     </el-dialog>
 
@@ -347,7 +352,7 @@ const loadMore = async () => {
 const handleImageClick = (image) => {
   currentImage.value = image
   tagsExpanded.value = false
-  infoPanelExpanded.value = false
+  infoPanelExpanded.value = true  // 默认展开详情
   previewVisible.value = true
 }
 
@@ -678,33 +683,44 @@ html.dark-mode .selection-count {
   background: var(--el-color-primary);
 }
 
-/* 全屏沉浸式预览对话框 */
-.preview-immersive-dialog {
+/* 无边框预览对话框 */
+.preview-frameless-dialog {
   background: transparent !important;
 }
 
-.preview-immersive-dialog :deep(.el-dialog) {
+.preview-frameless-dialog :deep(.el-dialog) {
   background: transparent !important;
   box-shadow: none !important;
-  border-radius: 8px;
+  border-radius: 0 !important;
+  overflow: hidden !important;
 }
 
-.preview-immersive-dialog :deep(.el-dialog__body) {
-  padding: 0;
-  overflow: hidden;
+.preview-frameless-dialog :deep(.el-dialog__body) {
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
-.preview-immersive {
+.preview-frameless {
   position: relative;
-  background: transparent;
   display: flex;
   flex-direction: column;
-  height: 96vh;
-  max-height: 96vh;
+  height: 80vh;
+  background: rgba(0, 0, 0, 0.85);
 }
 
-/* 顶部信息栏 - 悬浮，10%透明 */
-.immersive-header {
+/* 图片区域 */
+.frameless-image-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 顶部信息栏 - 悬浮在图片上方，轻微半透明 */
+.frameless-header {
   position: absolute;
   top: 0;
   left: 0;
@@ -713,11 +729,10 @@ html.dark-mode .selection-count {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 8px 8px 0 0;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .header-left {
@@ -729,13 +744,12 @@ html.dark-mode .selection-count {
 .preview-id {
   font-weight: bold;
   color: white;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  font-size: 14px;
 }
 
 .preview-size {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.75);
   font-size: 13px;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .header-right {
@@ -744,66 +758,56 @@ html.dark-mode .selection-count {
   gap: 8px;
 }
 
-.immersive-close-btn {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.3) !important;
+.frameless-close-btn {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
   color: white !important;
 }
 
-.immersive-close-btn:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
+.frameless-close-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
 }
 
-/* 图片区域 - 全透明，图片自适应 */
-.immersive-image-area {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  padding: 60px 0;
-  min-height: 0;
-}
-
-.immersive-image {
+/* 图片 */
+.frameless-image {
   max-width: 100%;
   max-height: 100%;
 }
 
-.immersive-image :deep(.el-image__inner) {
+.frameless-image :deep(.el-image__inner) {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
 }
 
-.immersive-image :deep(.el-image__error) {
+.frameless-image :deep(.el-image__error) {
   background: transparent;
 }
 
-/* 底部操作栏 - 悬浮，10%透明 */
-.immersive-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
+/* 底部面板 - 半透明操作栏+详情 */
+.frameless-bottom-panel {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  flex-shrink: 0;
+}
+
+/* 操作栏 */
+.frameless-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 18px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 0 0 8px 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.footer-left {
+.actions-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.footer-right {
+.actions-right {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -813,34 +817,32 @@ html.dark-mode .selection-count {
   transition: background 0.2s;
 }
 
-.footer-right:hover {
+.actions-right:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.footer-expand-text {
+.actions-expand-text {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
-.footer-expand-icon {
+.actions-expand-icon {
   color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
-.immersive-download-btn {
-  background: rgba(64, 158, 255, 0.9) !important;
-  border-color: rgba(64, 158, 255, 0.9) !important;
+.frameless-download-btn {
+  background: rgba(64, 158, 255, 0.85) !important;
+  border-color: rgba(64, 158, 255, 0.85) !important;
   color: white !important;
 }
 
-.immersive-download-btn:hover {
+.frameless-download-btn:hover {
   background: rgba(64, 158, 255, 1) !important;
 }
 
-.immersive-redownload-btn {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.3) !important;
+.frameless-redownload-btn {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
   color: white !important;
   width: 32px;
   height: 32px;
@@ -850,55 +852,45 @@ html.dark-mode .selection-count {
   justify-content: center;
 }
 
-.immersive-downloaded-tag {
-  background: rgba(103, 194, 58, 0.9) !important;
-  border-color: rgba(103, 194, 58, 0.9) !important;
+.frameless-downloaded-tag {
+  background: rgba(103, 194, 58, 0.85) !important;
+  border-color: rgba(103, 194, 58, 0.85) !important;
   color: white !important;
 }
 
 /* 详情面板 */
-.immersive-detail-panel {
-  position: absolute;
-  bottom: 52px;
-  left: 0;
-  right: 0;
-  z-index: 9;
-  padding: 16px 18px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  max-height: 40vh;
+.frameless-detail {
+  padding: 12px 14px;
+  max-height: 35vh;
   overflow-y: auto;
 }
 
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .detail-item {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .detail-label {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .detail-value {
-  font-size: 13px;
+  font-size: 12px;
   color: white;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
   word-break: break-all;
 }
 
 .detail-value.md5 {
-  font-size: 11px;
+  font-size: 10px;
   font-family: monospace;
 }
 
@@ -907,78 +899,71 @@ html.dark-mode .selection-count {
 }
 
 .detail-tags-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 8px;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 6px;
 }
 
 .detail-tags-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  max-height: 100px;
+  gap: 5px;
+  max-height: 80px;
   overflow-y: auto;
 }
 
 .detail-tag {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
   color: white !important;
   cursor: pointer;
 }
 
 .detail-tag:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
 /* 详情面板过渡动画 */
-.detail-fade-enter-active,
-.detail-fade-leave-active {
-  transition: all 0.25s ease;
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+  transition: all 0.2s ease;
 }
 
-.detail-fade-enter-from,
-.detail-fade-leave-to {
+.panel-slide-enter-from,
+.panel-slide-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(-10px);
 }
 
 /* 深色模式适配 */
-html.dark-mode .immersive-header,
-html.dark-mode .immersive-footer,
-html.dark-mode .immersive-detail-panel {
-  /* 深色模式下保持一致的透明效果 */
-}
-
-html.dark-mode .preview-immersive-dialog {
+html.dark-mode .preview-frameless-dialog {
   background: transparent !important;
 }
 
-html.dark-mode .preview-immersive-dialog :deep(.el-dialog) {
+html.dark-mode .preview-frameless-dialog :deep(.el-dialog) {
   background: transparent !important;
 }
 
-html.dark-mode .immersive-header {
-  background: rgba(0, 0, 0, 0.3);
+html.dark-mode .preview-frameless {
+  background: rgba(0, 0, 0, 0.92);
 }
 
-html.dark-mode .immersive-footer {
-  background: rgba(0, 0, 0, 0.3);
+html.dark-mode .frameless-header {
+  background: rgba(0, 0, 0, 0.5);
 }
 
-html.dark-mode .immersive-detail-panel {
-  background: rgba(0, 0, 0, 0.25);
+html.dark-mode .frameless-bottom-panel {
+  background: rgba(0, 0, 0, 0.5);
 }
 
 html.dark-mode .detail-tag {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 html.dark-mode .detail-tag:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
 }
 
 /* 中心对话框样式 */
