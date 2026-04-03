@@ -774,7 +774,7 @@ html.dark-mode .selection-count {
   border-color: rgba(255,255,255,0.5) !important;
 }
 
-/* 图片区域 - 自适应伸缩 */
+/* 图片区域 - 自适应伸缩，限制最大90% */
 .preview-image-wrapper {
   flex: 1;
   display: flex;
@@ -783,16 +783,19 @@ html.dark-mode .selection-count {
   overflow: hidden;
   transition: flex 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   min-height: 200px;
+  padding: 20px;
 }
 
 .preview-main-image {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: min(90vw, 90vh);
+  max-height: min(90vw, 90vh);
 }
 
 .preview-main-image :deep(.el-image__inner) {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: min(90vw, 90vh);
+  max-height: min(90vw, 90vh);
+  width: auto;
+  height: auto;
   object-fit: contain;
 }
 
