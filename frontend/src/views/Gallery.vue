@@ -87,7 +87,7 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 尺寸跟随图片 -->
+    <!-- 图片预览对话框 - 适应屏幕，保持图片比例，四边10%边距 -->
     <el-dialog
       v-model="previewVisible"
       :show-close="false"
@@ -97,7 +97,11 @@
       :fullscreen="false"
       top="5vh"
     >
-      <div v-if="currentImage" class="preview-immersive">
+      <div 
+        v-if="currentImage" 
+        class="preview-immersive"
+        :style="previewStyle"
+      >
         <!-- 顶部信息栏 - 悬浮在图片顶部 -->
         <div class="immersive-header">
           <div class="header-left">
@@ -228,7 +232,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
@@ -269,6 +273,36 @@ const toggleDarkMode = () => {
   localStorage.setItem('dark_mode', isDarkMode.value ? 'true' : 'false')
   document.documentElement.classList.toggle('dark-mode', isDarkMode.value)
 }
+
+// 计算预览弹框样式 - 适应屏幕，保持图片比例，四边10%边距
+const previewStyle = computed(() => {
+  if (!currentImage.value) return {}
+  const imgWidth = currentImage.value.width || 1920
+  const imgHeight = currentImage.value.height || 1080
+  const aspectRatio = imgWidth / imgHeight
+  
+  // 屏幕可用尺寸 (80% = 四边10%边距)
+  const maxWidth = window.innerWidth * 0.8
+  const maxHeight = window.innerHeight * 0.8
+  
+  // 根据比例计算实际尺寸
+  let width = imgWidth
+  let height = imgHeight
+  
+  if (width > maxWidth) {
+    width = maxWidth
+    height = width / aspectRatio
+  }
+  if (height > maxHeight) {
+    height = maxHeight
+    width = height * aspectRatio
+  }
+  
+  return {
+    width: `${width}px`,
+    height: `${height}px`
+  }
+})
 
 // 监听模式变化，保存到 localStorage
 const stopSourceWatch = watch(querySource, (val) => {
@@ -710,21 +744,23 @@ html.dark-mode .selection-count {
 
 /* 图片区域 - 自适应图片尺寸 */
 .immersive-image-area {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #1a1a1a;
   overflow: hidden;
+  min-height: 0;
 }
 
 .immersive-image {
-  max-width: 100%;
-  max-height: 70vh;
+  width: 100%;
+  height: 100%;
 }
 
 .immersive-image :deep(.el-image__inner) {
-  max-width: 100%;
-  max-height: 70vh;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 
