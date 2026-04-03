@@ -69,7 +69,7 @@
 
             <div class="row-item">
               <label>格式</label>
-              <div class="checkbox-group">
+              <div class="checkbox-group" v-if="sourceMode === 'local'">
                 <el-checkbox-button
                   v-for="opt in fileTypeOptions"
                   :key="opt.value"
@@ -78,6 +78,15 @@
                   :label="opt.label"
                 />
               </div>
+              <el-radio-group v-else v-model="queryParams.fileTypeSingle" class="radio-group">
+                <el-radio-button
+                  v-for="opt in fileTypeOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </el-radio-button>
+              </el-radio-group>
             </div>
           </div>
 
@@ -179,12 +188,15 @@ const queryParams = reactive({
   author: '',
   rating: [],
   fileType: [],
+  fileTypeSingle: '',
   minWidth: null,
   maxWidth: null,
   minHeight: null,
   maxHeight: null,
   minFileSize: null,
   maxFileSize: null,
+  minScore: null,
+  maxScore: null,
   sortBy: 'created_at',
   sortOrder: 'desc',
 })
@@ -203,6 +215,10 @@ const activeFilters = computed(() => {
 
   if (queryParams.fileType.length > 0) {
     filters.push({ key: 'fileType', label: `格式:${queryParams.fileType.join(',')}` })
+  }
+
+  if (queryParams.fileTypeSingle) {
+    filters.push({ key: 'fileTypeSingle', label: `格式:${queryParams.fileTypeSingle}` })
   }
 
   if (queryParams.minWidth || queryParams.maxWidth) {
@@ -237,6 +253,9 @@ const removeFilter = (filter) => {
       break
     case 'fileType':
       queryParams.fileType = []
+      break
+    case 'fileTypeSingle':
+      queryParams.fileTypeSingle = ''
       break
     case 'width':
       queryParams.minWidth = null
@@ -273,12 +292,15 @@ const resetParams = () => {
   queryParams.author = ''
   queryParams.rating = []
   queryParams.fileType = []
+  queryParams.fileTypeSingle = ''
   queryParams.minWidth = null
   queryParams.maxWidth = null
   queryParams.minHeight = null
   queryParams.maxHeight = null
   queryParams.minFileSize = null
   queryParams.maxFileSize = null
+  queryParams.minScore = null
+  queryParams.maxScore = null
   queryParams.sortBy = 'created_at'
   queryParams.sortOrder = 'desc'
 }
@@ -318,8 +340,8 @@ const buildLocalParams = () => {
   return {
     tags: tagsParts.join(' '),
     author: queryParams.author || undefined,
-    rating: queryParams.rating.length > 0 ? queryParams.rating.join(',') : undefined,
-    file_type: queryParams.fileType.length > 0 ? queryParams.fileType.join(',') : undefined,
+    ratings: queryParams.rating.length > 0 ? queryParams.rating : undefined,
+    file_types: queryParams.fileType.length > 0 ? queryParams.fileType : undefined,
     min_width: queryParams.minWidth || undefined,
     max_width: queryParams.maxWidth || undefined,
     min_height: queryParams.minHeight || undefined,
@@ -333,64 +355,29 @@ const buildLocalParams = () => {
   }
 }
 
-// 构建在线模式搜索参数字符串
+// 构建在线模式搜索参数（后端 search_trans 转换）
 const buildOnlineParams = () => {
   const { include, exclude } = parseTags(searchText.value)
   const tagsParts = [...include]
 
-  // 评分多选：只选一个时用 rating:xxx，只选两个时用排除语法
-  if (queryParams.rating.length === 1) {
-    tagsParts.push(`rating:${queryParams.rating[0]}`)
-  } else if (queryParams.rating.length === 2) {
-    const allRatings = ['s', 'q', 'e']
-    const excludeRatings = allRatings.filter(r => !queryParams.rating.includes(r))
-    excludeRatings.forEach(r => tagsParts.push(`-${r}`))
-  }
-
-  // 格式多选用 OR 语法
-  if (queryParams.fileType.length > 0) {
-    if (queryParams.fileType.length === 1) {
-      tagsParts.push(`ext:${queryParams.fileType[0]}`)
-    } else {
-      tagsParts.push(`(${queryParams.fileType.map(t => `ext:${t}`).join(' OR ')})`)
-    }
-  }
-
-  // 排除的标签
   exclude.forEach(tag => {
     if (tag) tagsParts.push(`-${tag}`)
   })
 
-  // 宽度
-  if (queryParams.minWidth != null) {
-    tagsParts.push(`width:>=${queryParams.minWidth}`)
-  }
-  if (queryParams.maxWidth != null) {
-    tagsParts.push(`width:<=${queryParams.maxWidth}`)
-  }
-
-  // 高度
-  if (queryParams.minHeight != null) {
-    tagsParts.push(`height:>=${queryParams.minHeight}`)
-  }
-  if (queryParams.maxHeight != null) {
-    tagsParts.push(`height:<=${queryParams.maxHeight}`)
-  }
-
-  // 文件大小
-  if (queryParams.minFileSize != null) {
-    tagsParts.push(`filesize:>=${queryParams.minFileSize}`)
-  }
-  if (queryParams.maxFileSize != null) {
-    tagsParts.push(`filesize:<=${queryParams.maxFileSize}`)
-  }
-
-  const tags = tagsParts.join(' ')
-
   return {
-    tags: tags,
+    tags: tagsParts.join(' '),
     author: queryParams.author || undefined,
-    sort_by: queryParams.sortBy,
+    ratings: queryParams.rating,
+    file_types: queryParams.fileTypeSingle ? [queryParams.fileTypeSingle] : undefined,
+    min_width: queryParams.minWidth || undefined,
+    max_width: queryParams.maxWidth || undefined,
+    min_height: queryParams.minHeight || undefined,
+    max_height: queryParams.maxHeight || undefined,
+    min_file_size: queryParams.minFileSize || undefined,
+    max_file_size: queryParams.maxFileSize || undefined,
+    min_score: queryParams.minScore || undefined,
+    max_score: queryParams.maxScore || undefined,
+    order: queryParams.sortBy === 'created_at' ? 'date' : queryParams.sortBy,
     sort_order: queryParams.sortOrder,
     page: 1,
     page_size: 20,
@@ -633,6 +620,32 @@ defineExpose({
   background: #409EFF;
   border-color: #409EFF;
   color: white;
+}
+
+.row-item :deep(.el-radio-button__inner) {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.row-item :deep(.el-radio-button.is-active .el-radio-button__inner) {
+  background: #409EFF;
+  border-color: #409EFF;
+  color: white;
+}
+
+.row-item :deep(.el-radio-button:first-child .el-radio-button__inner) {
+  border-radius: 4px 0 0 4px;
+}
+
+.row-item :deep(.el-radio-button:last-child .el-radio-button__inner) {
+  border-radius: 0 4px 4px 0;
+}
+
+.radio-group {
+  display: flex;
 }
 
 /* 面板底部 */

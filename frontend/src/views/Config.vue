@@ -23,6 +23,13 @@
       >
         数据库配置
       </div>
+      <div 
+        class="menu-item" 
+        :class="{ active: activeMenu === 'about' }"
+        @click="activeMenu = 'about'"
+      >
+        关于
+      </div>
     </div>
 
     <!-- 右侧内容 -->
@@ -117,12 +124,34 @@
           </el-form-item>
         </el-form>
       </div>
+
+      <!-- 关于 -->
+      <div v-show="activeMenu === 'about'" class="config-section about-section">
+        <div class="about-content">
+          <div class="about-title">Yande.re Spider Next</div>
+          <div class="about-version">Version 1.0.0</div>
+          <div class="about-desc">基于 Python + FastAPI + Vue.js 3 的图片下载管理系统</div>
+          <div class="about-links">
+            <a href="https://github.com/exa160/yande.re-spider" target="_blank" class="github-link">
+              <svg height="20" width="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.807 5.625-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              GitHub
+            </a>
+          </div>
+          <div class="about-protection" v-if="tamperDetected">
+            <el-alert type="warning" :closable="false" show-icon>
+              检测到异常操作，如需帮助请联系作者
+            </el-alert>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 
@@ -153,6 +182,129 @@ const databaseConfig = ref({
 const saving = ref(false)
 const activeMenu = ref('api')
 const testing = ref(false)
+const tamperDetected = ref(false)
+
+// 防修改检测状态
+const originalElements = new Map()
+let protectionInterval = null
+let devToolsOpen = false
+
+// 保存关键元素的原始内容
+const saveOriginalContent = () => {
+  const elements = document.querySelectorAll('.about-title, .about-version, .about-desc, .github-link')
+  elements.forEach((el, index) => {
+    originalElements.set(index, {
+      content: el.innerHTML,
+      attributes: el.getAttribute('class'),
+      style: el.getAttribute('style')
+    })
+  })
+}
+
+// 检测开发者工具
+const detectDevTools = () => {
+  const threshold = 160
+  const widthThreshold = window.outerWidth - window.innerWidth > threshold
+  const heightThreshold = window.outerHeight - window.innerHeight > threshold
+  
+  if (widthThreshold || heightThreshold) {
+    return true
+  }
+  
+  // 检测 console.log 劫持
+  const originalLog = console.log
+  let logCalled = false
+  console.log = function(...args) {
+    logCalled = true
+    return originalLog.apply(console, args)
+  }
+  setTimeout(() => {
+    if (logCalled) {
+      console.log = originalLog
+    }
+  }, 1000)
+  
+  return false
+}
+
+// 启动防护
+const startProtection = () => {
+  // 保存初始状态
+  saveOriginalContent()
+  
+  // 定期检测元素变化
+  protectionInterval = setInterval(() => {
+    // 检测开发者工具
+    if (detectDevTools() && !devToolsOpen) {
+      devToolsOpen = true
+      tamperDetected.value = true
+    }
+    
+    // 检测元素内容变化
+    const elements = document.querySelectorAll('.about-title, .about-version, .about-desc, .github-link')
+    elements.forEach((el, index) => {
+      const original = originalElements.get(index)
+      if (original) {
+        const currentContent = el.innerHTML
+        const currentClass = el.getAttribute('class')
+        const currentStyle = el.getAttribute('style')
+        
+        if (currentContent !== original.content || 
+            currentClass !== original.attributes || 
+            currentStyle !== original.style) {
+          // 恢复原始内容
+          el.innerHTML = original.content
+          el.setAttribute('class', original.attributes)
+          if (original.style) {
+            el.setAttribute('style', original.style)
+          } else {
+            el.removeAttribute('style')
+          }
+          tamperDetected.value = true
+        }
+      }
+    })
+  }, 500)
+}
+
+// 停止防护
+const stopProtection = () => {
+  if (protectionInterval) {
+    clearInterval(protectionInterval)
+    protectionInterval = null
+  }
+}
+
+// 禁用右键
+const disableContextMenu = (e) => {
+  if (activeMenu.value === 'about') {
+    e.preventDefault()
+    return false
+  }
+}
+
+// 监听键盘事件
+const handleKeyDown = (e) => {
+  if (activeMenu.value !== 'about') return
+  
+  // 禁用 F12
+  if (e.key === 'F12') {
+    e.preventDefault()
+    return false
+  }
+  
+  // 禁用 Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C
+  if (e.ctrlKey && e.shiftKey && ['I', 'J', 'C'].includes(e.key)) {
+    e.preventDefault()
+    return false
+  }
+  
+  // 禁用 Ctrl+U (查看源码)
+  if (e.ctrlKey && e.key === 'u') {
+    e.preventDefault()
+    return false
+  }
+}
 
 const loadConfig = async () => {
   try {
@@ -236,6 +388,32 @@ const resetConfig = async () => {
 
 onMounted(() => {
   loadConfig()
+  // 关于页面防修改保护
+  if (activeMenu.value === 'about') {
+    startProtection()
+    document.addEventListener('contextmenu', disableContextMenu)
+    document.addEventListener('keydown', handleKeyDown)
+  }
+})
+
+onUnmounted(() => {
+  stopProtection()
+  document.removeEventListener('contextmenu', disableContextMenu)
+  document.removeEventListener('keydown', handleKeyDown)
+})
+
+// 监听 activeMenu 变化，动态启停保护
+import { watch } from 'vue'
+watch(activeMenu, (newVal) => {
+  if (newVal === 'about') {
+    startProtection()
+    document.addEventListener('contextmenu', disableContextMenu)
+    document.addEventListener('keydown', handleKeyDown)
+  } else {
+    stopProtection()
+    document.removeEventListener('contextmenu', disableContextMenu)
+    document.removeEventListener('keydown', handleKeyDown)
+  }
 })
 </script>
 
@@ -289,5 +467,67 @@ onMounted(() => {
 
 .config-form :deep(.el-input-number) {
   width: 120px;
+}
+
+/* 关于页面样式 */
+.about-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.about-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.about-version {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+.about-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 30px;
+  max-width: 400px;
+}
+
+.about-links {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.github-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #409EFF;
+  text-decoration: none;
+  font-size: 14px;
+  transition: opacity 0.3s;
+}
+
+.github-link:hover {
+  opacity: 0.8;
+}
+
+.about-protection {
+  margin-top: 20px;
+  width: 100%;
+  max-width: 300px;
+}
+
+/* 暗色模式适配 */
+:deep(.dark) .menu-item.active {
+  background: #1a1a2e;
+  border-right: 3px solid #409EFF;
 }
 </style>
