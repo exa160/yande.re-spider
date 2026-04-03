@@ -566,16 +566,18 @@ html.dark-mode .mode-buttons :deep(.el-button--primary) {
 }
 
 /* 深色模式下省流按钮 */
-html.dark-mode .toolbar-left :deep(.el-button--warning) {
-  background: #CC5500;
-  border-color: #CC5500;
-  color: white;
+html.dark-mode .toolbar-left :deep(.el-button--warning),
+html.dark-mode .toolbar-left :deep(.el-button[type="warning"]) {
+  background: #CC5500 !important;
+  border-color: #CC5500 !important;
+  color: white !important;
 }
 
-html.dark-mode .toolbar-left :deep(.el-button--warning:hover) {
-  background: #DD6600;
-  border-color: #DD6600;
-  color: white;
+html.dark-mode .toolbar-left :deep(.el-button--warning:hover),
+html.dark-mode .toolbar-left :deep(.el-button[type="warning"]:hover) {
+  background: #DD6600 !important;
+  border-color: #DD6600 !important;
+  color: white !important;
 }
 
 /* 深色模式下省流按钮未选中状态 */
