@@ -70,10 +70,10 @@ body {
   color: var(--text-primary);
 }
 
-/* 半透明滚动条 */
+/* 半透明滚动条（仅纵向） */
 ::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
+  height: 0;
 }
 
 ::-webkit-scrollbar-track {
@@ -89,10 +89,15 @@ body {
   background: rgba(128, 128, 128, 0.6);
 }
 
-/* Firefox 滚动条 */
+/* Firefox 滚动条（仅纵向） */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(128, 128, 128, 0.4) transparent;
+}
+
+/* 禁用横向滚动 */
+html, body {
+  overflow-x: hidden;
 }
 
 /* Element Plus 深色模式适配 */
