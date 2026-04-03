@@ -26,13 +26,16 @@
         :class="{ 
           'selected': isSelected(image),
           'image-loaded': pendingImages.has(image.id) || image.local_preview_path,
-          'touch-focused': touchFocusedId === image.id
+          'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
         }"
         @click="handleImageClick(image)"
         @touchstart="handleTouchStart(image, $event)"
         @touchmove="handleTouchMove(image, $event)"
         @touchend="handleTouchEnd(image)"
         @contextmenu.prevent="handleLongPress(image)"
+        @mousedown="handleMouseDown(image, $event)"
+        @mouseup="handleMouseUp(image, $event)"
+        @mousemove="handleMouseMove(image, $event)"
       >
         <!-- 长按选择提示 -->
         <div v-if="isSelected(image)" class="selection-indicator">
@@ -148,6 +151,12 @@ const isLongPress = ref(false)
 const LONG_PRESS_DURATION = 500
 const MOVE_THRESHOLD = 10 // 移动阈值，超过则不触发长按
 const touchStartPos = ref({ x: 0, y: 0 })
+
+// 鼠标长按支持
+const isMouseDown = ref(false)
+const mouseFocusedId = ref(null)
+const mouseStartPos = ref({ x: 0, y: 0 })
+const LONG_PRESS_DURATION_PC = 400 // PC端长按时长
 
 // 懒加载：追踪已进入可视区的图片
 const visibleImages = ref(new Set())
@@ -387,6 +396,46 @@ const handleTouchEnd = (image) => {
     longPressTimer.value = null
   }
   // isLongPress 会在 handleLongPress 的 setTimeout 中重置
+}
+
+// PC端鼠标长按开始
+const handleMouseDown = (image, event) => {
+  if (!props.selectable || event.button !== 0) return // 只响应左键
+  isMouseDown.value = true
+  mouseFocusedId.value = image.id
+  mouseStartPos.value = { x: event.clientX, y: event.clientY }
+  
+  longPressTimer.value = setTimeout(() => {
+    if (isMouseDown.value && mouseFocusedId.value === image.id) {
+      handleLongPress(image)
+      isMouseDown.value = false
+    }
+  }, LONG_PRESS_DURATION_PC)
+}
+
+// PC端鼠标移动
+const handleMouseMove = (image, event) => {
+  if (!props.selectable || !isMouseDown.value) return
+  
+  const deltaX = Math.abs(event.clientX - mouseStartPos.value.x)
+  const deltaY = Math.abs(event.clientY - mouseStartPos.value.y)
+  
+  // 移动超过阈值，取消长按计时器
+  if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
+    if (longPressTimer.value) {
+      clearTimeout(longPressTimer.value)
+      longPressTimer.value = null
+    }
+  }
+}
+
+// PC端鼠标释放
+const handleMouseUp = (image, event) => {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  isMouseDown.value = false
 }
 
 const handleSelect = (image, checked) => {
