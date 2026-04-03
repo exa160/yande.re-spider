@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     create_engine,
+    or_,
 )
 from sqlalchemy.orm import Session, declarative_base
 from typing import List, Optional, Tuple
@@ -140,8 +141,19 @@ class YandeDataRepository:
                 "q": "q",
                 "e": "e",
             }
-            rating_val = rating_map.get(rating, rating)
-            query_stmt = query_stmt.filter(Model.rating == rating_val)
+            # 支持逗号分隔的多个评分值，使用 OR 逻辑
+            rating_values = []
+            for r in rating.split(","):
+                rv = rating_map.get(r.strip(), r.strip())
+                if rv:
+                    rating_values.append(rv)
+            if rating_values:
+                if len(rating_values) == 1:
+                    query_stmt = query_stmt.filter(Model.rating == rating_values[0])
+                else:
+                    query_stmt = query_stmt.filter(
+                        or_(*[Model.rating == rv for rv in rating_values])
+                    )
 
         if min_width:
             query_stmt = query_stmt.filter(Model.width >= min_width)
@@ -158,7 +170,15 @@ class YandeDataRepository:
             query_stmt = query_stmt.filter(Model.file_size <= max_file_size * 1024)
 
         if file_type:
-            query_stmt = query_stmt.filter(Model.file_ext == file_type.lower())
+            file_exts = [
+                ext.strip().lower() for ext in file_type.split(",") if ext.strip()
+            ]
+            if len(file_exts) == 1:
+                query_stmt = query_stmt.filter(Model.file_ext == file_exts[0])
+            elif len(file_exts) > 1:
+                query_stmt = query_stmt.filter(
+                    or_(*[Model.file_ext == ext for ext in file_exts])
+                )
 
         if downloaded_only:
             query_stmt = query_stmt.filter(Model.down_flag == True)
