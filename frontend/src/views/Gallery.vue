@@ -87,101 +87,117 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 仅图片和信息栏可见，弹框完全隐藏 -->
+    <!-- 图片预览对话框 - 全屏透明浮层，图片自适应 -->
     <el-dialog
       v-model="previewVisible"
       :show-close="false"
-      class="preview-image-only-dialog"
+      class="preview-float-dialog"
       :close-on-click-modal="true"
-      :width="'auto'"
-      :modal="false"
+      :width="'90%'"
+      top="5vh"
     >
-      <div v-if="currentImage" class="preview-image-container">
-        <!-- 顶部信息栏 - 对齐图片顶部 -->
-        <div class="image-info-top">
-          <div class="info-top-left">
-            <span class="info-id">ID: {{ currentImage.id }}</span>
-            <el-tag :type="getRatingType(currentImage.rating)" size="small" effect="dark">
-              {{ currentImage.rating }}
-            </el-tag>
-            <span class="info-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
-          </div>
-          <el-button circle @click="previewVisible = false" class="info-close-btn" size="small">
-            <el-icon><Close /></el-icon>
-          </el-button>
-        </div>
-
-        <!-- 图片区域 - 完全填充 -->
-        <div class="image-fill-area">
+      <div v-if="currentImage" class="preview-float">
+        <!-- 图片容器 - 保持圆角，图片自适应 -->
+        <div class="float-image-wrapper">
           <el-image
             :src="getDetailUrl(currentImage)"
             :preview-src-list="[getDetailUrl(currentImage)]"
             fit="contain"
-            class="image-fill"
+            class="float-main-image"
             :zoom-rate="1.1"
             :preview-teleported="true"
           />
-        </div>
 
-        <!-- 底部信息栏 - 对齐图片底部 -->
-        <transition name="panel-slide-up">
-          <div v-if="infoPanelExpanded" class="image-info-bottom">
-            <div class="bottom-actions">
+          <!-- 顶部信息栏 - 悬浮在图片上方 -->
+          <div class="float-header">
+            <div class="float-header-left">
+              <span class="float-id">ID: {{ currentImage.id }}</span>
+              <el-tag :type="getRatingType(currentImage.rating)" size="small">
+                {{ currentImage.rating }}
+              </el-tag>
+              <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
+            </div>
+            <el-button circle @click="previewVisible = false" class="float-close-btn">
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+
+          <!-- 底部操作栏 - 悬浮在图片下方 -->
+          <div class="float-footer">
+            <div class="float-footer-left">
               <template v-if="!currentImage.is_downloaded">
-                <el-button type="primary" @click.stop="handleDownload" :loading="downloading" size="small">
+                <el-button 
+                  type="primary" 
+                  @click.stop="handleDownload" 
+                  :loading="downloading" 
+                  class="float-download-btn"
+                >
                   <el-icon><Download /></el-icon>
                   下载原图
                 </el-button>
               </template>
               <template v-else>
-                <el-button @click.stop="handleDownload" :loading="downloading" size="small" class="re-dl-btn">
+                <el-button 
+                  @click.stop="handleDownload" 
+                  :loading="downloading" 
+                  class="float-redownload-btn"
+                  title="重新下载"
+                >
                   <el-icon><Download /></el-icon>
                 </el-button>
-                <el-tag type="success" size="small" effect="dark">
+                <el-tag type="success" class="float-downloaded-tag">
                   <el-icon><Check /></el-icon>
                   已下载
                 </el-tag>
               </template>
             </div>
             
-            <div class="bottom-meta">
-              <div class="meta-grid">
-                <div class="meta-item">
-                  <span class="meta-label">大小</span>
-                  <span class="meta-value">{{ formatFileSize(currentImage.file_size) }}</span>
+            <div class="float-footer-right" @click="toggleInfoPanel">
+              <span class="float-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+              <el-icon class="float-expand-icon">
+                <ArrowUp v-if="infoPanelExpanded" />
+                <ArrowDown v-else />
+              </el-icon>
+            </div>
+          </div>
+
+          <!-- 详情面板 - 向上展开 -->
+          <transition name="detail-slide-up">
+            <div v-if="infoPanelExpanded" class="float-detail-panel">
+              <div class="detail-grid">
+                <div class="detail-item">
+                  <span class="detail-label">大小</span>
+                  <span class="detail-value">{{ formatFileSize(currentImage.file_size) }}</span>
                 </div>
-                <div class="meta-item">
-                  <span class="meta-label">作者</span>
-                  <span class="meta-value">{{ currentImage.author }}</span>
+                <div class="detail-item">
+                  <span class="detail-label">作者</span>
+                  <span class="detail-value">{{ currentImage.author }}</span>
                 </div>
-                <div class="meta-item full">
-                  <span class="meta-label">MD5</span>
-                  <span class="meta-value md5">{{ currentImage.md5 }}</span>
+                <div class="detail-item">
+                  <span class="detail-label">MD5</span>
+                  <span class="detail-value md5">{{ currentImage.md5 }}</span>
                 </div>
-                <div class="meta-item">
-                  <span class="meta-label">时间</span>
-                  <span class="meta-value">{{ currentImage.created_at }}</span>
+                <div class="detail-item">
+                  <span class="detail-label">时间</span>
+                  <span class="detail-value">{{ currentImage.created_at }}</span>
                 </div>
               </div>
               
-              <div class="meta-tags">
-                <span class="tags-count">标签 ({{ currentImage.tags?.length || 0 }})</span>
-                <div class="tags-list">
-                  <el-tag v-for="tag in currentImage.tags" :key="tag" size="small" effect="dark" class="tag-chip">
+              <div class="detail-tags-area">
+                <div class="detail-tags-label">标签 ({{ currentImage.tags?.length || 0 }})</div>
+                <div class="detail-tags-list">
+                  <el-tag
+                    v-for="tag in currentImage.tags"
+                    :key="tag"
+                    size="default"
+                    class="detail-tag"
+                  >
                     {{ tag }}
                   </el-tag>
                 </div>
               </div>
             </div>
-          </div>
-        </transition>
-
-        <!-- 收起/展开按钮 -->
-        <div class="panel-toggle" @click="toggleInfoPanel">
-          <el-icon class="toggle-arrow">
-            <ArrowUp v-if="infoPanelExpanded" />
-            <ArrowDown v-else />
-          </el-icon>
+          </transition>
         </div>
       </div>
     </el-dialog>
@@ -329,7 +345,7 @@ const loadMore = async () => {
 const handleImageClick = (image) => {
   currentImage.value = image
   tagsExpanded.value = false
-  infoPanelExpanded.value = true
+  infoPanelExpanded.value = false
   previewVisible.value = true
 }
 
@@ -660,40 +676,58 @@ html.dark-mode .selection-count {
   background: var(--el-color-primary);
 }
 
-/* 仅图片和信息栏可见的预览对话框 */
-.preview-image-only-dialog {
+/* 全屏浮层预览对话框 */
+.preview-float-dialog {
   background: transparent !important;
-  box-shadow: none !important;
 }
 
-.preview-image-only-dialog :deep(.el-dialog) {
+.preview-float-dialog :deep(.el-dialog) {
   background: transparent !important;
   box-shadow: none !important;
-  border-radius: 8px;
-  overflow: visible !important;
+  border-radius: 12px;
 }
 
-.preview-image-only-dialog :deep(.el-dialog__body) {
+.preview-float-dialog :deep(.el-dialog__body) {
   padding: 0;
-  overflow: visible;
-}
-
-.preview-image-only-dialog :deep(.el-overlay) {
-  background: transparent !important;
-}
-
-/* 图片容器 - 完全填充弹框 */
-.preview-image-container {
-  position: relative;
-  display: inline-block;
-  max-width: 90vw;
-  max-height: 90vh;
-  border-radius: 8px;
   overflow: hidden;
 }
 
+.preview-float {
+  position: relative;
+  background: transparent;
+}
+
+/* 图片容器 - 保持圆角，图片自适应 */
+.float-image-wrapper {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.85);
+  max-height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 图片 */
+.float-main-image {
+  display: block;
+  max-width: 100%;
+  max-height: 85vh;
+}
+
+.float-main-image :deep(.el-image__inner) {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.float-main-image :deep(.el-image__error) {
+  background: transparent;
+}
+
 /* 顶部信息栏 */
-.image-info-top {
+.float-header {
   position: absolute;
   top: 0;
   left: 0;
@@ -702,241 +736,219 @@ html.dark-mode .selection-count {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 8px 8px 0 0;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-.info-top-left {
+.float-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.info-id {
+.float-id {
   font-weight: bold;
-  color: white;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+}
+
+.float-size {
+  color: rgba(255, 255, 255, 0.7);
   font-size: 13px;
 }
 
-.info-size {
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 12px;
+.float-close-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
 }
 
-.info-close-btn {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border: none !important;
-  color: white !important;
+.float-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
-.info-close-btn:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
-}
-
-/* 图片填充区域 */
-.image-fill-area {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border-radius: 8px;
-}
-
-.image-fill {
-  display: block;
-  max-width: 100%;
-  max-height: calc(90vh - 60px);
-  border-radius: 8px;
-}
-
-.image-fill :deep(.el-image__inner) {
-  max-width: 100%;
-  max-height: calc(90vh - 60px);
-  object-fit: contain;
-  border-radius: 8px;
-}
-
-.image-fill :deep(.el-image__error) {
-  background: transparent;
-}
-
-/* 底部信息栏 */
-.image-info-bottom {
+/* 底部操作栏 */
+.float-footer {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 10;
-  padding: 14px 16px;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 0 0 8px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-.bottom-actions {
+.float-footer-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
 }
 
-.re-dl-btn {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border: none !important;
+.float-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.float-footer-right:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.float-expand-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.float-expand-icon {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.float-download-btn {
+  background: rgba(64, 158, 255, 0.85) !important;
+  border-color: rgba(64, 158, 255, 0.85) !important;
   color: white !important;
 }
 
-.re-dl-btn:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
+.float-download-btn:hover {
+  background: rgba(64, 158, 255, 1) !important;
 }
 
-.bottom-meta {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 12px;
+.float-redownload-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.meta-grid {
+.float-downloaded-tag {
+  background: rgba(103, 194, 58, 0.85) !important;
+  border-color: rgba(103, 194, 58, 0.85) !important;
+  color: white !important;
+}
+
+/* 详情面板 - 向上展开 */
+.float-detail-panel {
+  position: absolute;
+  bottom: 48px;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  max-height: 35vh;
+  overflow-y: auto;
+}
+
+.detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px 16px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.meta-item {
+.detail-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.meta-item.full {
-  grid-column: span 2;
-}
-
-.meta-label {
-  font-size: 10px;
+.detail-label {
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
 }
 
-.meta-value {
-  font-size: 12px;
-  color: white;
+.detail-value {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
   word-break: break-all;
 }
 
-.meta-value.md5 {
-  font-size: 10px;
+.detail-value.md5 {
+  font-size: 11px;
   font-family: monospace;
 }
 
-.meta-tags {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 10px;
+.detail-tags-area {
+  margin-top: 4px;
 }
 
-.tags-count {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-  display: block;
-  margin-bottom: 6px;
+.detail-tags-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
 }
 
-.tags-list {
+.detail-tags-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  max-height: 60px;
+  gap: 6px;
+  max-height: 80px;
   overflow-y: auto;
 }
 
-.tag-chip {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: white !important;
-}
-
-/* 收起/展开切换按钮 */
-.panel-toggle {
-  position: absolute;
-  bottom: -18px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 11;
-  width: 36px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 0 0 8px 8px;
+.detail-tag {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
   cursor: pointer;
 }
 
-.toggle-arrow {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
+.detail-tag:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
-/* 详情面板向上展开动画 */
-.panel-slide-up-enter-active,
-.panel-slide-up-leave-active {
-  transition: all 0.2s ease-out;
+/* 详情面板过渡动画 */
+.detail-slide-up-enter-active,
+.detail-slide-up-leave-active {
+  transition: all 0.2s ease;
 }
 
-.panel-slide-up-enter-from,
-.panel-slide-up-leave-to {
+.detail-slide-up-enter-from,
+.detail-slide-up-leave-to {
   opacity: 0;
-  transform: translateY(100%);
+  transform: translateY(20px);
 }
 
-/* 深色模式适配 - 使用 CSS 变量自动适配 */
-html:not(.dark-mode) .image-info-top {
-  background: rgba(255, 255, 255, 0.85);
+/* 深色模式适配 */
+html.dark-mode .float-header,
+html.dark-mode .float-footer,
+html.dark-mode .float-detail-panel {
+  /* 保持一致的极透明效果 */
 }
 
-html:not(.dark-mode) .image-info-bottom {
-  background: rgba(255, 255, 255, 0.9);
+html.dark-mode .preview-float-dialog {
+  background: transparent !important;
 }
 
-html:not(.dark-mode) .info-id,
-html:not(.dark-mode) .info-size,
-html:not(.dark-mode) .meta-value,
-html:not(.dark-mode) .tags-count,
-html:not(.dark-mode) .toggle-arrow {
-  color: rgba(0, 0, 0, 0.85);
+html.dark-mode .preview-float-dialog :deep(.el-dialog) {
+  background: transparent !important;
 }
 
-html:not(.dark-mode) .info-size,
-html:not(.dark-mode) .meta-label,
-html:not(.dark-mode) .tags-count {
-  color: rgba(0, 0, 0, 0.55);
+html.dark-mode .float-image-wrapper {
+  background: rgba(0, 0, 0, 0.9);
 }
 
-html:not(.dark-mode) .panel-toggle,
-html:not(.dark-mode) .info-close-btn,
-html:not(.dark-mode) .re-dl-btn {
+html.dark-mode .float-detail-panel {
   background: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.7) !important;
-}
-
-html:not(.dark-mode) .panel-toggle {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-html:not(.dark-mode) .bottom-meta {
-  border-top-color: rgba(0, 0, 0, 0.08);
-}
-
-html:not(.dark-mode) .meta-tags {
-  border-top-color: rgba(0, 0, 0, 0.06);
-}
-
-html:not(.dark-mode) .tag-chip {
-  background: rgba(0, 0, 0, 0.06) !important;
-  border-color: rgba(0, 0, 0, 0.1) !important;
-  color: rgba(0, 0, 0, 0.8) !important;
 }
 
 /* 中心对话框样式 */
