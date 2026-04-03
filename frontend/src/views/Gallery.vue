@@ -711,17 +711,20 @@ html.dark-mode .selection-count {
 }
 
 .preview-drawer-dialog :deep(.el-dialog__body) {
-  padding: 0 !important;
+  padding: 5vh 5vw !important;
   overflow: hidden !important;
 }
 
-/* 预览容器 - 垂直布局 */
+/* 预览容器 - 垂直布局，限制在屏幕90%内 */
 .preview-drawer-container {
-  width: 100vw;
-  height: 100vh;
+  width: 90vw;
+  height: 90vh;
+  margin: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
+  border-radius: 12px;
+  overflow: hidden;
   position: relative;
 }
 
@@ -766,7 +769,6 @@ html.dark-mode .selection-count {
   background: rgba(255,255,255,0.15) !important;
   border-color: rgba(255,255,255,0.3) !important;
   color: white !important;
-  backdrop-filter: blur(8px);
 }
 
 .close-btn:hover {
@@ -774,7 +776,7 @@ html.dark-mode .selection-count {
   border-color: rgba(255,255,255,0.5) !important;
 }
 
-/* 图片区域 - 自适应伸缩，限制最大90% */
+/* 图片区域 - 填满抽屉 */
 .preview-image-wrapper {
   flex: 1;
   display: flex;
@@ -782,20 +784,17 @@ html.dark-mode .selection-count {
   justify-content: center;
   overflow: hidden;
   transition: flex 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 200px;
-  padding: 20px;
+  min-height: 0;
 }
 
 .preview-main-image {
-  max-width: min(90vw, 90vh);
-  max-height: min(90vw, 90vh);
+  width: 100%;
+  height: 100%;
 }
 
 .preview-main-image :deep(.el-image__inner) {
-  max-width: min(90vw, 90vh);
-  max-height: min(90vw, 90vh);
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 
@@ -805,16 +804,11 @@ html.dark-mode .selection-count {
 
 /* ===================== 底部抽屉面板 ===================== */
 .preview-drawer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   background: var(--bg-secondary);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   z-index: 20;
+  flex-shrink: 0;
 }
 
 .preview-drawer.expanded {
