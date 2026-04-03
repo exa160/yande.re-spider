@@ -318,10 +318,16 @@ const isSelected = (image) => {
 
 const handleImageClick = (image) => {
   // 如果刚完成长按选择，忽略这次点击
-  // isLongPress 会在 handleLongPress 的 setTimeout 中自动重置
   if (isLongPress.value) {
     return
   }
+  
+  // 如果处于多选模式，点击切换选中状态
+  if (props.selectedImages.length > 0) {
+    handleSelect(image, !isSelected(image))
+    return
+  }
+  
   emit('image-click', image)
 }
 

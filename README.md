@@ -62,9 +62,10 @@ yande.re-spider-next/
 │   │   ├── downloader.py    # MultiDown 分段下载器
 │   │   ├── image_cache.py    # 图片缓存
 │   │   └── yande_api.py      # Yande API 客户端
-│   └── models/               # 数据模型
-│       ├── yande.py           # YandePostData, Rating
-│       └── download.py        # FileInfo, IterStatus
+│   ├── models/               # 数据模型
+│   │   ├── yande.py           # YandePostData, Rating
+│   │   └── download.py        # FileInfo, IterStatus
+│   └── main.py               # FastAPI 入口（待移动）
 ├── frontend/                   # Vue.js 前端
 │   ├── src/
 │   │   ├── components/       # 组件
@@ -72,13 +73,8 @@ yande.re-spider-next/
 │   │   ├── api/              # API 服务
 │   │   └── router/           # 路由
 │   └── package.json
-├── api/
-│   └── main.py               # FastAPI 入口
-├── spider/                    # 爬虫模块（CLI）
-├── utils/                     # 工具模块
 ├── docs/                      # 文档
 ├── config/                    # 配置文件
-├── gui/                       # GUI 模块
 └── requirements.txt           # Python 依赖
 ```
 
@@ -179,10 +175,24 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 
 ## 开发计划
 
-- [ ] WebSocket 实时进度推送
+### 近期功能
+- [ ] 本地模式 tag 收藏夹管理
+- [ ] 本地模式 tag 分组展示
+- [ ] 点击详情页中的 tag 快速跳转查询
+- [ ] 下载历史在数据库中记录
+
+### 部署优化
+- [ ] Docker 部署构建
+- [ ] 改为 uv 管理项目依赖
+
+### 架构重构
+- [ ] 移动 api/main.py 到 backend/main.py
+- [ ] 后端托管前端静态资源
+- [ ] 增加异步定时任务功能（根据 tag 定时启动下载器）
+- [ ] 删除原项目未使用的应用（gui/, spider/, utils/）
+
+### 远期计划
 - [ ] Electron 桌面客户端
-- [ ] 查询条件预设管理
-- [ ] 下载历史统计图表
 - [ ] 移动端适配优化
 
 ## 许可证
