@@ -87,136 +87,120 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 无边框抽屉式 -->
+    <!-- 图片预览对话框 - 全屏透明浮层，图片自适应 -->
     <el-dialog
       v-model="previewVisible"
       :show-close="false"
-      class="preview-drawer-dialog"
+      class="preview-immersive-dialog"
       :close-on-click-modal="true"
-      :width="'100%'"
-      :fullscreen="true"
+      :width="'94%'"
+      top="2vh"
     >
-      <div v-if="currentImage" class="preview-drawer-container">
-        <!-- 顶部透明工具栏 -->
-        <div class="preview-topbar">
-          <div class="topbar-left">
+      <div v-if="currentImage" class="preview-immersive">
+        <!-- 顶部信息栏 - 悬浮在图片上方，10%透明 -->
+        <div class="immersive-header">
+          <div class="header-left">
             <span class="preview-id">ID: {{ currentImage.id }}</span>
             <el-tag :type="getRatingType(currentImage.rating)" size="small">
               {{ currentImage.rating }}
             </el-tag>
             <span class="preview-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
           </div>
-          <div class="topbar-right">
-            <el-button circle @click="previewVisible = false" class="close-btn">
+          <div class="header-right">
+            <el-button circle @click="previewVisible = false" class="immersive-close-btn">
               <el-icon><Close /></el-icon>
             </el-button>
           </div>
         </div>
 
-        <!-- 图片区域 - 自适应高度，展开时收缩 -->
-        <div 
-          class="preview-image-wrapper"
-          :style="{ flex: infoPanelExpanded ? '0 0 50%' : '1' }"
-        >
+        <!-- 图片区域 - 完全透明背景，图片自适应 -->
+        <div class="immersive-image-area">
           <el-image
             :src="getDetailUrl(currentImage)"
             :preview-src-list="[getDetailUrl(currentImage)]"
             fit="contain"
-            class="preview-main-image"
+            class="immersive-image"
             :zoom-rate="1.1"
             :preview-teleported="true"
           />
         </div>
 
-        <!-- 底部抽屉面板 -->
-        <div 
-          class="preview-drawer"
-          :class="{ expanded: infoPanelExpanded }"
-          @click="toggleInfoPanel"
-        >
-          <!-- 抽屉把手 -->
-          <div class="drawer-handle">
-            <div class="handle-bar"></div>
+        <!-- 底部操作栏 - 悬浮在图片下方，10%透明 -->
+        <div class="immersive-footer">
+          <div class="footer-left">
+            <template v-if="!currentImage.is_downloaded">
+              <el-button 
+                type="primary" 
+                @click.stop="handleDownload" 
+                :loading="downloading" 
+                class="immersive-download-btn"
+              >
+                <el-icon><Download /></el-icon>
+                下载原图
+              </el-button>
+            </template>
+            <template v-else>
+              <el-button 
+                @click.stop="handleDownload" 
+                :loading="downloading" 
+                class="immersive-redownload-btn"
+                title="重新下载"
+              >
+                <el-icon><Download /></el-icon>
+              </el-button>
+              <el-tag type="success" class="immersive-downloaded-tag">
+                <el-icon><Check /></el-icon>
+                已下载
+              </el-tag>
+            </template>
           </div>
-
-          <!-- 抽屉头部 - 下载按钮和展开提示 -->
-          <div class="drawer-header">
-            <div class="drawer-header-left">
-              <template v-if="!currentImage.is_downloaded">
-                <el-button 
-                  type="primary" 
-                  @click.stop="handleDownload" 
-                  :loading="downloading" 
-                  class="download-btn"
-                >
-                  <el-icon><Download /></el-icon>
-                  下载原图
-                </el-button>
-              </template>
-              <template v-else>
-                <el-button 
-                  @click.stop="handleDownload" 
-                  :loading="downloading" 
-                  class="re-download-btn"
-                  title="重新下载"
-                >
-                  <el-icon><Download /></el-icon>
-                </el-button>
-                <el-tag type="success" size="large" class="downloaded-tag">
-                  <el-icon><Check /></el-icon>
-                  已下载
-                </el-tag>
-              </template>
-            </div>
-            <div class="drawer-header-right">
-              <span class="expand-hint">
-                {{ infoPanelExpanded ? '点击收起' : '点击展开详情' }}
-              </span>
-              <el-icon class="expand-icon">
-                <ArrowUp v-if="infoPanelExpanded" />
-                <ArrowDown v-else />
-              </el-icon>
-            </div>
+          
+          <div class="footer-right" @click="toggleInfoPanel">
+            <span class="footer-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
+            <el-icon class="footer-expand-icon">
+              <ArrowUp v-if="infoPanelExpanded" />
+              <ArrowDown v-else />
+            </el-icon>
           </div>
-
-          <!-- 抽屉内容 - 详情信息 -->
-          <transition name="drawer-content">
-            <div v-if="infoPanelExpanded" class="drawer-content">
-              <div class="info-grid">
-                <div class="info-item">
-                  <span class="info-label">大小</span>
-                  <span class="info-value">{{ formatFileSize(currentImage.file_size) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">作者</span>
-                  <span class="info-value">{{ currentImage.author }}</span>
-                </div>
-                <div class="info-item full-width">
-                  <span class="info-label">MD5</span>
-                  <span class="info-value md5">{{ currentImage.md5 }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">时间</span>
-                  <span class="info-value">{{ currentImage.created_at }}</span>
-                </div>
-              </div>
-              
-              <div class="tags-area">
-                <div class="tags-header">标签 ({{ currentImage.tags?.length || 0 }})</div>
-                <div class="tags-cloud">
-                  <el-tag
-                    v-for="tag in currentImage.tags"
-                    :key="tag"
-                    size="default"
-                    class="tag-chip"
-                  >
-                    {{ tag }}
-                  </el-tag>
-                </div>
-              </div>
-            </div>
-          </transition>
         </div>
+
+        <!-- 详情面板 - 悬浮在底部操作栏下方 -->
+        <transition name="detail-fade">
+          <div v-if="infoPanelExpanded" class="immersive-detail-panel">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">大小</span>
+                <span class="detail-value">{{ formatFileSize(currentImage.file_size) }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">作者</span>
+                <span class="detail-value">{{ currentImage.author }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">MD5</span>
+                <span class="detail-value md5">{{ currentImage.md5 }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">时间</span>
+                <span class="detail-value">{{ currentImage.created_at }}</span>
+              </div>
+            </div>
+            
+            <div class="detail-tags-section">
+              <div class="detail-tags-title">标签 ({{ currentImage.tags?.length || 0 }})</div>
+              <div class="detail-tags-wrap">
+                <el-tag
+                  v-for="tag in currentImage.tags"
+                  :key="tag"
+                  size="default"
+                  class="detail-tag"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </el-dialog>
 
@@ -694,277 +678,310 @@ html.dark-mode .selection-count {
   background: var(--el-color-primary);
 }
 
-/* ===================== 无框抽屉式预览对话框 ===================== */
-.preview-drawer-dialog {
+/* 全屏沉浸式预览对话框 */
+.preview-immersive-dialog {
   background: transparent !important;
 }
 
-.preview-drawer-dialog :deep(.el-dialog) {
+.preview-immersive-dialog :deep(.el-dialog) {
   background: transparent !important;
   box-shadow: none !important;
-  border-radius: 0 !important;
-  overflow: hidden !important;
+  border-radius: 8px;
 }
 
-.preview-drawer-dialog :deep(.el-dialog__header) {
-  display: none !important;
+.preview-immersive-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  overflow: hidden;
 }
 
-.preview-drawer-dialog :deep(.el-dialog__body) {
-  padding: 5vh 5vw !important;
-  overflow: hidden !important;
-}
-
-/* 预览容器 - 垂直布局，限制在屏幕90%内 */
-.preview-drawer-container {
-  width: 90vw;
-  height: 90vh;
-  margin: 0;
+.preview-immersive {
+  position: relative;
+  background: transparent;
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary);
-  border-radius: 12px;
-  overflow: hidden;
-  position: relative;
+  height: 96vh;
+  max-height: 96vh;
 }
 
-/* 顶部工具栏 - 透明背景 */
-.preview-topbar {
+/* 顶部信息栏 - 悬浮，10%透明 */
+.immersive-header {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  z-index: 10;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 8px 8px 0 0;
 }
 
-.topbar-left {
+.header-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
 .preview-id {
-  font-weight: 600;
+  font-weight: bold;
   color: white;
   text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .preview-size {
-  color: rgba(255,255,255,0.8);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 13px;
   text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
-.topbar-right {
+.header-right {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
-.close-btn {
-  background: rgba(255,255,255,0.15) !important;
-  border-color: rgba(255,255,255,0.3) !important;
+.immersive-close-btn {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
   color: white !important;
 }
 
-.close-btn:hover {
-  background: rgba(255,255,255,0.25) !important;
-  border-color: rgba(255,255,255,0.5) !important;
+.immersive-close-btn:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
 }
 
-/* 图片区域 - 填满抽屉 */
-.preview-image-wrapper {
+/* 图片区域 - 全透明，图片自适应 */
+.immersive-image-area {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  transition: flex 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+  padding: 60px 0;
   min-height: 0;
 }
 
-.preview-main-image {
-  width: 100%;
-  height: 100%;
+.immersive-image {
+  max-width: 100%;
+  max-height: 100%;
 }
 
-.preview-main-image :deep(.el-image__inner) {
-  width: 100%;
-  height: 100%;
+.immersive-image :deep(.el-image__inner) {
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
 }
 
-.preview-main-image :deep(.el-image__error) {
+.immersive-image :deep(.el-image__error) {
   background: transparent;
 }
 
-/* ===================== 底部抽屉面板 ===================== */
-.preview-drawer {
-  background: var(--bg-secondary);
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-  z-index: 20;
-  flex-shrink: 0;
-}
-
-.preview-drawer.expanded {
-  transform: translateY(0);
-}
-
-/* 抽屉把手 */
-.drawer-handle {
-  display: flex;
-  justify-content: center;
-  padding: 12px 0 8px;
-}
-
-.handle-bar {
-  width: 40px;
-  height: 4px;
-  background: var(--border-color);
-  border-radius: 2px;
-}
-
-/* 抽屉头部 */
-.drawer-header {
+/* 底部操作栏 - 悬浮，10%透明 */
+.immersive-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px 16px;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 0 0 8px 8px;
 }
 
-.drawer-header-left {
+.footer-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.download-btn {
+.footer-right {
   display: flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  transition: background 0.2s;
 }
 
-.re-download-btn {
-  width: 40px;
-  height: 40px;
+.footer-right:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.footer-expand-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.footer-expand-icon {
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.immersive-download-btn {
+  background: rgba(64, 158, 255, 0.9) !important;
+  border-color: rgba(64, 158, 255, 0.9) !important;
+  color: white !important;
+}
+
+.immersive-download-btn:hover {
+  background: rgba(64, 158, 255, 1) !important;
+}
+
+.immersive-redownload-btn {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: white !important;
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.downloaded-tag {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.immersive-downloaded-tag {
+  background: rgba(103, 194, 58, 0.9) !important;
+  border-color: rgba(103, 194, 58, 0.9) !important;
+  color: white !important;
 }
 
-.drawer-header-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.expand-hint {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.expand-icon {
-  color: var(--text-secondary);
-  transition: transform 0.3s;
-}
-
-/* 抽屉内容 */
-.drawer-content {
-  padding: 0 20px 24px;
-  max-height: 45vh;
+/* 详情面板 */
+.immersive-detail-panel {
+  position: absolute;
+  bottom: 52px;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  max-height: 40vh;
   overflow-y: auto;
 }
 
-.info-grid {
+.detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.info-item {
+.detail-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
-.info-item.full-width {
-  grid-column: span 2;
-}
-
-.info-label {
+.detail-label {
   font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
-.info-value {
-  font-size: 14px;
-  color: var(--text-primary);
+.detail-value {
+  font-size: 13px;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
   word-break: break-all;
 }
 
-.info-value.md5 {
-  font-size: 12px;
-  font-family: 'SF Mono', Monaco, monospace;
-  color: var(--text-secondary);
+.detail-value.md5 {
+  font-size: 11px;
+  font-family: monospace;
 }
 
-/* 标签区域 */
-.tags-area {
-  border-top: 1px solid var(--border-color);
-  padding-top: 16px;
+.detail-tags-section {
+  margin-top: 4px;
 }
 
-.tags-header {
+.detail-tags-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
-.tags-cloud {
+.detail-tags-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  max-height: 100px;
+  overflow-y: auto;
 }
 
-.tag-chip {
+.detail-tag {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: white !important;
   cursor: pointer;
-  transition: opacity 0.2s, transform 0.2s;
 }
 
-.tag-chip:hover {
-  opacity: 0.8;
-  transform: scale(1.02);
+.detail-tag:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
 }
 
-/* 抽屉内容过渡 */
-.drawer-content-enter-active,
-.drawer-content-leave-active {
-  transition: opacity 0.3s, transform 0.3s;
+/* 详情面板过渡动画 */
+.detail-fade-enter-active,
+.detail-fade-leave-active {
+  transition: all 0.25s ease;
 }
 
-.drawer-content-enter-from,
-.drawer-content-leave-to {
+.detail-fade-enter-from,
+.detail-fade-leave-to {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(10px);
 }
 
-/* ===================== 中心对话框样式 ===================== */
+/* 深色模式适配 */
+html.dark-mode .immersive-header,
+html.dark-mode .immersive-footer,
+html.dark-mode .immersive-detail-panel {
+  /* 深色模式下保持一致的透明效果 */
+}
+
+html.dark-mode .preview-immersive-dialog {
+  background: transparent !important;
+}
+
+html.dark-mode .preview-immersive-dialog :deep(.el-dialog) {
+  background: transparent !important;
+}
+
+html.dark-mode .immersive-header {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+html.dark-mode .immersive-footer {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+html.dark-mode .immersive-detail-panel {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+html.dark-mode .detail-tag {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark-mode .detail-tag:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* 中心对话框样式 */
 .center-dialog {
   border-radius: 12px;
 }
@@ -994,31 +1011,5 @@ html.dark-mode .selection-count {
   background: var(--bg-secondary);
 }
 
-/* ===================== 深色模式适配 ===================== */
-html.dark-mode .preview-topbar {
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
-}
 
-html.dark-mode .close-btn {
-  background: rgba(255,255,255,0.1) !important;
-  border-color: rgba(255,255,255,0.2) !important;
-}
-
-html.dark-mode .close-btn:hover {
-  background: rgba(255,255,255,0.2) !important;
-}
-
-html.dark-mode .preview-drawer {
-  background: var(--bg-secondary);
-}
-
-html.dark-mode .handle-bar {
-  background: rgba(255,255,255,0.2);
-}
-
-html.dark-mode .re-download-btn {
-  background: var(--bg-tertiary);
-  border-color: var(--border-color);
-  color: var(--text-primary);
-}
 </style>
