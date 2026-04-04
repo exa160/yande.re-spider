@@ -90,7 +90,7 @@
     <el-empty v-if="!loading && images.length === 0" description="暂无图片" />
 
     <!-- 加载更多 -->
-    <div v-if="hasMore && !loading" class="load-more">
+    <div v-if="hasMore && !loading" ref="loadMoreRef" class="load-more">
       <el-button @click="loadMore" :loading="loadingMore">
         加载更多
       </el-button>
@@ -162,9 +162,11 @@ const LONG_PRESS_DURATION_PC = 400 // PC端长按时长
 // 懒加载：追踪已进入可视区的图片
 const visibleImages = ref(new Set())
 let observer = null
+let loadMoreObserver = null
 
 const containerRef = ref(null)
 const galleryRef = ref(null)
+const loadMoreRef = ref(null)
 const columnCount = ref(4)
 const columnHeights = ref([])
 const containerWidth = ref(1200)
@@ -592,51 +594,51 @@ const handleImageRetry = async (image, event) => {
   }
 }
 
-// 无限滚动
-const handleScroll = () => {
-  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-  const windowHeight = window.innerHeight
-  const documentHeight = document.documentElement.scrollHeight
-
-  // 增加触底检测灵敏度，50px阈值
-  if (scrollTop + windowHeight >= documentHeight - 50) {
-    if (props.hasMore && !props.loading && !loadingMore.value) {
-      loadMore()
+// 使用 IntersectionObserver 监听加载更多元素
+const setupLoadMoreObserver = () => {
+  if (!loadMoreRef.value || loadMoreObserver) return
+  
+  loadMoreObserver = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0]
+      if (entry.isIntersecting && props.hasMore && !props.loading && !loadingMore.value) {
+        loadMore()
+      }
+    },
+    {
+      root: null,
+      rootMargin: '200px',
+      threshold: 0
     }
-  }
+  )
+  
+  loadMoreObserver.observe(loadMoreRef.value)
 }
 
-// 触控滑动触底检测（移动端）
-const handleTouchSlidEnd = (event) => {
-  if (!props.hasMore || props.loading || loadingMore.value) return
-  
-  const container = containerRef.value
-  if (!container) return
-  
-  const rect = container.getBoundingClientRect()
-  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-  const windowHeight = window.innerHeight
-  const documentHeight = document.documentElement.scrollHeight
-  
-  // 检测是否滑到了接近底部
-  if (scrollTop + windowHeight >= documentHeight - 100) {
-    loadMore()
+// 当 hasMore 或 loading 变化时，尝试设置 observer
+watch(() => [props.hasMore, props.loading], ([hasMore, loading]) => {
+  if (hasMore && !loading && !loadMoreObserver) {
+    nextTick(() => setupLoadMoreObserver())
   }
-}
+})
 
 onMounted(() => {
   updateColumnCount()
   window.addEventListener('resize', updateColumnCount)
-  window.addEventListener('scroll', handleScroll)
-  nextTick(() => observeNewImages())
+  nextTick(() => {
+    observeNewImages()
+  })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateColumnCount)
-  window.removeEventListener('scroll', handleScroll)
   if (observer) {
     observer.disconnect()
     observer = null
+  }
+  if (loadMoreObserver) {
+    loadMoreObserver.disconnect()
+    loadMoreObserver = null
   }
 })
 </script>
