@@ -648,7 +648,7 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
 
 .gallery-content {
   flex: 1;
-  padding: 15px 20px;
+  padding: 15px 20px 80px;
   overflow-y: auto;
 }
 
