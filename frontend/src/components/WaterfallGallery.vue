@@ -44,7 +44,7 @@
 
         <!-- 图片 -->
         <el-image
-          :key="retryKeys.value + '-' + image.id"
+          :key="image.id"
           :src="getPreviewUrl(image)"
           :alt="image.id.toString()"
           fit="cover"
@@ -140,7 +140,6 @@ const emit = defineEmits(['image-click', 'image-select', 'load-more', 'multi-sel
 const loadingMore = ref(false)
 const failedImages = ref(new Set())
 const pendingImages = ref(new Set())
-const retryKeys = ref(0)
 const retryingImages = ref(new Set())
 const displayedImages = ref([])
 
@@ -508,26 +507,12 @@ const getRatingType = (rating) => {
 }
 
 const getPreviewUrl = (image) => {
-  const isPending = pendingImages.value.has(image.id)
-  const ts = isPending && retryKeys.value > 0 ? `&t=${retryKeys.value}` : ''
-  
   if (props.sourceMode === 'local') {
-    // 重试后或已缓存的图片，优先使用缓存的预览图
-    if (isPending && image.local_preview_path) {
-      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}?t=${retryKeys.value}`
-    }
-    // 重试后没有预览图但有原图，生成缩略图
-    if (isPending && image.local_file_path) {
-      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${ts}`
-    }
-    // 省流模式且未缓存，不加载图片
-    if (props.saveDataMode) {
-      return ''
-    }
-    // 非省流模式，正常显示
+    // 已缓存的预览图
     if (image.local_preview_path) {
       return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}`
     }
+    // 有原图，生成缩略图
     if (image.local_file_path) {
       return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`
     }
@@ -537,7 +522,8 @@ const getPreviewUrl = (image) => {
   if (props.sourceMode === 'yande' && !visibleImages.value.has(image.id)) {
     return ''
   }
-  if (props.saveDataMode && !isPending) {
+  // 省流模式且未加载时不显示
+  if (props.saveDataMode && !image.loaded) {
     return ''
   }
   return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}`
@@ -588,7 +574,6 @@ const handleImageRetry = async (image, event) => {
   
   if (apiSuccess) {
     pendingImages.value.add(image.id)
-    retryKeys.value++
   } else {
     failedImages.value.add(image.id)
   }
