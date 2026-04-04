@@ -93,8 +93,8 @@
       :show-close="false"
       class="preview-float-dialog"
       :close-on-click-modal="true"
-      :width="'90%'"
-      top="5vh"
+      :width="'96%'"
+      top="2vh"
     >
       <div v-if="currentImage" class="preview-float">
         <!-- 图片容器 - 保持圆角，图片自适应 -->
@@ -684,7 +684,9 @@ html.dark-mode .selection-count {
 .preview-float-dialog :deep(.el-dialog) {
   background: transparent !important;
   box-shadow: none !important;
-  border-radius: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: none;
 }
 
 .preview-float-dialog :deep(.el-dialog__body) {
@@ -703,7 +705,7 @@ html.dark-mode .selection-count {
   border-radius: 12px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.85);
-  max-height: 85vh;
+  max-height: 92vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -713,12 +715,12 @@ html.dark-mode .selection-count {
 .float-main-image {
   display: block;
   max-width: 100%;
-  max-height: 85vh;
+  max-height: 92vh;
 }
 
 .float-main-image :deep(.el-image__inner) {
   max-width: 100%;
-  max-height: 85vh;
+  max-height: 92vh;
   object-fit: contain;
 }
 
