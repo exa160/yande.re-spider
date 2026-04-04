@@ -681,12 +681,16 @@ html.dark-mode .selection-count {
   background: transparent !important;
 }
 
+.preview-float-dialog :deep(.el-dialog__wrapper) {
+  outline: none !important;
+}
+
 .preview-float-dialog :deep(.el-dialog) {
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 12px;
-  overflow: hidden;
-  border: none;
+  padding: 0 !important;
+  border: none !important;
 }
 
 .preview-float-dialog :deep(.el-dialog__body) {
@@ -697,6 +701,8 @@ html.dark-mode .selection-count {
 .preview-float {
   position: relative;
   background: transparent;
+  padding: 0;
+  margin: 0;
 }
 
 /* 图片容器 - 保持圆角，图片自适应 */
@@ -943,8 +949,10 @@ html.dark-mode .preview-float-dialog {
 
 html.dark-mode .preview-float-dialog :deep(.el-dialog) {
   background: transparent !important;
-  border: none;
-  overflow: hidden;
+  box-shadow: none !important;
+  border-radius: 12px;
+  padding: 0 !important;
+  border: none !important;
 }
 
 html.dark-mode .float-image-wrapper {
