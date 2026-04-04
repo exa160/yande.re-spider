@@ -3,29 +3,18 @@
 """
 
 import uuid
-import threading
-import time
-from datetime import datetime
-from enum import Enum
-from typing import Optional, List, Dict
-from threading import Thread
+from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from backend.config.settings import config
-from backend.infrastructure.downloader import MultiDown
+from backend.infrastructure.download_queue import (
+    task_store,
+    download_queue,
+    TaskStatus,
+)
 
 router = APIRouter()
-
-
-class TaskStatus(str, Enum):
-    PENDING = "pending"
-    DOWNLOADING = "downloading"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
 
 
 class DownloadTaskCreate(BaseModel):
@@ -70,299 +59,22 @@ class ProgressResponse(BaseModel):
     speed: Optional[float] = None
 
 
-class TaskStore:
-    """内存任务存储"""
-
-    def __init__(self):
-        self._tasks: Dict[str, Dict] = {}
-        self._lock = threading.Lock()
-
-    def create_task(self, task_id: str, task_data: dict) -> dict:
-        with self._lock:
-            self._tasks[task_id] = {
-                "task_id": task_id,
-                "image_id": task_data["image_id"],
-                "file_url": task_data["file_url"],
-                "save_path": task_data["save_path"],
-                "file_name": task_data["file_name"],
-                "thread_num": task_data.get("thread_num", 4),
-                "status": TaskStatus.PENDING,
-                "progress": 0.0,
-                "downloaded_size": 0,
-                "total_size": task_data.get("total_size", 0),
-                "speed": 0.0,
-                "error_message": None,
-                "created_at": datetime.now().isoformat(),
-                "started_at": None,
-                "completed_at": None,
-                "tags": task_data.get("tags"),
-                "width": task_data.get("width"),
-                "height": task_data.get("height"),
-                "rating": task_data.get("rating"),
-                "author": task_data.get("author"),
-                "md5": task_data.get("md5"),
-            }
-            return self._tasks[task_id]
-
-    def get_task(self, task_id: str) -> Optional[dict]:
-        with self._lock:
-            return self._tasks.get(task_id)
-
-    def get_tasks(
-        self, status: Optional[TaskStatus] = None, page: int = 1, page_size: int = 20
-    ) -> tuple[List[dict], int]:
-        with self._lock:
-            tasks = list(self._tasks.values())
-
-            if status:
-                tasks = [t for t in tasks if t["status"] == status]
-
-            tasks.sort(key=lambda x: x["created_at"], reverse=True)
-            total = len(tasks)
-            start = (page - 1) * page_size
-            end = start + page_size
-            return tasks[start:end], total
-
-    def update_task(self, task_id: str, updates: dict):
-        with self._lock:
-            if task_id in self._tasks:
-                self._tasks[task_id].update(updates)
-
-    def delete_task(self, task_id: str) -> bool:
-        with self._lock:
-            if task_id in self._tasks:
-                del self._tasks[task_id]
-                return True
-            return False
-
-
-task_store = TaskStore()
-
-
-def run_download(task_id: str):
-    """后台执行下载"""
-    import threading
-    import time as time_module
-
-    task = task_store.get_task(task_id)
-    if not task:
-        return
-
-    task_store.update_task(
-        task_id,
-        {"status": TaskStatus.DOWNLOADING, "started_at": datetime.now().isoformat()},
-    )
-
-    try:
-        import os
-        import hashlib
-        from pathlib import Path
-
-        from backend.config.constant import DOWNLOADS_DIR, ORIGINALS_DIR, PREVIEWS_DIR
-
-        originals_dir = ORIGINALS_DIR
-        previews_dir = PREVIEWS_DIR
-
-        originals_dir.mkdir(parents=True, exist_ok=True)
-        previews_dir.mkdir(parents=True, exist_ok=True)
-
-        file_ext = (
-            task["file_name"].rsplit(".", 1)[-1] if "." in task["file_name"] else "jpg"
-        )
-        original_path = originals_dir / f"{task['image_id']}.{file_ext}"
-
-        expected_md5 = task.get("md5")
-        need_download = True
-        download_failed = False
-        error_message = None
-
-        if original_path.exists() and expected_md5:
-            file_md5 = hashlib.md5(open(original_path, "rb").read()).hexdigest()
-            if file_md5 == expected_md5:
-                print(
-                    f"Original exists and MD5 matches ({file_md5}), skipping download"
-                )
-                need_download = False
-            else:
-                print(f"Original exists but MD5 mismatch, re-downloading")
-                original_path.unlink()  # 删除旧文件
-
-        if need_download:
-            total_size = task.get("total_size", 0)
-            downloaded_size = 0
-            last_update_time = time_module.time()
-            last_downloaded_size = 0
-            download_speed = 0.0
-
-            # 线程安全的进度更新
-            progress_lock = threading.Lock()
-
-            def progress_callback(chunk_mb: float):
-                nonlocal \
-                    downloaded_size, \
-                    last_update_time, \
-                    last_downloaded_size, \
-                    download_speed
-                current_time = time_module.time()
-                with progress_lock:
-                    downloaded_size += chunk_mb
-                    # 计算速度 (MB/s)
-                    time_diff = current_time - last_update_time
-                    if time_diff >= 0.5:  # 至少0.5秒更新一次
-                        size_diff = downloaded_size - last_downloaded_size
-                        download_speed = size_diff / time_diff if time_diff > 0 else 0
-                        last_downloaded_size = downloaded_size
-                        last_update_time = current_time
-
-                    if total_size > 0:
-                        progress = min(
-                            downloaded_size / (total_size / 1024 / 1024), 1.0
-                        )
-                        task_store.update_task(
-                            task_id,
-                            {
-                                "downloaded_size": int(downloaded_size * 1024 * 1024),
-                                "progress": progress,
-                                "speed": download_speed,
-                            },
-                        )
-
-            try:
-                MultiDown(
-                    url=task["file_url"],
-                    file_path=str(originals_dir),
-                    file_name=f"{task['image_id']}.{file_ext}",
-                    file_size=total_size,
-                    _md5=task.get("md5"),
-                    _id=task["image_id"],
-                    _show_progress=False,
-                    _progress_callback=progress_callback,
-                )
-            except Exception as download_err:
-                download_failed = True
-                error_message = f"下载失败: {str(download_err)}"
-                print(error_message)
-
-        preview_url = task.get("preview_url")
-        if preview_url:
-            preview_path = previews_dir / f"{task['image_id']}.{file_ext}"
-            if not preview_path.exists():
-                try:
-                    import requests
-
-                    proxies = (
-                        config.yande_api.proxies if config.yande_api.proxies else None
-                    )
-                    resp = requests.get(preview_url, proxies=proxies, timeout=10)
-                    if resp.status_code == 200:
-                        with open(preview_path, "wb") as f:
-                            f.write(resp.content)
-                        print(f"Preview downloaded: {preview_path}")
-                except Exception as e:
-                    print(f"Failed to download preview: {e}")
-
-        try:
-            from backend.dao.database import MariaDBClient
-            from backend.models.yande import Rating
-            from datetime import datetime as dt
-
-            client = MariaDBClient()
-
-            if not client.update_down_flag(task["image_id"], True):
-                rating_str = task.get("rating", "s")
-                if rating_str in ["Safe", "s", "S"]:
-                    rating = Rating.S
-                elif rating_str in ["Questionable", "q", "Q"]:
-                    rating = Rating.R15
-                else:
-                    rating = Rating.R18
-
-                file_ext = (
-                    task.get("file_name", "jpg").rsplit(".", 1)[-1]
-                    if "." in task.get("file_name", "jpg")
-                    else "jpg"
-                )
-
-                new_record = client.YandeData(
-                    id=task["image_id"],
-                    tags=task.get("tags", ""),
-                    created_at=dt.now(),
-                    updated_at=dt.now(),
-                    creator_id=None,
-                    author=task.get("author", ""),
-                    change=0,
-                    source=task["file_url"],
-                    score=0,
-                    md5=task.get("md5", ""),
-                    file_size=task.get("total_size", 0),
-                    file_ext=file_ext,
-                    file_url=task["file_url"],
-                    is_shown_in_index=True,
-                    preview_url=task["file_url"].replace("images", "previews"),
-                    width=task.get("width", 0),
-                    height=task.get("height", 0),
-                    rating=rating,
-                    is_rating_locked=False,
-                    has_children=False,
-                    parent_id=None,
-                    status="active",
-                    is_pending=False,
-                    is_held=False,
-                    down_flag=True,
-                )
-                client.insert_data(new_record)
-            client.close()
-        except Exception as db_err:
-            print(f"Failed to update database: {db_err}")
-
-        if download_failed:
-            task_store.update_task(
-                task_id,
-                {
-                    "status": TaskStatus.FAILED,
-                    "error_message": error_message or "下载失败",
-                    "completed_at": datetime.now().isoformat(),
-                },
-            )
-        else:
-            task_store.update_task(
-                task_id,
-                {
-                    "status": TaskStatus.COMPLETED,
-                    "progress": 1.0,
-                    "completed_at": datetime.now().isoformat(),
-                },
-            )
-    except Exception as e:
-        task_store.update_task(
-            task_id, {"status": TaskStatus.FAILED, "error_message": str(e)}
-        )
-
-
 @router.post("/task", response_model=dict)
-async def create_download_task(
-    task: DownloadTaskCreate, background_tasks: BackgroundTasks
-):
+async def create_download_task(task: DownloadTaskCreate):
     task_id = str(uuid.uuid4())
-
-    task_data = task_store.create_task(task_id, task.model_dump())
-
-    background_tasks.add_task(run_download, task_id)
-
+    task_store.create_task(task_id, task.model_dump())
+    await download_queue.add_task(task_id)
     return {"message": "下载任务创建成功", "task_id": task_id}
 
 
 @router.post("/task/batch", response_model=dict)
-async def create_batch_download_tasks(
-    tasks: List[DownloadTaskCreate], background_tasks: BackgroundTasks
-):
+async def create_batch_download_tasks(tasks: List[DownloadTaskCreate]):
     task_ids = []
     for task in tasks:
         task_id = str(uuid.uuid4())
         task_store.create_task(task_id, task.model_dump())
-        background_tasks.add_task(run_download, task_id)
+        await download_queue.add_task(task_id)
         task_ids.append(task_id)
-
     return {"message": f"成功创建 {len(task_ids)} 个下载任务", "task_ids": task_ids}
 
 
@@ -373,7 +85,6 @@ async def get_download_tasks(
     page_size: int = Query(20, ge=1, le=100),
 ):
     tasks, total = task_store.get_tasks(status, page, page_size)
-
     return {
         "total": total,
         "page": page,
@@ -395,7 +106,6 @@ async def get_task_progress(task_id: str):
     task = task_store.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-
     return ProgressResponse(
         task_id=task["task_id"],
         status=task["status"],
@@ -407,17 +117,14 @@ async def get_task_progress(task_id: str):
 
 
 @router.post("/task/{task_id}/start")
-async def start_download_task(task_id: str, background_tasks: BackgroundTasks):
+async def start_download_task(task_id: str):
     task = task_store.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-
     if task["status"] not in [TaskStatus.PENDING, TaskStatus.PAUSED, TaskStatus.FAILED]:
         raise HTTPException(status_code=400, detail="任务无法启动")
-
     task_store.update_task(task_id, {"status": TaskStatus.PENDING})
-    background_tasks.add_task(run_download, task_id)
-
+    await download_queue.add_task(task_id)
     return {"message": "任务已启动"}
 
 
@@ -426,26 +133,21 @@ async def pause_download_task(task_id: str):
     task = task_store.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-
     if task["status"] != TaskStatus.DOWNLOADING:
         raise HTTPException(status_code=400, detail="任务无法暂停")
-
     task_store.update_task(task_id, {"status": TaskStatus.PAUSED})
     return {"message": "任务已暂停"}
 
 
 @router.post("/task/{task_id}/resume")
-async def resume_download_task(task_id: str, background_tasks: BackgroundTasks):
+async def resume_download_task(task_id: str):
     task = task_store.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-
     if task["status"] != TaskStatus.PAUSED:
         raise HTTPException(status_code=400, detail="任务无法恢复")
-
     task_store.update_task(task_id, {"status": TaskStatus.PENDING})
-    background_tasks.add_task(run_download, task_id)
-
+    await download_queue.add_task(task_id)
     return {"message": "任务已恢复"}
 
 
@@ -454,15 +156,12 @@ async def cancel_download_task(task_id: str):
     task = task_store.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-
     if task["status"] in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]:
         raise HTTPException(status_code=400, detail="任务无法取消")
-
     task_store.update_task(
         task_id,
-        {"status": TaskStatus.CANCELLED, "completed_at": datetime.now().isoformat()},
+        {"status": TaskStatus.CANCELLED, "completed_at": task["completed_at"]},
     )
-
     return {"message": "任务已取消"}
 
 
@@ -470,7 +169,6 @@ async def cancel_download_task(task_id: str):
 async def delete_download_task(task_id: str):
     if not task_store.delete_task(task_id):
         raise HTTPException(status_code=404, detail="任务不存在")
-
     return {"message": "任务已删除"}
 
 
@@ -479,17 +177,23 @@ async def get_download_history(
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 ):
     tasks, total = task_store.get_tasks(page=page, page_size=page_size)
-
     completed_tasks = [
         t
         for t in tasks
         if t["status"]
         in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
     ]
-
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
         "records": [DownloadTaskInfo(**t) for t in completed_tasks],
+    }
+
+
+@router.get("/queue/status")
+async def get_queue_status():
+    return {
+        "queue_size": download_queue.get_queue_size(),
+        "max_concurrent": download_queue._get_max_concurrent(),
     }

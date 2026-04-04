@@ -17,6 +17,9 @@ class YandeApi:
         """将 YandeSearchTags 转换为 yande.re API 识别的搜索标签字符串"""
         parts = []
 
+        if search_tags.tags:
+            parts.append(search_tags.tags)
+
         if search_tags.min_width is not None:
             parts.append(f"width:>={search_tags.min_width}")
 
@@ -45,9 +48,11 @@ class YandeApi:
             if len(search_tags.ratings) == 3:
                 pass
             elif len(search_tags.ratings) == 2:
-                parts.append(f"rating:-{list(set(["e", "q", "s"]) - set(search_tags.ratings))[0]}")
+                parts.append(
+                    f"-rating:{list(set(['e', 'q', 's']) - set(search_tags.ratings))[0]}"
+                )
             else:
-                parts.append(f"rating:{rating}")
+                parts.append(f"rating:{search_tags.ratings[0]}")
 
         if search_tags.file_exts:
             if len(search_tags.file_exts) == 1:

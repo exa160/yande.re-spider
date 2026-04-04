@@ -27,6 +27,7 @@ class ApiConfig(BaseModel):
 
 class DownloaderConfig(BaseModel):
     thread_num: int = Field(default=4)
+    max_concurrent_tasks: int = Field(default=3)
     chunk_size: int = Field(default=10)
     split_size: int = Field(default=200)
     retry_times: int = Field(default=3)
@@ -93,6 +94,10 @@ async def get_system_config():
         if isinstance(thread_num, str):
             thread_num = int(thread_num)
 
+        max_concurrent_tasks = downloader_cfg.get("max_concurrent_tasks", 3)
+        if isinstance(max_concurrent_tasks, str):
+            max_concurrent_tasks = int(max_concurrent_tasks)
+
         chunk_size = downloader_cfg.get("chunk_size", 10)
         if isinstance(chunk_size, str):
             chunk_size = int(chunk_size)
@@ -118,6 +123,7 @@ async def get_system_config():
             ),
             downloader=DownloaderConfig(
                 thread_num=clamp(thread_num, 4, 1, 32),
+                max_concurrent_tasks=clamp(max_concurrent_tasks, 1, 10),
                 chunk_size=clamp(chunk_size, 10, 1, 102400),
                 split_size=clamp(split_size, 200, 1, 1000000),
                 retry_times=clamp(retry_times, 3, 0, 500),
@@ -173,6 +179,7 @@ async def update_downloader_config(config: DownloaderConfig):
             config_data["downloader"] = {}
 
         config_data["downloader"]["thread_num"] = config.thread_num
+        config_data["downloader"]["max_concurrent_tasks"] = config.max_concurrent_tasks
         config_data["downloader"]["chunk_size"] = config.chunk_size
         config_data["downloader"]["split_size"] = config.split_size
         config_data["downloader"]["retry"] = config.retry_times
@@ -248,6 +255,7 @@ async def reset_config(section: Optional[str] = None):
         elif section == "downloader":
             config_data["downloader"] = {
                 "thread_num": 4,
+                "max_concurrent_tasks": 3,
                 "chunk_size": 10,
                 "split_size": 200,
                 "retry": 3,

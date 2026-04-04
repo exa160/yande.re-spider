@@ -117,6 +117,7 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
     page = params.get("page", 1)
 
     search_tags = YandeSearchTags(
+        tags=params.get("tags"),
         min_width=params.get("min_width"),
         max_width=params.get("max_width"),
         min_height=params.get("min_height"),
