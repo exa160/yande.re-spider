@@ -23,6 +23,7 @@ class ApiConfig(ConfigModel):
 
 class DownloaderConfig(ConfigModel):
     thread_num: int = 4
+    max_concurrent_tasks: int = 3
     chunk_size: int = 10 * 1024
     split_size: int = 5 * 1024 * 1024
 

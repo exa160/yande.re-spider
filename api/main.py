@@ -54,12 +54,24 @@ async def root():
 
 try:
     from backend.api.routers import query, download, gallery, config
+    from backend.infrastructure.download_queue import download_queue
 
     app.include_router(query.router, prefix="/api/v1/query", tags=["查询"])
     app.include_router(download.router, prefix="/api/v1/download", tags=["下载"])
     app.include_router(gallery.router, prefix="/api/v1/gallery", tags=["图库"])
     app.include_router(config.router, prefix="/api/v1/config", tags=["配置"])
     logger.info("API路由加载成功")
+
+    @app.on_event("startup")
+    async def startup_event():
+        await download_queue.start(num_workers=5)
+        logger.info("下载队列已启动")
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        await download_queue.stop()
+        logger.info("下载队列已停止")
+
 except ImportError as e:
     logger.warning(f"部分路由模块未找到: {e}")
 

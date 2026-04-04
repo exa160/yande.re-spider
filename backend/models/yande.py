@@ -73,6 +73,7 @@ class YandePostData(RootModel):
 class YandeSearchTags(BaseModel):
     """Yande.re 高级搜索标签转换模型"""
 
+    tags: Optional[str] = None  # 搜索标签（支持 +tag -tag 语法）
     min_width: Optional[int] = None
     max_width: Optional[int] = None
     min_height: Optional[int] = None
