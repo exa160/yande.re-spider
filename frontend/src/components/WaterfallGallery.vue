@@ -30,8 +30,8 @@
         }"
         @click="handleImageClick(image)"
         @touchstart="handleTouchStart(image, $event)"
-        @touchmove="handleTouchMove(image, $event)"
-        @touchend="handleTouchEnd(image)"
+        @touchmove="handleTouchMove($event)"
+        @touchend="handleTouchEnd($event)"
         @contextmenu.prevent="handleLongPress(image)"
         @mousedown="handleMouseDown(image, $event)"
         @mouseup="handleMouseUp(image, $event)"
@@ -148,6 +148,7 @@ const displayedImages = ref([])
 const touchFocusedId = ref(null)
 const longPressTimer = ref(null)
 const isLongPress = ref(false)
+const longPressSelectedId = ref(null) // 长按刚选中的图片 ID，滑动时跳过
 const LONG_PRESS_DURATION = 500
 const MOVE_THRESHOLD = 10 // 移动阈值，超过则不触发长按
 const touchStartPos = ref({ x: 0, y: 0 })
@@ -318,7 +319,7 @@ const isSelected = (image) => {
 
 const handleImageClick = (image) => {
   // 如果刚完成长按选择，忽略这次点击
-  if (isLongPress.value) {
+  if (isLongPress.value || longPressSelectedId.value === image.id) {
     return
   }
   
@@ -337,6 +338,12 @@ const handleLongPress = (image) => {
   isLongPress.value = true
   emit('multi-select-start')
   handleSelect(image, !isSelected(image))
+  
+  // 标记刚选中的图片，滑动时跳过不取消
+  longPressSelectedId.value = image.id
+  setTimeout(() => {
+    longPressSelectedId.value = null
+  }, 500)
   
   // 延迟重置isLongPress，让点击事件能正确检测到长按状态
   setTimeout(() => {
@@ -366,8 +373,8 @@ const handleTouchStart = (image, event) => {
   }, LONG_PRESS_DURATION)
 }
 
-// 触控移动 - 追踪触摸位置，聚焦当前触摸的图片
-const handleTouchMove = (image, event) => {
+// 触控移动 - 用 elementFromPoint 获取当前手指下的图片
+const handleTouchMove = (event) => {
   if (!props.selectable || !event.touches || event.touches.length === 0) return
   
   const touch = event.touches[0]
@@ -380,28 +387,48 @@ const handleTouchMove = (image, event) => {
       clearTimeout(longPressTimer.value)
       longPressTimer.value = null
     }
-    
-    // 同时更新聚焦的图片
-    const target = document.elementFromPoint(touch.clientX, touch.clientY)
-    if (target) {
-      const waterfallItem = target.closest('.waterfall-item')
-      if (waterfallItem) {
-        const imageId = parseInt(waterfallItem.dataset.imageId)
-        if (imageId && imageId !== touchFocusedId.value) {
-          touchFocusedId.value = imageId
+  }
+  
+  // 获取当前手指下的图片
+  const target = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (target) {
+    const waterfallItem = target.closest('.waterfall-item')
+    if (waterfallItem) {
+      const imageId = parseInt(waterfallItem.dataset.imageId)
+      if (imageId) {
+        // 多选模式下，手指滑过自动选中/取消
+        // 但跳过刚长按选中的图片，避免取消选中
+        if (props.selectedImages.length > 0 && imageId !== touchFocusedId.value && imageId !== longPressSelectedId.value) {
+          const isCurrentlySelected = isSelectedById(imageId)
+          handleSelectById(imageId, !isCurrentlySelected)
         }
+        touchFocusedId.value = imageId
       }
     }
   }
 }
 
+// 根据 ID 查找图片是否选中
+const isSelectedById = (imageId) => {
+  return props.selectedImages.some(img => img.id === imageId)
+}
+
+// 根据 ID 选中/取消
+const handleSelectById = (imageId, checked) => {
+  const image = props.images.find(img => img.id === imageId)
+  if (image) {
+    emit('image-select', image, checked)
+  }
+}
+
 // 触控结束
-const handleTouchEnd = (image) => {
+const handleTouchEnd = (event) => {
   if (longPressTimer.value) {
     clearTimeout(longPressTimer.value)
     longPressTimer.value = null
   }
-  // isLongPress 会在 handleLongPress 的 setTimeout 中重置
+  // 触控结束时检测是否需要加载更多
+  handleTouchSlidEnd(event)
 }
 
 // PC端鼠标长按开始
@@ -431,6 +458,19 @@ const handleMouseMove = (image, event) => {
     if (longPressTimer.value) {
       clearTimeout(longPressTimer.value)
       longPressTimer.value = null
+    }
+  }
+  
+  // 多选模式下，鼠标滑动自动选中（跳过刚长按选中的）
+  if (props.selectedImages.length > 0) {
+    const target = event.target.closest('.waterfall-item')
+    if (target) {
+      const imageId = parseInt(target.dataset.imageId)
+      if (imageId && imageId !== mouseFocusedId.value && imageId !== longPressSelectedId.value) {
+        const isCurrentlySelected = isSelectedById(imageId)
+        handleSelectById(imageId, !isCurrentlySelected)
+        mouseFocusedId.value = imageId
+      }
     }
   }
 }
@@ -558,10 +598,29 @@ const handleScroll = () => {
   const windowHeight = window.innerHeight
   const documentHeight = document.documentElement.scrollHeight
 
-  if (scrollTop + windowHeight >= documentHeight - 100) {
+  // 增加触底检测灵敏度，50px阈值
+  if (scrollTop + windowHeight >= documentHeight - 50) {
     if (props.hasMore && !props.loading && !loadingMore.value) {
       loadMore()
     }
+  }
+}
+
+// 触控滑动触底检测（移动端）
+const handleTouchSlidEnd = (event) => {
+  if (!props.hasMore || props.loading || loadingMore.value) return
+  
+  const container = containerRef.value
+  if (!container) return
+  
+  const rect = container.getBoundingClientRect()
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+  const windowHeight = window.innerHeight
+  const documentHeight = document.documentElement.scrollHeight
+  
+  // 检测是否滑到了接近底部
+  if (scrollTop + windowHeight >= documentHeight - 100) {
+    loadMore()
   }
 }
 

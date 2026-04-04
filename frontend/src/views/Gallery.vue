@@ -87,18 +87,14 @@
       </div>
     </transition>
 
-    <!-- 图片预览对话框 - 全屏透明浮层，图片自适应 -->
-    <el-dialog
-      v-model="previewVisible"
-      :show-close="false"
-      class="preview-float-dialog"
-      :close-on-click-modal="true"
-      :width="'90%'"
-      top="5vh"
-    >
-      <div v-if="currentImage" class="preview-float">
-        <!-- 图片容器 - 保持圆角，图片自适应 -->
-        <div class="float-image-wrapper">
+    <!-- 图片预览弹窗 - 自定义浮层 -->
+    <teleport to="body">
+      <div 
+        v-if="previewVisible && currentImage" 
+        class="image-preview-overlay" 
+        @click.self="previewVisible = false"
+      >
+        <div class="float-image-wrapper" :style="previewContainerStyle">
           <el-image
             :src="getDetailUrl(currentImage)"
             :preview-src-list="[getDetailUrl(currentImage)]"
@@ -108,7 +104,6 @@
             :preview-teleported="true"
           />
 
-          <!-- 顶部信息栏 - 悬浮在图片上方 -->
           <div class="float-header">
             <div class="float-header-left">
               <span class="float-id">ID: {{ currentImage.id }}</span>
@@ -122,7 +117,6 @@
             </el-button>
           </div>
 
-          <!-- 底部操作栏 - 悬浮在图片下方 -->
           <div class="float-footer">
             <div class="float-footer-left">
               <template v-if="!currentImage.is_downloaded">
@@ -161,7 +155,6 @@
             </div>
           </div>
 
-          <!-- 详情面板 - 向上展开 -->
           <transition name="detail-slide-up">
             <div v-if="infoPanelExpanded" class="float-detail-panel">
               <div class="detail-grid">
@@ -200,7 +193,7 @@
           </transition>
         </div>
       </div>
-    </el-dialog>
+    </teleport>
 
     <!-- 下载管理对话框 -->
     <el-dialog
@@ -246,7 +239,47 @@ const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 
 const previewVisible = ref(false)
 const currentImage = ref(null)
+const previewContainerStyle = ref({})
 const downloading = ref(false)
+
+// 计算图片预览容器尺寸，保持图片原始比例，80vh 高度
+const calculatePreviewSize = () => {
+  if (!currentImage.value) {
+    previewContainerStyle.value = {}
+    return
+  }
+  
+  const imgWidth = currentImage.value.width || 1920
+  const imgHeight = currentImage.value.height || 1080
+  const imgRatio = imgWidth / imgHeight
+  
+  // 最大可用高度（80vh）
+  const maxHeight = window.innerHeight * 0.8
+  const maxWidth = window.innerWidth * 0.8
+  
+  let width, height
+  if (imgRatio > maxWidth / maxHeight) {
+    // 图片更宽，以宽度为准
+    width = maxWidth
+    height = maxWidth / imgRatio
+  } else {
+    // 图片更高，以高度为准
+    height = maxHeight
+    width = maxHeight * imgRatio
+  }
+  
+  previewContainerStyle.value = {
+    width: `${width}px`,
+    height: `${height}px`
+  }
+}
+
+// 监听 currentImage 变化，重新计算尺寸
+watch(currentImage, (img) => {
+  if (previewVisible.value && img) {
+    calculatePreviewSize()
+  }
+})
 const tagsExpanded = ref(false)
 const infoPanelExpanded = ref(false)
 
@@ -347,6 +380,7 @@ const handleImageClick = (image) => {
   tagsExpanded.value = false
   infoPanelExpanded.value = false
   previewVisible.value = true
+  calculatePreviewSize()
 }
 
 const toggleInfoPanel = () => {
@@ -487,6 +521,12 @@ const getDetailUrl = (image) => {
 // 页面加载时自动查询本地
 onMounted(() => {
   handleSearch({})
+  // 窗口尺寸变化时重新计算预览尺寸
+  window.addEventListener('resize', () => {
+    if (previewVisible.value && currentImage.value) {
+      calculatePreviewSize()
+    }
+  })
 })
 </script>
 
@@ -676,57 +716,43 @@ html.dark-mode .selection-count {
   background: var(--el-color-primary);
 }
 
-/* 全屏浮层预览对话框 */
-.preview-float-dialog {
-  background: transparent !important;
-}
-
-.preview-float-dialog :deep(.el-dialog__wrapper) {
-  outline: none !important;
-}
-
-.preview-float-dialog :deep(.el-dialog) {
-  background: transparent !important;
-  box-shadow: none !important;
-  border-radius: 12px;
-  padding: 0 !important;
-  border: none !important;
-}
-
-.preview-float-dialog :deep(.el-dialog__body) {
-  padding: 0;
-  overflow: hidden;
-}
-
-.preview-float {
-  position: relative;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-}
-
-/* 图片容器 - 保持圆角，图片自适应 */
-.float-image-wrapper {
-  position: relative;
-  border-radius: 12px;
-  overflow: hidden;
+/* 图片预览弹窗 - 自定义浮层 */
+.image-preview-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2000;
   background: rgba(0, 0, 0, 0.85);
-  max-height: 85vh;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* 图片 */
+/* 图片容器 - 动态尺寸（由JS计算保持图片比例），图片自适应缩放 */
+.float-image-wrapper {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 图片 - 适应容器 */
 .float-main-image {
-  display: block;
-  max-width: 100%;
-  max-height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .float-main-image :deep(.el-image__inner) {
   max-width: 100%;
-  max-height: 85vh;
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -943,24 +969,8 @@ html.dark-mode .float-detail-panel {
   /* 保持一致的极透明效果 */
 }
 
-html.dark-mode .preview-float-dialog {
-  background: transparent !important;
-}
-
-html.dark-mode .preview-float-dialog :deep(.el-dialog) {
-  background: transparent !important;
-  box-shadow: none !important;
-  border-radius: 12px;
-  padding: 0 !important;
-  border: none !important;
-}
-
-html.dark-mode .float-image-wrapper {
-  background: rgba(0, 0, 0, 0.9);
-}
-
-html.dark-mode .float-detail-panel {
-  background: rgba(0, 0, 0, 0.08);
+html.dark-mode .image-preview-overlay {
+  background: rgba(0, 0, 0, 0.92);
 }
 
 /* 中心对话框样式 */

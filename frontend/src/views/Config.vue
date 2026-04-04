@@ -60,8 +60,8 @@
       <!-- 下载器配置 -->
       <div v-show="activeMenu === 'downloader'" class="config-section">
         <el-form :model="downloaderConfig" label-width="100px" class="config-form">
-          <el-form-item label="线程数">
-            <el-input-number v-model="downloaderConfig.thread_num" :min="1" :max="32" />
+          <el-form-item label="并发下载数">
+            <el-input-number v-model="downloaderConfig.max_concurrent_tasks" :min="1" :max="10" />
           </el-form-item>
           <el-form-item label="分块大小">
             <el-input-number v-model="downloaderConfig.chunk_size" :min="1" :max="102400" /> KB
@@ -164,6 +164,7 @@ const apiConfig = ref({
 
 const downloaderConfig = ref({
   thread_num: 4,
+  max_concurrent_tasks: 3,
   chunk_size: 10,
   split_size: 200,
   retry_times: 3
