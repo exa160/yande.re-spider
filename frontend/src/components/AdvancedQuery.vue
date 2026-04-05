@@ -30,6 +30,9 @@
           </el-tag>
         </div>
         <div class="search-actions">
+          <el-button circle size="small" @click="toggleFavoritePanel">
+            <el-icon><Folder /></el-icon>
+          </el-button>
           <el-button circle size="small" @click="toggleAdvanced">
             <el-icon><Setting /></el-icon>
           </el-button>
@@ -37,6 +40,73 @@
             <el-icon><Minus /></el-icon>
           </el-button>
         </div>
+
+        <!-- 收藏夹面板 -->
+        <transition name="el-fade-in-linear">
+          <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop>
+            <div class="favorite-header">
+              <span>我的收藏</span>
+              <el-button size="small" type="primary" @click="subscribeCurrentSearch">
+                订阅当前
+              </el-button>
+            </div>
+            <div class="favorite-list">
+              <div
+                v-for="folder in favoriteFolders"
+                :key="folder.id"
+                class="favorite-item"
+                @click="selectFavorite(folder)"
+              >
+                <div class="favorite-icon" :style="{ backgroundColor: folder.color }">
+                  <el-icon><Folder /></el-icon>
+                </div>
+                <div class="favorite-info">
+                  <div class="favorite-name">{{ folder.name }}</div>
+                  <div class="favorite-tags">{{ folder.tags || '无标签' }}</div>
+                </div>
+                <div class="favorite-count">{{ folder.local_count || 0 }}</div>
+              </div>
+              <div v-if="favoriteFolders.length === 0" class="favorite-empty">
+                暂无收藏夹，点击「订阅当前」创建
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <!-- 订阅对话框 -->
+        <el-dialog
+          v-model="subscribeDialogVisible"
+          title="订阅当前搜索"
+          width="360px"
+          class="subscribe-dialog"
+          :append-to-body="true"
+        >
+          <el-form :model="subscribeForm" label-width="80px">
+            <el-form-item label="收藏夹名称">
+              <el-input v-model="subscribeForm.name" placeholder="如：高评分图片" />
+            </el-form-item>
+            <el-form-item label="标签">
+              <el-input v-model="subscribeForm.tags" type="textarea" :rows="3" readonly />
+              <div class="form-tip">系统将根据当前搜索条件自动生成标签</div>
+            </el-form-item>
+            <el-form-item label="颜色">
+              <div class="color-picker">
+                <div
+                  v-for="color in colorOptions"
+                  :key="color"
+                  class="color-option"
+                  :class="{ active: subscribeForm.color === color }"
+                  :style="{ backgroundColor: color }"
+                  @click="subscribeForm.color = color"
+                />
+              </div>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button size="small" @click="subscribeDialogVisible = false">取消</el-button>
+            <el-button size="small" type="primary" @click="confirmSubscribe">确认订阅</el-button>
+          </template>
+        </el-dialog>
       </div>
 
       <!-- 高级筛选面板 -->
@@ -152,8 +222,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import { Search, Setting, Minus } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { Search, Setting, Minus, Folder } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { getFoldersWithCount, createFolder } from '@/api/favorites'
 
 const props = defineProps({
   sourceMode: {
@@ -163,6 +235,188 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['search'])
+
+// 收藏夹相关
+const showFavoritePanel = ref(false)
+const favoriteFolders = ref([])
+const isSubscribing = ref(false)
+const subscribeDialogVisible = ref(false)
+const subscribeForm = reactive({
+  name: '',
+  tags: '',
+  color: '#409EFF',
+})
+
+const loadFavoriteFolders = async () => {
+  try {
+    favoriteFolders.value = await getFoldersWithCount()
+  } catch (error) {
+    console.error('加载收藏夹失败:', error)
+  }
+}
+
+const toggleFavoritePanel = () => {
+  showFavoritePanel.value = !showFavoritePanel.value
+  if (showFavoritePanel.value) {
+    loadFavoriteFolders()
+    document.addEventListener('click', handleClickOutside)
+  } else {
+    document.removeEventListener('click', handleClickOutside)
+  }
+}
+
+const handleClickOutside = (e) => {
+  const container = document.querySelector('.advanced-query-container')
+  if (container && !container.contains(e.target)) {
+    showFavoritePanel.value = false
+    document.removeEventListener('click', handleClickOutside)
+  }
+}
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+// 一键订阅当前搜索
+const subscribeCurrentSearch = () => {
+  // 构建当前搜索的 tags 字符串
+  const tagsStr = buildCurrentTagsString()
+  subscribeForm.tags = tagsStr
+  subscribeForm.name = '新建收藏夹'
+  subscribeDialogVisible.value = true
+}
+
+const confirmSubscribe = async () => {
+  if (!subscribeForm.name.trim()) {
+    ElMessage.warning('请输入收藏夹名称')
+    return
+  }
+  try {
+    await createFolder({
+      name: subscribeForm.name,
+      tags: subscribeForm.tags,
+      color: subscribeForm.color,
+      icon: 'folder',
+      sort_order: favoriteFolders.value.length,
+    })
+    ElMessage.success('订阅成功')
+    subscribeDialogVisible.value = false
+    subscribeForm.name = ''
+    subscribeForm.tags = ''
+    loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('订阅失败')
+  }
+}
+
+// 构建当前搜索的 tags 字符串
+const buildCurrentTagsString = () => {
+  const parts = []
+
+  // 基础标签
+  if (searchText.value) {
+    parts.push(searchText.value)
+  }
+
+  // 评分
+  if (queryParams.rating && queryParams.rating.length > 0) {
+    queryParams.rating.forEach(r => {
+      parts.push(`rating:${r}`)
+    })
+  }
+
+  // 排序
+  if (queryParams.sortBy !== 'created_at' || queryParams.sortOrder !== 'desc') {
+    const orderMap = {
+      'created_at': 'date',
+      'rating': 'rating',
+      'file_size': 'file_size',
+      'width': 'width',
+      'height': 'height',
+    }
+    parts.push(`order:${orderMap[queryParams.sortBy] || 'date'}`)
+  }
+
+  // 文件格式
+  if (props.sourceMode === 'local' && queryParams.fileType && queryParams.fileType.length > 0) {
+    queryParams.fileType.forEach(ext => {
+      parts.push(`ext:${ext}`)
+    })
+  } else if (props.sourceMode === 'yande' && queryParams.fileTypeSingle) {
+    parts.push(`ext:${queryParams.fileTypeSingle}`)
+  }
+
+  // 尺寸
+  if (queryParams.minWidth) {
+    parts.push(`width:>=${queryParams.minWidth}`)
+  }
+  if (queryParams.maxWidth) {
+    parts.push(`width:<=${queryParams.maxWidth}`)
+  }
+  if (queryParams.minHeight) {
+    parts.push(`height:>=${queryParams.minHeight}`)
+  }
+  if (queryParams.maxHeight) {
+    parts.push(`height:<=${queryParams.maxHeight}`)
+  }
+
+  return parts.join(' ')
+}
+
+// 选择收藏夹
+const selectFavorite = (folder) => {
+  const params = parseFavoriteTagsToParams(folder.tags)
+  emit('search', { mode: 'local', params, favorite: folder })
+  showFavoritePanel.value = false
+}
+
+// 解析收藏夹的 tags 字符串为查询参数
+const parseFavoriteTagsToParams = (tagsStr) => {
+  const params = {}
+  if (!tagsStr) return params
+
+  const parts = tagsStr.split(/\s+/)
+  for (const part of parts) {
+    if (part.startsWith('rating:')) {
+      params.ratings = [part.split(':')[1]]
+    } else if (part.startsWith('score:>')) {
+      params.min_score = parseInt(part.split(':')[1])
+    } else if (part.startsWith('score:<=')) {
+      params.max_score = parseInt(part.split(':')[1])
+    } else if (part.startsWith('order:')) {
+      params.order = part.split(':')[1]
+    } else if (part.startsWith('width:>=')) {
+      params.min_width = parseInt(part.split(':')[1])
+    } else if (part.startsWith('width:<=')) {
+      params.max_width = parseInt(part.split(':')[1])
+    } else if (part.startsWith('height:>=')) {
+      params.min_height = parseInt(part.split(':')[1])
+    } else if (part.startsWith('height:<=')) {
+      params.max_height = parseInt(part.split(':')[1])
+    } else if (part.startsWith('ext:')) {
+      params.file_types = [part.split(':')[1]]
+    } else if (!part.startsWith('-')) {
+      if (!params.tags) {
+        params.tags = part
+      } else {
+        params.tags += ' ' + part
+      }
+    }
+  }
+  return params
+}
+
+// 颜色选项
+const colorOptions = [
+  '#409EFF', // 蓝色
+  '#67C23A', // 绿色
+  '#E6A23C', // 橙色
+  '#F56C6C', // 红色
+  '#909399', // 灰色
+  '#BD35EF', // 紫色
+  '#00BCD4', // 青色
+  '#FF69B4', // 粉色
+]
 
 // 状态
 const collapsed = ref(false)
@@ -274,8 +528,13 @@ const removeFilter = (filter) => {
 
 // 收缩/展开
 const collapse = () => {
-  collapsed.value = true
-  showAdvanced.value = false
+  if (showAdvanced.value) {
+    // 如果高级搜索展开，先收起高级搜索
+    showAdvanced.value = false
+  } else {
+    // 否则收起整个搜索栏
+    collapsed.value = true
+  }
 }
 
 const expand = () => {
@@ -672,5 +931,172 @@ defineExpose({
 .panel-footer :deep(.el-button--primary:hover) {
   background: #66b1ff;
   border-color: #66b1ff;
+}
+
+/* 收藏夹下拉面板 - 向上展开 */
+.favorite-dropdown {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  width: 360px;
+  max-height: 400px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.favorite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.favorite-header :deep(.el-button) {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.favorite-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.favorite-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.favorite-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.favorite-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.favorite-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.favorite-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.favorite-tags {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.favorite-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.favorite-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* 订阅对话框 - 悬浮在收藏夹面板上方 */
+.subscribe-dialog {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  width: 360px;
+}
+
+.subscribe-dialog :deep(.el-dialog) {
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.subscribe-dialog :deep(.el-dialog__header) {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.subscribe-dialog :deep(.el-dialog__body) {
+  padding: 16px;
+  background: var(--bg-secondary);
+}
+
+.subscribe-dialog :deep(.el-dialog__footer) {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+/* 订阅对话框 */
+.form-tip {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.color-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-option {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+}
+
+.color-option.active {
+  border-color: var(--text-primary);
 }
 </style>

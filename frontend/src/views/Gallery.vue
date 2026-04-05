@@ -6,13 +6,13 @@
       <div class="toolbar-left">
         <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
         <el-button-group class="mode-buttons">
-          <el-button 
+          <el-button
             :type="querySource === 'yande' ? 'primary' : ''"
             @click="handleSourceChange('yande')"
           >
             在线
           </el-button>
-          <el-button 
+          <el-button
             :type="querySource === 'local' ? 'primary' : ''"
             @click="handleSourceChange('local')"
           >
@@ -20,12 +20,21 @@
           </el-button>
         </el-button-group>
         <el-tooltip content="省流模式">
-          <el-button 
+          <el-button
             :type="saveDataMode ? 'warning' : ''"
             circle
             @click="saveDataMode = !saveDataMode"
           >
             <el-icon><Connection /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="安全模式">
+          <el-button
+            :type="safeMode ? 'danger' : ''"
+            circle
+            @click="safeMode = !safeMode"
+          >
+            <el-icon><MagicStick /></el-icon>
           </el-button>
         </el-tooltip>
       </div>
@@ -56,10 +65,12 @@
         :images="images"
         :loading="loading"
         :has-more="hasMore"
+        :is-loading-more="isLoadingMore"
         :selected-images="selectedImages"
         :selectable="querySource === 'yande'"
         :source-mode="querySource"
         :save-data-mode="saveDataMode"
+        :safe-mode="safeMode"
         @image-click="handleImageClick"
         @image-select="handleImageSelect"
         @load-more="loadMore"
@@ -104,7 +115,7 @@
             :preview-teleported="true"
           />
 
-          <div class="float-header">
+          <div class="float-header" :class="`overlay-${overlayColorScheme}`">
             <div class="float-header-left">
               <span class="float-id">ID: {{ currentImage.id }}</span>
               <el-tag :type="getRatingType(currentImage.rating)" size="small">
@@ -117,23 +128,29 @@
             </el-button>
           </div>
 
-          <div class="float-footer">
+          <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
             <div class="float-footer-left">
               <template v-if="!currentImage.is_downloaded">
                 <el-button 
                   type="primary" 
                   @click.stop="handleDownload" 
-                  :loading="downloading" 
+                  :disabled="downloading"
                   class="float-download-btn"
                 >
-                  <el-icon><Download /></el-icon>
-                  下载原图
+                  <span v-if="downloading" class="download-loading">
+                    <el-icon class="is-loading"><Loading /></el-icon>
+                    下载中...
+                  </span>
+                  <template v-else>
+                    <el-icon><Download /></el-icon>
+                    下载原图
+                  </template>
                 </el-button>
               </template>
               <template v-else>
                 <el-button 
                   @click.stop="handleDownload" 
-                  :loading="downloading" 
+                  :disabled="downloading"
                   class="float-redownload-btn"
                   title="重新下载"
                 >
@@ -156,7 +173,7 @@
           </div>
 
           <transition name="detail-slide-up">
-            <div v-if="infoPanelExpanded" class="float-detail-panel">
+            <div v-if="infoPanelExpanded" class="float-detail-panel" :class="`overlay-${overlayColorScheme}`">
               <div class="detail-grid">
                 <div class="detail-item">
                   <span class="detail-label">大小</span>
@@ -220,18 +237,21 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
+import { updateOnlineCount } from '@/api/favorites'
 
 const images = ref([])
 const loading = ref(false)
 const hasMore = ref(false)
+const isLoadingMore = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
+const currentFavorite = ref(null)
 
 // 从 localStorage 读取保存的设置，默认本地模式
 const querySource = ref(localStorage.getItem('gallery_source') || 'local')
@@ -241,6 +261,68 @@ const previewVisible = ref(false)
 const currentImage = ref(null)
 const previewContainerStyle = ref({})
 const downloading = ref(false)
+const overlayColorScheme = ref('dark') // 'dark' or 'light'
+const safeMode = ref(localStorage.getItem('safe_mode') === 'true')
+
+// 分析图片主色调，决定浮层文字颜色
+const analyzeImageColor = (imgUrl) => {
+  if (!imgUrl) {
+    overlayColorScheme.value = 'dark'
+    return
+  }
+  
+  const img = new Image()
+  img.crossOrigin = 'Anonymous'
+  img.onload = () => {
+    try {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const sampleSize = 50 // 采样大小，越小越快
+      
+      canvas.width = sampleSize
+      canvas.height = sampleSize
+      ctx.drawImage(img, 0, 0, sampleSize, sampleSize)
+      
+      const imageData = ctx.getImageData(0, 0, sampleSize, sampleSize)
+      const data = imageData.data
+      
+      let totalBrightness = 0
+      let pixelCount = 0
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i + 1]
+        const b = data[i + 2]
+        // 计算亮度 (公式: 0.299*R + 0.587*G + 0.114*B)
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b
+        totalBrightness += brightness
+        pixelCount++
+      }
+      
+      const avgBrightness = totalBrightness / pixelCount
+      // 如果平均亮度大于 180，认为是浅色图片，使用深色文字
+      overlayColorScheme.value = avgBrightness > 180 ? 'light' : 'dark'
+    } catch (e) {
+      // 跨域或其他错误，使用默认深色
+      overlayColorScheme.value = 'dark'
+    }
+  }
+  img.onerror = () => {
+    overlayColorScheme.value = 'dark'
+  }
+  img.src = imgUrl
+}
+
+// 监听 currentImage 变化，分析图片颜色
+watch(currentImage, (img) => {
+  if (previewVisible.value && img) {
+    // 使用预览图或原图进行分析
+    const imgUrl = img.local_preview_path 
+      ? `/api/v1/gallery/cache/preview/${img.id}.${img.file_ext || 'jpg'}`
+      : img.preview_url || img.sample_url || img.jpeg_url
+    analyzeImageColor(imgUrl)
+  }
+})
 
 // 计算图片预览容器尺寸，保持图片原始比例，80vh 高度
 const calculatePreviewSize = () => {
@@ -309,18 +391,63 @@ const stopSaveDataWatch = watch(saveDataMode, (val) => {
   localStorage.setItem('gallery_saveData', val ? 'true' : 'false')
 })
 
+const stopSafeModeWatch = watch(safeMode, (val) => {
+  localStorage.setItem('safe_mode', val ? 'true' : 'false')
+})
+
+// 图片预览
+
+
+// 解析收藏夹的 tags 字符串
+const parseFavoriteTags = (tagsStr) => {
+  const params = {}
+  if (!tagsStr) return params
+
+  const parts = tagsStr.split(/\s+/)
+  for (const part of parts) {
+    if (part.startsWith('rating:')) {
+      params.ratings = [part.split(':')[1]]
+    } else if (part.startsWith('score:>')) {
+      params.min_score = parseInt(part.split(':')[1])
+    } else if (part.startsWith('score:<=')) {
+      params.max_score = parseInt(part.split(':')[1])
+    } else if (part.startsWith('order:')) {
+      const orderVal = part.split(':')[1]
+      params.order = orderVal
+    } else if (part.startsWith('width:>=')) {
+      params.min_width = parseInt(part.split(':')[1])
+    } else if (part.startsWith('width:<=')) {
+      params.max_width = parseInt(part.split(':')[1])
+    } else if (part.startsWith('ext:')) {
+      params.file_types = [part.split(':')[1]]
+    } else if (!part.startsWith('-')) {
+      // 普通标签
+      if (!params.tags) {
+        params.tags = part
+      } else {
+        params.tags += ' ' + part
+      }
+    }
+  }
+  return params
+}
+
+// 收藏夹创建/更新成功后
+const handleFavoriteCreate = async (folder) => {
+  showFavoritePanel.value = false
+}
+
 onUnmounted(() => {
   stopSourceWatch()
   stopSaveDataWatch()
+  stopSafeModeWatch()
 })
 
 const handleSearch = async (searchData) => {
   let params
   if (searchData.mode) {
-    // 来自高级搜索组件的新格式
     params = { ...searchData.params, source: searchData.mode }
   } else {
-    // 兼容旧格式
     params = { ...searchData, source: querySource.value }
   }
   queryParams.value = params
@@ -328,6 +455,7 @@ const handleSearch = async (searchData) => {
   images.value = []
   selectedImages.value = []
   selectAll.value = false
+  currentFavorite.value = searchData.favorite || null
   await loadImages()
 }
 
@@ -357,6 +485,9 @@ const loadImages = async () => {
     })
     if (currentPage.value === 1) {
       images.value = response.images
+      if (currentFavorite.value && response.total !== undefined) {
+        updateOnlineCount(currentFavorite.value.id, response.total).catch(() => {})
+      }
     } else {
       images.value.push(...response.images)
     }
@@ -371,8 +502,11 @@ const loadImages = async () => {
 }
 
 const loadMore = async () => {
+  if (isLoadingMore.value) return
+  isLoadingMore.value = true
   currentPage.value++
   await loadImages()
+  isLoadingMore.value = false
 }
 
 const handleImageClick = (image) => {
@@ -854,8 +988,19 @@ html.dark-mode .selection-count {
   color: white !important;
 }
 
-.float-download-btn:hover {
+.float-download-btn:hover:not(:disabled) {
   background: rgba(64, 158, 255, 1) !important;
+}
+
+.float-download-btn:disabled {
+  opacity: 0.8 !important;
+  cursor: not-allowed !important;
+}
+
+.download-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .float-redownload-btn {
@@ -973,6 +1118,60 @@ html.dark-mode .image-preview-overlay {
   background: rgba(0, 0, 0, 0.92);
 }
 
+/* 图片自适应浅色/深色文字 */
+.float-header.overlay-light,
+.float-footer.overlay-light,
+.float-detail-panel.overlay-light {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.float-header.overlay-light .float-id,
+.float-footer.overlay-light .float-id {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.float-header.overlay-light .float-size,
+.float-footer.overlay-light .float-size,
+.float-footer.overlay-light .float-expand-text,
+.float-footer.overlay-light .float-expand-icon {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.float-header.overlay-light .float-close-btn,
+.float-footer.overlay-light .float-redownload-btn {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.float-header.overlay-light .float-close-btn:hover,
+.float-footer.overlay-light .float-redownload-btn:hover {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+.float-footer.overlay-light .float-footer-right:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* 详情面板浅色文字 */
+.float-detail-panel.overlay-light .detail-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.float-detail-panel.overlay-light .detail-value {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.float-detail-panel.overlay-light .detail-tags-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.float-detail-panel.overlay-light .detail-tags-list :deep(.el-tag) {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
 /* 中心对话框样式 */
 .center-dialog {
   border-radius: 12px;
@@ -1002,6 +1201,5 @@ html.dark-mode .image-preview-overlay {
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);
 }
-
 
 </style>
