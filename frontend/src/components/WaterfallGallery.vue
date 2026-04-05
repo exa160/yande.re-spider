@@ -49,7 +49,10 @@
           :alt="image.id.toString()"
           fit="cover"
           class="waterfall-image"
-          :class="{ 'fade-in': pendingImages.has(image.id) || image.local_preview_path }"
+          :class="{ 
+            'fade-in': pendingImages.has(image.id) || image.local_preview_path,
+            'safe-blur': safeMode && image.rating !== 'Safe'
+          }"
           @error="handleImageError(image)"
           @load="handleImageLoad(image)"
         >
@@ -91,8 +94,16 @@
 
     <!-- 加载更多 -->
     <div v-if="hasMore && !loading" ref="loadMoreRef" class="load-more">
-      <el-button @click="loadMore" :loading="loadingMore">
-        加载更多
+      <el-button 
+        @click="loadMore" 
+        :disabled="loadingMore"
+        class="load-more-btn"
+      >
+        <span v-if="loadingMore" class="load-more-loading">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          加载中...
+        </span>
+        <span v-else>加载更多</span>
       </el-button>
     </div>
   </div>
@@ -132,15 +143,31 @@ const props = defineProps({
   saveDataMode: {
     type: Boolean,
     default: true
+  },
+  isLoadingMore: {
+    type: Boolean,
+    default: false
+  },
+  safeMode: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits(['image-click', 'image-select', 'load-more', 'multi-select-start'])
 
+// 监听 isLoadingMore prop，当父组件重置时同步状态
+watch(() => props.isLoadingMore, (newVal) => {
+  if (!newVal) {
+    loadingMore.value = false
+  }
+})
+
 const loadingMore = ref(false)
 const failedImages = ref(new Set())
 const pendingImages = ref(new Set())
 const retryingImages = ref(new Set())
+const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
 
 // 长按选择相关
@@ -490,11 +517,9 @@ const handleSelect = (image, checked) => {
 }
 
 const loadMore = () => {
+  if (loadingMore.value) return
   loadingMore.value = true
   emit('load-more')
-  setTimeout(() => {
-    loadingMore.value = false
-  }, 1000)
 }
 
 const getRatingType = (rating) => {
@@ -507,26 +532,28 @@ const getRatingType = (rating) => {
 }
 
 const getPreviewUrl = (image) => {
+  const retryTs = retrySuccessImages.value.get(image.id)
+  const tsSuffix = retryTs ? `&ts=${retryTs}` : ''
+  
   if (props.sourceMode === 'local') {
-    // 已缓存的预览图
     if (image.local_preview_path) {
-      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}`
+      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}${tsSuffix}`
     }
-    // 有原图，生成缩略图
     if (image.local_file_path) {
-      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`
+      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
     }
     return ''
   }
-  // 在线模式：懒加载，未进入可视区时不加载
   if (props.sourceMode === 'yande' && !visibleImages.value.has(image.id)) {
     return ''
   }
-  // 省流模式且未加载时不显示
-  if (props.saveDataMode && !image.loaded) {
+  if (pendingImages.value.has(image.id)) {
+    return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
+  }
+  if (props.saveDataMode) {
     return ''
   }
-  return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}`
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
 }
 
 const handleImageError = (image) => {
@@ -537,6 +564,7 @@ const handleImageError = (image) => {
 const handleImageLoad = (image) => {
   failedImages.value.delete(image.id)
   pendingImages.value.add(image.id)
+  retrySuccessImages.value.delete(image.id)
 }
 
 const shouldShowRetry = (image) => {
@@ -574,6 +602,7 @@ const handleImageRetry = async (image, event) => {
   
   if (apiSuccess) {
     pendingImages.value.add(image.id)
+    retrySuccessImages.value.set(image.id, Date.now())
   } else {
     failedImages.value.add(image.id)
   }
@@ -604,6 +633,20 @@ const setupLoadMoreObserver = () => {
 watch(() => [props.hasMore, props.loading], ([hasMore, loading]) => {
   if (hasMore && !loading && !loadMoreObserver) {
     nextTick(() => setupLoadMoreObserver())
+  }
+})
+
+// 监听 loadingMore，当变为 false 时重新设置 observer
+watch(loadingMore, (loading) => {
+  if (!loading && props.hasMore && !props.loading) {
+    // 加载完成后，等待 DOM 更新后重新设置 observer
+    nextTick(() => {
+      if (loadMoreObserver) {
+        loadMoreObserver.disconnect()
+        loadMoreObserver = null
+      }
+      setupLoadMoreObserver()
+    })
   }
 })
 
@@ -746,6 +789,28 @@ onUnmounted(() => {
   opacity: 1;
 }
 
+/* 安全模式模糊 - 非 Safe 图片 */
+.waterfall-image.safe-blur :deep(.el-image__inner) {
+  filter: blur(20px) brightness(var(--safe-blur-brightness, 0.7));
+  transition: filter 0.3s ease;
+}
+
+.waterfall-image.safe-blur:hover :deep(.el-image__inner) {
+  filter: blur(15px) brightness(var(--safe-blur-brightness-hover, 0.8));
+}
+
+/* 日间模式模糊亮度 */
+html:not(.dark-mode) .waterfall-image.safe-blur :deep(.el-image__inner) {
+  --safe-blur-brightness: 0.95;
+  --safe-blur-brightness-hover: 0.98;
+}
+
+/* 黑暗模式模糊亮度 */
+html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
+  --safe-blur-brightness: 0.6;
+  --safe-blur-brightness-hover: 0.7;
+}
+
 /* 选中指示器 - 右上角圆形勾选 */
 .selection-indicator {
   position: absolute;
@@ -855,6 +920,37 @@ onUnmounted(() => {
 
 .load-more {
   text-align: center;
-  margin-top: 20px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.load-more-btn {
+  padding: 12px 32px !important;
+  font-size: 14px !important;
+  border-radius: 20px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: var(--el-color-primary) !important;
+  border-color: var(--el-color-primary) !important;
+  color: white !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.3) !important;
+}
+
+.load-more-btn:disabled {
+  opacity: 0.7 !important;
+  cursor: not-allowed !important;
+}
+
+.load-more-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

@@ -25,20 +25,31 @@
 - ✅ 高级查询功能（标签组合、分辨率、评分、文件大小等多维度过滤）
 - ✅ 下载任务管理（支持暂停、恢复、取消）
 - ✅ 多线程分段下载 + 进度实时同步
+- ✅ 异步并发下载队列（可配置并发数）
 - ✅ 断点续传 + MD5 校验
 - ✅ 数据库持久化（MariaDB/SQLite）
 - ✅ 代理配置热保存
 - ✅ 瀑布流图库支持（本地/在线双模式）
+- ✅ tag 收藏夹管理（支持在线/本地图片数量缓存）
 
 ### 前端功能
 - ✅ Vue.js 3 + Element Plus 响应式界面
 - ✅ 瀑布流图库展示（从左到右排序）
-- ✅ 无限滚动加载
+- ✅ 无限滚动加载（IntersectionObserver 精确检测）
 - ✅ 图片预览和详情（显示 tags）
 - ✅ 下载任务管理界面（实时进度同步）
 - ✅ 配置管理界面（代理开关热保存）
 - ✅ 省流模式（不加载远程缩略图）
 - ✅ 重试按钮（点击失败图标可重试）
+- ✅ 骨架屏加载
+- ✅ 图片懒加载（IntersectionObserver）
+- ✅ 图片淡入效果
+- ✅ 长按多选 + 滑动追踪选中
+- ✅ tag 收藏夹（订阅当前搜索、一键保存）
+- ✅ 安全模式（高斯模糊非 Safe 图片）
+- ✅ 图片颜色自适应浮层文字
+- ✅ 预览图重试机制
+- ✅ 移除时间戳缓存消除（使用浏览器缓存）
 
 ## 技术栈
 
@@ -150,6 +161,14 @@ npm run dev
 - `PUT /api/v1/config/downloader` - 更新下载器配置
 - `PUT /api/v1/config/database` - 更新数据库配置
 
+### 收藏夹接口
+- `GET /api/v1/favorites` - 获取所有收藏夹
+- `GET /api/v1/favorites/with-count` - 获取收藏夹及图片数量
+- `POST /api/v1/favorites` - 创建收藏夹
+- `PUT /api/v1/favorites/{id}` - 更新收藏夹
+- `DELETE /api/v1/favorites/{id}` - 删除收藏夹
+- `POST /api/v1/favorites/{id}/online-count` - 更新在线数量
+
 ## 高级搜索语法
 
 支持 yande.re API 高级搜索语法：
@@ -192,7 +211,7 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 ## 开发计划
 
 ### 近期功能
-- [ ] 本地模式 tag 收藏夹管理
+- [x] 本地模式 tag 收藏夹管理
 - [ ] 本地模式 tag 分组展示
 - [ ] 点击详情页中的 tag 快速跳转查询
 - [ ] 下载历史在数据库中记录
@@ -206,6 +225,9 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 - [ ] 后端托管前端静态资源
 - [ ] 增加异步定时任务功能（根据 tag 定时启动下载器）
 - [ ] 删除原项目未使用的应用（gui/, spider/, utils/）
+
+### 图片存储优化
+- [ ] 本地图片空间压缩（HEIF/AVIF 格式自动转换）
 
 ### 远期计划
 - [ ] Electron 桌面客户端
