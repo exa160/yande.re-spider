@@ -19,6 +19,11 @@ class Base(DeclarativeBase):
     pass
 
 
+def _ensure_all_models():
+    """延迟导入所有 ORM 模型以确保 create_all 能创建所有表"""
+    from backend.dao import favorite_dao  # noqa: F401
+
+
 class YandeData(Base):
     __tablename__ = "yande_data"
     id = Column(Integer, unique=True, primary_key=True, comment="yande picture ID")
@@ -89,6 +94,7 @@ def get_db_engine():
         )
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         engine = create_engine(f"sqlite:///{db_path}")
+        _ensure_all_models()
         Base.metadata.create_all(bind=engine)
 
     return engine

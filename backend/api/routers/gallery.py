@@ -369,13 +369,12 @@ async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
 
 
 @router.get("/cache/preview/fetch/{image_id}")
-async def fetch_and_cache_preview(
-    image_id: int, preview_url: str = None, file_ext: str = "jpg"
-):
+async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
     from fastapi.responses import FileResponse, JSONResponse
     from pathlib import Path
     import asyncio
     from backend.infrastructure.image_cache import ImageCache
+    from backend.dao.yande_data import YandeDataRepository
 
     cache = ImageCache()
     preview_path = cache.PREVIEWS_DIR / f"{image_id}.{file_ext}"
@@ -383,8 +382,13 @@ async def fetch_and_cache_preview(
     if preview_path.exists():
         return FileResponse(str(preview_path))
 
-    if not preview_url:
-        return JSONResponse({"error": "preview_url required"}, status_code=400)
+    repo = YandeDataRepository()
+    image_data = repo.get_by_id(image_id)
+    preview_url = image_data.get("preview_url") if image_data else None
+    if not image_data or not preview_url:
+        return JSONResponse(
+            {"error": "Image not found or no preview_url"}, status_code=404
+        )
 
     try:
         loop = asyncio.get_event_loop()

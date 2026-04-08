@@ -64,7 +64,9 @@
                   <div class="favorite-name">{{ folder.name }}</div>
                   <div class="favorite-tags">{{ folder.tags || '无标签' }}</div>
                 </div>
-                <div class="favorite-count">{{ folder.local_count || 0 }}</div>
+                <div class="favorite-count">
+                  {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
+                </div>
               </div>
               <div v-if="favoriteFolders.length === 0" class="favorite-empty">
                 暂无收藏夹，点击「订阅当前」创建
@@ -73,40 +75,45 @@
           </div>
         </transition>
 
-        <!-- 订阅对话框 -->
-        <el-dialog
-          v-model="subscribeDialogVisible"
-          title="订阅当前搜索"
-          width="360px"
-          class="subscribe-dialog"
-          :append-to-body="true"
-        >
-          <el-form :model="subscribeForm" label-width="80px">
-            <el-form-item label="收藏夹名称">
-              <el-input v-model="subscribeForm.name" placeholder="如：高评分图片" />
-            </el-form-item>
-            <el-form-item label="标签">
-              <el-input v-model="subscribeForm.tags" type="textarea" :rows="3" readonly />
-              <div class="form-tip">系统将根据当前搜索条件自动生成标签</div>
-            </el-form-item>
-            <el-form-item label="颜色">
-              <div class="color-picker">
-                <div
-                  v-for="color in colorOptions"
-                  :key="color"
-                  class="color-option"
-                  :class="{ active: subscribeForm.color === color }"
-                  :style="{ backgroundColor: color }"
-                  @click="subscribeForm.color = color"
-                />
+        <!-- 订阅对话框 - 自定义面板样式 -->
+        <transition name="el-fade-in-linear">
+          <div v-if="subscribeDialogVisible" class="subscribe-panel" @click.stop>
+            <div class="subscribe-header">
+              <span>订阅当前搜索</span>
+              <el-button size="small" text @click="subscribeDialogVisible = false">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+            <div class="subscribe-body">
+              <div class="form-item">
+                <label>收藏夹名称</label>
+                <el-input v-model="subscribeForm.name" placeholder="如：高评分图片" size="small" />
               </div>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button size="small" @click="subscribeDialogVisible = false">取消</el-button>
-            <el-button size="small" type="primary" @click="confirmSubscribe">确认订阅</el-button>
-          </template>
-        </el-dialog>
+              <div class="form-item">
+                <label>标签</label>
+                <el-input v-model="subscribeForm.tags" type="textarea" :rows="3" readonly size="small" />
+                <div class="form-tip">系统将根据当前搜索条件自动生成标签</div>
+              </div>
+              <div class="form-item">
+                <label>颜色</label>
+                <div class="color-picker">
+                  <div
+                    v-for="color in colorOptions"
+                    :key="color"
+                    class="color-option"
+                    :class="{ active: subscribeForm.color === color }"
+                    :style="{ backgroundColor: color }"
+                    @click="subscribeForm.color = color"
+                  />
+                </div>
+              </div>
+            </div>
+            <div class="subscribe-footer">
+              <el-button size="small" @click="subscribeDialogVisible = false">取消</el-button>
+              <el-button size="small" type="primary" @click="confirmSubscribe">确认订阅</el-button>
+            </div>
+          </div>
+        </transition>
       </div>
 
       <!-- 高级筛选面板 -->
@@ -223,7 +230,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { Search, Setting, Minus, Folder } from '@element-plus/icons-vue'
+import { Search, Setting, Minus, Folder, Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getFoldersWithCount, createFolder } from '@/api/favorites'
 
@@ -366,7 +373,7 @@ const buildCurrentTagsString = () => {
 // 选择收藏夹
 const selectFavorite = (folder) => {
   const params = parseFavoriteTagsToParams(folder.tags)
-  emit('search', { mode: 'local', params, favorite: folder })
+  emit('search', { mode: props.sourceMode, params, favorite: folder })
   showFavoritePanel.value = false
 }
 
@@ -1037,44 +1044,102 @@ defineExpose({
   font-size: 13px;
 }
 
-/* 订阅对话框 - 悬浮在收藏夹面板上方 */
-.subscribe-dialog {
+/* 订阅面板 - 自定义样式 */
+.subscribe-panel {
   position: absolute;
   bottom: 100%;
   right: 0;
   margin-bottom: 8px;
   width: 360px;
-}
-
-.subscribe-dialog :deep(.el-dialog) {
-  border-radius: 8px;
-  overflow: hidden;
   background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1002;
 }
 
-.subscribe-dialog :deep(.el-dialog__header) {
+.subscribe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
 }
 
-.subscribe-dialog :deep(.el-dialog__body) {
+.subscribe-header :deep(.el-button) {
+  padding: 4px;
+  color: var(--text-muted);
+}
+
+.subscribe-header :deep(.el-button:hover) {
+  color: var(--text-primary);
+}
+
+.subscribe-body {
   padding: 16px;
-  background: var(--bg-secondary);
 }
 
-.subscribe-dialog :deep(.el-dialog__footer) {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+.form-item {
+  margin-bottom: 14px;
 }
 
-/* 订阅对话框 */
+.form-item:last-child {
+  margin-bottom: 0;
+}
+
+.form-item label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.form-item :deep(.el-input__wrapper) {
+  background: var(--bg-primary);
+  box-shadow: none;
+  border: 1px solid var(--border-color);
+}
+
+.form-item :deep(.el-input__inner) {
+  color: var(--text-primary);
+}
+
+.form-item :deep(.el-textarea__inner) {
+  background: var(--bg-primary);
+  box-shadow: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  resize: none;
+}
+
 .form-tip {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.subscribe-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.subscribe-footer :deep(.el-button) {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.subscribe-footer :deep(.el-button--primary) {
+  background: #409EFF;
+  border-color: #409EFF;
+  color: white;
 }
 
 .color-picker {

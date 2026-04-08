@@ -122,15 +122,22 @@ class YandeDataRepository:
         count_stmt = select(func.count()).select_from(Model)
 
         if tags:
-            tags_filter = tags.replace(" AND ", " ").replace(" OR ", " ").split()
+            # 强制 AND 逻辑：忽略 OR，只保留 AND 语义
+            # 先把 OR 替换成 AND，再统一处理
+            tags_normalized = tags.upper().replace(" OR ", " AND ")
+            tags_filter = [t for t in tags_normalized.split(" AND ") if t.strip()]
             for tag in tags_filter:
+                tag = tag.strip()
                 if tag.startswith("-"):
                     query_stmt = query_stmt.filter(~Model.tags.contains(tag[1:]))
+                    count_stmt = count_stmt.filter(~Model.tags.contains(tag[1:]))
                 else:
                     query_stmt = query_stmt.filter(Model.tags.contains(tag))
+                    count_stmt = count_stmt.filter(Model.tags.contains(tag))
 
         if author:
             query_stmt = query_stmt.filter(Model.author == author)
+            count_stmt = count_stmt.filter(Model.author == author)
 
         if rating and rating != "All":
             rating_map = {
@@ -141,7 +148,6 @@ class YandeDataRepository:
                 "q": "q",
                 "e": "e",
             }
-            # 支持逗号分隔的多个评分，如 "q,e" 表示 OR 查询
             rating_values = []
             for r in rating.split(","):
                 r = r.strip()
@@ -153,24 +159,31 @@ class YandeDataRepository:
             if rating_values:
                 if len(rating_values) == 1:
                     query_stmt = query_stmt.filter(Model.rating == rating_values[0])
+                    count_stmt = count_stmt.filter(Model.rating == rating_values[0])
                 else:
-                    # OR 查询
                     rating_filters = [Model.rating == rv for rv in rating_values]
                     query_stmt = query_stmt.filter(or_(*rating_filters))
+                    count_stmt = count_stmt.filter(or_(*rating_filters))
 
         if min_width:
             query_stmt = query_stmt.filter(Model.width >= min_width)
+            count_stmt = count_stmt.filter(Model.width >= min_width)
         if max_width:
             query_stmt = query_stmt.filter(Model.width <= max_width)
+            count_stmt = count_stmt.filter(Model.width <= max_width)
         if min_height:
             query_stmt = query_stmt.filter(Model.height >= min_height)
+            count_stmt = count_stmt.filter(Model.height >= min_height)
         if max_height:
             query_stmt = query_stmt.filter(Model.height <= max_height)
+            count_stmt = count_stmt.filter(Model.height <= max_height)
 
         if min_file_size:
             query_stmt = query_stmt.filter(Model.file_size >= min_file_size * 1024)
+            count_stmt = count_stmt.filter(Model.file_size >= min_file_size * 1024)
         if max_file_size:
             query_stmt = query_stmt.filter(Model.file_size <= max_file_size * 1024)
+            count_stmt = count_stmt.filter(Model.file_size <= max_file_size * 1024)
 
         if file_type:
             ext_values = [
@@ -178,9 +191,11 @@ class YandeDataRepository:
             ]
             if len(ext_values) == 1:
                 query_stmt = query_stmt.filter(Model.file_ext == ext_values[0])
+                count_stmt = count_stmt.filter(Model.file_ext == ext_values[0])
             elif len(ext_values) > 1:
                 ext_filters = [Model.file_ext == ext for ext in ext_values]
                 query_stmt = query_stmt.filter(or_(*ext_filters))
+                count_stmt = count_stmt.filter(or_(*ext_filters))
 
         if downloaded_only:
             query_stmt = query_stmt.filter(Model.down_flag == True)

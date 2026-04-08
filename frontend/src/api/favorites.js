@@ -49,6 +49,16 @@ export function updateOnlineCount(folderId, count) {
   return api.post(`/favorites/${folderId}/online-count?count=${count}`)
 }
 
+// 更新本地数量
+export function updateLocalCount(folderId, count) {
+  return api.post(`/favorites/${folderId}/local-count?count=${count}`)
+}
+
+// 从 yande API 刷新在线数量
+export function refreshOnlineCount(folderId) {
+  return api.post(`/favorites/${folderId}/refresh-online`)
+}
+
 export default {
   getAllFolders,
   getFoldersWithCount,
@@ -59,4 +69,6 @@ export default {
   reorderFolders,
   previewFolder,
   updateOnlineCount,
+  updateLocalCount,
+  refreshOnlineCount,
 }
