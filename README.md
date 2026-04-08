@@ -27,11 +27,14 @@
 - ✅ 下载任务管理（支持暂停、恢复、取消）
 - ✅ 多线程分段下载 + 进度实时同步
 - ✅ 异步并发下载队列（可配置并发数）
-- ✅ 断点续传 + MD5 校验
+- ✅ 断点续传 + MD5 校验（MD5失败只警告）
 - ✅ 数据库持久化（MariaDB/SQLite）
 - ✅ 代理配置热保存
 - ✅ 瀑布流图库支持（本地/在线双模式）
 - ✅ tag 收藏夹管理（支持在线/本地图片数量缓存）
+- ✅ 本地标签搜索强制 AND 逻辑
+- ✅ XML API 获取 yande 真实在线数量
+- ✅ 预览图缓存接口安全性优化（移除 URL 参数注入风险）
 
 ### 前端功能
 - ✅ Vue.js 3 + Element Plus 响应式界面
@@ -51,6 +54,9 @@
 - ✅ 图片颜色自适应浮层文字
 - ✅ 预览图重试机制
 - ✅ 移除时间戳缓存消除（使用浏览器缓存）
+- ✅ 收藏夹数量本地/在线模式自适应
+- ✅ 懒加载失败状态自动清理（非省流模式）
+- ✅ 订阅对话框自定义样式
 
 ## 技术栈
 
@@ -169,6 +175,8 @@ npm run dev
 - `PUT /api/v1/favorites/{id}` - 更新收藏夹
 - `DELETE /api/v1/favorites/{id}` - 删除收藏夹
 - `POST /api/v1/favorites/{id}/online-count` - 更新在线数量
+- `POST /api/v1/favorites/{id}/local-count` - 更新本地数量
+- `POST /api/v1/favorites/{id}/refresh-online` - 从 yande XML API 刷新在线数量
 
 ## 高级搜索语法
 
@@ -213,6 +221,10 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 
 ### 近期功能
 - [x] 本地模式 tag 收藏夹管理
+- [x] 本地模式标签搜索强制 AND 逻辑
+- [x] 收藏夹在线数量 XML API 获取
+- [x] 下载器 MD5 失败只警告
+- [x] 下载器断点续传优化
 - [ ] 本地模式 tag 分组展示
 - [ ] 点击详情页中的 tag 快速跳转查询
 - [ ] 下载历史在数据库中记录
