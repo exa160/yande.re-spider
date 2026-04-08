@@ -9,15 +9,6 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from loguru import logger
-from rich.progress import (
-    Progress,
-    TextColumn,
-    BarColumn,
-    TimeRemainingColumn,
-    TimeElapsedColumn,
-    TaskID,
-    Task,
-)
 from pathvalidate import sanitize_filename
 
 from backend.config.settings import config
@@ -42,7 +33,6 @@ class MultiDown:
     ) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
-        self.progress_q: Queue = Queue()
         self.close_q: Queue = Queue(1)
         self.show_progress = _show_progress
         self.progress_callback = _progress_callback
@@ -56,17 +46,6 @@ class MultiDown:
             file_size=file_size,
             md5=_md5,
         )
-        if self.show_progress:
-            self.progress = Progress(
-                TextColumn("down file [progress.description] {task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                SpeedColumn(" {task.speed}"),
-                TextColumn("{task.completed:>.03f}/{task.total:>.03f} MB"),
-                TimeRemainingColumn(),
-                TimeElapsedColumn(),
-            )
-            self.progress.start()
         self.start()
 
     @staticmethod
@@ -88,23 +67,21 @@ class MultiDown:
         _id: int,
         s: int,
         e: int,
-        rx_q: Queue,
         data_q: Queue,
-        current_start: int = None,
+        progress_callback=None,
     ):
         content_data = []
-        chunk_sum = 0
         success = False
-        if current_start is None:
-            current_start = s
+        actual_start = s
 
         for retry in range(config.yande_api.retry):
+            current_start = actual_start
             try:
                 headers = {
                     "authority": "files.yande.re",
                     "Referer": "https://yande.re/",
                 }
-                if current_start != 0 or (e != "" and e is not None):
+                if current_start > 0 or (e != "" and e is not None):
                     if e == "" or e is None:
                         headers.update({"Range": f"bytes={current_start}-"})
                     else:
@@ -124,48 +101,31 @@ class MultiDown:
                         chunk_size=config.downloader.chunk_size
                     ):
                         if chunk:
-                            rx_q.put(len(chunk) / 1024 / 1024)
-                            chunk_sum += len(chunk) / 1024 / 1024
+                            chunk_len = len(chunk) / 1024 / 1024
                             content_data.append(chunk)
                             current_start += len(chunk)
+                            if progress_callback:
+                                progress_callback(chunk_len)
+
                 success = True
                 break
             except Exception as err:
                 logger.warning(
                     f"[{_id}] down error {retry} {url} {current_start}-{e}: {err}"
                 )
+                actual_start = current_start
                 sleep(6)
 
         if success:
-            data_q.put(
-                [
-                    s,
-                    e
-                    if e != "" and e is not None
-                    else s + sum(len(c) for c in content_data),
-                    b"".join(content_data),
-                ]
-            )
+            data_q.put([s, current_start, b"".join(content_data)])
         else:
             logger.error(
                 f"[{_id}] download failed after {config.yande_api.retry} retries: {url} {s}-{e}"
             )
             if content_data:
-                data_q.put(
-                    [
-                        s,
-                        s + sum(len(chunk) for chunk in content_data),
-                        b"".join(content_data),
-                    ]
-                )
+                data_q.put([s, current_start, b"".join(content_data)])
             else:
                 data_q.put([s, e, b""])
-
-    @staticmethod
-    def progress_update(rx_q: Queue, msg_q: Queue, progress: Progress, task: TaskID):
-        while queue_wait(rx_q, msg_q):
-            down_length = rx_q.get()
-            progress.advance(task, down_length)
 
     @staticmethod
     def file_writer(file_info: FileInfo, data_q: Queue, msg_q: Queue):
@@ -211,22 +171,15 @@ class MultiDown:
             if e_offset >= file_size - 1:
                 e_offset = file_size - 1
 
-            if self.show_progress:
-                t = executor.submit(
-                    self.get_content,
-                    self.file_info.url,
-                    self.file_info.id,
-                    s_offset,
-                    e_offset,
-                    self.progress_q,
-                    self.data_q,
-                )
-            else:
-                t = executor.submit(
-                    self._download_range_with_callback,
-                    s_offset,
-                    e_offset,
-                )
+            t = executor.submit(
+                self.get_content,
+                self.file_info.url,
+                self.file_info.id,
+                s_offset,
+                e_offset,
+                self.data_q,
+                self.progress_callback,
+            )
             t.add_done_callback(
                 lambda x: logger.warning(x.exception()) if x.exception() else ""
             )
@@ -273,48 +226,6 @@ class MultiDown:
             f"Single-thread download failed after {config.yande_api.retry} retries"
         )
 
-    def _download_range_with_callback(self, s: int, e: int):
-        content_data = []
-        chunk_sum = 0
-        headers = {"authority": "files.yande.re", "Referer": "https://yande.re/"}
-        headers.update({"Range": f"bytes={s}-{e}"})
-        headers.update(config.yande_api.headers)
-
-        for retry in range(config.yande_api.retry):
-            try:
-                with closing(
-                    requests.get(
-                        self.file_info.url,
-                        stream=True,
-                        proxies=config.yande_api.proxies,
-                        headers=headers,
-                        timeout=50,
-                    )
-                ) as res:
-                    for chunk in res.iter_content(
-                        chunk_size=config.downloader.chunk_size
-                    ):
-                        if chunk:
-                            chunk_sum += len(chunk) / 1024 / 1024
-                            content_data.append(chunk)
-                    self.data_q.put([s, e, b"".join(content_data)])
-                    if self.progress_callback:
-                        self.progress_callback(chunk_sum)
-                    return
-            except Exception as err:
-                logger.warning(
-                    f"[{self.file_info.id}] range {s}-{e} error {retry}: {err}"
-                )
-                sleep(6)
-
-        logger.error(
-            f"[{self.file_info.id}] range {s}-{e} download failed after {config.yande_api.retry} retries"
-        )
-        if content_data:
-            self.data_q.put(
-                [s, s + sum(len(c) for c in content_data), b"".join(content_data)]
-            )
-
     def start(self):
         file_size = self.file_info.file_size
         file_path = self.file_info.file_path
@@ -349,9 +260,6 @@ class MultiDown:
         self.close_q.put("1")
         writer_t.join()
 
-        if self.show_progress:
-            self.progress.stop()
-
         if writer_exception:
             if isinstance(writer_exception, DownloadException):
                 raise writer_exception
@@ -359,14 +267,6 @@ class MultiDown:
 
         if download_exception:
             raise download_exception
-
-
-class SpeedColumn(TextColumn):
-    def render(self, task: Task) -> str:
-        if task.speed is None:
-            return "0.000 MB/s"
-        elif task.speed is not None:
-            return f"{task.speed:.03f} MB/s"
 
 
 def queue_wait(data_q: Queue, close_q: Queue):

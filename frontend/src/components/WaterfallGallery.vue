@@ -381,11 +381,20 @@ const handleLongPress = (image) => {
   // 标记刚选中的图片，滑动时跳过不取消
   longPressSelectedId.value = image.id
   
-  // 使用 setTimeout 延迟清理状态，确保 click 事件能正确检测到长按状态
+  // 先清除 isLongPress，保留 longPressSelectedId 更长时间
+  // 这样即使 500ms 后，只要图片仍处于选中状态，handleImageClick 就会忽略后续点击
   setTimeout(() => {
     isLongPress.value = false
-    longPressSelectedId.value = null
   }, 500)
+  
+  // longPressSelectedId 保持更长时间，确保点击不会被误判为普通点击
+  setTimeout(() => {
+    // 只有当图片仍然处于选中状态时才清除 longPressSelectedId
+    // 如果图片已被取消选中，说明是用户主动操作的，不需要保护
+    if (isSelectedById(longPressSelectedId.value)) {
+      longPressSelectedId.value = null
+    }
+  }, 1000)
 }
 
 // 触控开始
@@ -416,7 +425,7 @@ const handleTouchStart = (image, event) => {
 // 触控移动
 const handleTouchMove = (event) => {
   if (!props.selectable || !event.touches || event.touches.length === 0) return
-   
+    
   const touch = event.touches[0]
   const deltaX = Math.abs(touch.clientX - touchStartPos.value.x)
   const deltaY = Math.abs(touch.clientY - touchStartPos.value.y)
@@ -428,8 +437,11 @@ const handleTouchMove = (event) => {
       clearTimeout(longPressTimer.value)
       longPressTimer.value = null
     }
-    // 阻止页面滚动（允许选择功能）
-    event.preventDefault()
+    // 只有在多选模式下（已有选中图片）才阻止默认滚动
+    // 防止正常页面滑动被阻塞
+    if (props.selectedImages.length > 0) {
+      event.preventDefault()
+    }
   }
 }
 
@@ -439,6 +451,20 @@ const handleTouchEnd = (event) => {
     clearTimeout(longPressTimer.value)
     longPressTimer.value = null
   }
+  
+  // 清除焦点
+  touchFocusedId.value = null
+  
+  // 如果是长按选中后抬起手指（图片仍在选中状态），保持 isLongPress 一段时间
+  // 防止 click 事件误触发取消选中
+  if (longPressSelectedId.value && isSelectedById(longPressSelectedId.value)) {
+    isLongPress.value = true
+    // 手指抬起后额外延迟清除 isLongPress
+    setTimeout(() => {
+      isLongPress.value = false
+    }, 300)
+  }
+  
   // 如果是滑动选择模式，阻止浏览器合成 click 事件
   if (touchMoved.value) {
     event.preventDefault()
@@ -509,6 +535,7 @@ const handleMouseUp = (image, event) => {
     longPressTimer.value = null
   }
   isMouseDown.value = false
+  mouseFocusedId.value = null
 }
 
 const handleSelect = (image, checked) => {
