@@ -32,6 +32,7 @@
           <el-button
             :type="safeMode ? 'danger' : ''"
             circle
+            class="safe-mode-btn"
             @click="safeMode = !safeMode"
           >
             <el-icon><MagicStick /></el-icon>
@@ -243,7 +244,7 @@ import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
-import { updateOnlineCount } from '@/api/favorites'
+import { updateOnlineCount, updateLocalCount, refreshOnlineCount } from '@/api/favorites'
 
 const images = ref([])
 const loading = ref(false)
@@ -485,8 +486,12 @@ const loadImages = async () => {
     })
     if (currentPage.value === 1) {
       images.value = response.images
-      if (currentFavorite.value && response.total !== undefined) {
-        updateOnlineCount(currentFavorite.value.id, response.total).catch(() => {})
+      if (currentFavorite.value) {
+        if (querySource.value === 'local') {
+          updateLocalCount(currentFavorite.value.id, response.total).catch(() => {})
+        } else {
+          refreshOnlineCount(currentFavorite.value.id).catch(() => {})
+        }
       }
     } else {
       images.value.push(...response.images)
@@ -647,7 +652,7 @@ const getDetailUrl = (image) => {
   }
   // 在线模式：使用缓存的预览图API
   if (image.preview_url) {
-    return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}`
+    return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
   }
   return image.file_url
 }
@@ -718,6 +723,10 @@ onMounted(() => {
   background: var(--bg-tertiary);
   border-color: var(--border-color);
   color: var(--text-secondary);
+}
+
+.safe-mode-btn {
+  margin-left: 0 !important;
 }
 
 .mode-buttons :deep(.el-button:hover) {

@@ -16,6 +16,7 @@ from backend.models.favorite import (
     ReorderRequest,
 )
 from backend.dao.yande_data import YandeDataRepository
+from backend.infrastructure.yande_api import YandeApi
 
 router = APIRouter()
 
@@ -243,6 +244,39 @@ async def update_online_count(folder_id: int, count: int):
 
     favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
     return {"online_count": count}
+
+
+@router.post("/{folder_id}/refresh-online", summary="刷新在线数量")
+async def refresh_online_count(folder_id: int):
+    """
+    从 yande.re XML API 刷新收藏夹的在线图片数量
+    """
+    folder = favorite_dao.get_by_id(folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="收藏夹不存在")
+
+    yande_api = YandeApi()
+    count = yande_api.get_count(folder.tags or "")
+
+    if count < 0:
+        raise HTTPException(status_code=500, detail="获取在线数量失败")
+
+    favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
+    return {"online_count": count}
+
+
+@router.post("/{folder_id}/local-count", summary="更新本地数量")
+async def update_local_count(folder_id: int, count: int):
+    """
+    更新收藏夹的本地图片数量
+    由前端在瀑布流加载完成后调用
+    """
+    folder = favorite_dao.get_by_id(folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="收藏夹不存在")
+
+    favorite_dao.update(folder_id, local_count=count, last_refresh=datetime.now())
+    return {"local_count": count}
 
 
 def _refresh_local_count(folder_id: int, tags: str):

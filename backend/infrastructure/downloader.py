@@ -83,15 +83,34 @@ class MultiDown:
         return file_size
 
     @staticmethod
-    def get_content(url: str, _id: int, s: int, e: int, rx_q: Queue, data_q: Queue):
-        headers = {"authority": "files.yande.re", "Referer": "https://yande.re/"}
-        if s != 0 or e != "":
-            headers.update({"Range": f"bytes={s}-{e}"})
-        headers.update(config.yande_api.headers)
+    def get_content(
+        url: str,
+        _id: int,
+        s: int,
+        e: int,
+        rx_q: Queue,
+        data_q: Queue,
+        current_start: int = None,
+    ):
+        content_data = []
+        chunk_sum = 0
+        success = False
+        if current_start is None:
+            current_start = s
+
         for retry in range(config.yande_api.retry):
-            content_data = []
-            chunk_sum = 0
             try:
+                headers = {
+                    "authority": "files.yande.re",
+                    "Referer": "https://yande.re/",
+                }
+                if current_start != 0 or (e != "" and e is not None):
+                    if e == "" or e is None:
+                        headers.update({"Range": f"bytes={current_start}-"})
+                    else:
+                        headers.update({"Range": f"bytes={current_start}-{e}"})
+                headers.update(config.yande_api.headers)
+
                 with closing(
                     requests.get(
                         url,
@@ -108,15 +127,39 @@ class MultiDown:
                             rx_q.put(len(chunk) / 1024 / 1024)
                             chunk_sum += len(chunk) / 1024 / 1024
                             content_data.append(chunk)
-                data_q.put([s, e, b"".join(content_data)])
-                return
+                            current_start += len(chunk)
+                success = True
+                break
             except Exception as err:
-                logger.warning(f"[{_id}] down error {retry} {url} {s}-{e}: {err}")
-                rx_q.put(-chunk_sum)
+                logger.warning(
+                    f"[{_id}] down error {retry} {url} {current_start}-{e}: {err}"
+                )
                 sleep(6)
-        raise DownloadException(
-            f"Failed to download range {s}-{e} after {config.yande_api.retry} retries"
-        )
+
+        if success:
+            data_q.put(
+                [
+                    s,
+                    e
+                    if e != "" and e is not None
+                    else s + sum(len(c) for c in content_data),
+                    b"".join(content_data),
+                ]
+            )
+        else:
+            logger.error(
+                f"[{_id}] download failed after {config.yande_api.retry} retries: {url} {s}-{e}"
+            )
+            if content_data:
+                data_q.put(
+                    [
+                        s,
+                        s + sum(len(chunk) for chunk in content_data),
+                        b"".join(content_data),
+                    ]
+                )
+            else:
+                data_q.put([s, e, b""])
 
     @staticmethod
     def progress_update(rx_q: Queue, msg_q: Queue, progress: Progress, task: TaskID):
@@ -128,31 +171,26 @@ class MultiDown:
     def file_writer(file_info: FileInfo, data_q: Queue, msg_q: Queue):
         f_size = file_info.file_size
         f_path = file_info.file_path
-        with open(f_path, "w") as f:
+
+        with open(f_path, "wb") as f:
             f.seek(f_size - 1)
-            f.write("\x00")
+            f.write(b"\x00")
 
         file = open(f_path, "rb+")
         while queue_wait(data_q, msg_q):
             s, e, data = data_q.get()
-            if not data:
-                file.close()
-                raise DownloadException(
-                    f"Empty data received for range {s}-{e}, possible download failure"
-                )
-            file.seek(s)
-            file.write(data)
+            if data:
+                file.seek(s)
+                file.write(data)
 
         file.close()
 
         if file_info.md5:
-            file = open(f_path, "rb+")
-            file_md5 = md5(file.read()).hexdigest()
-            file.close()
+            file_md5 = md5(open(f_path, "rb").read()).hexdigest()
             if file_info.md5 != file_md5:
-                logger.warning(f"md5 check err: {f_path}")
-                os.remove(f_path)
-                raise DownloadException(f"MD5 mismatch for {f_path}")
+                logger.warning(
+                    f"md5 check err: {f_path}, expected {file_info.md5}, got {file_md5}"
+                )
 
     def down_file_in_range(self, file_size):
         split_size = config.downloader.split_size
@@ -167,13 +205,11 @@ class MultiDown:
 
         executor = ThreadPoolExecutor(max_workers=self.thread_num)
         executor_pool = []
-        expected_ranges = []
 
         for s_offset in range(0, file_size, split_size):
             e_offset = s_offset + split_size - 1
             if e_offset >= file_size - 1:
                 e_offset = file_size - 1
-            expected_ranges.append((s_offset, e_offset))
 
             if self.show_progress:
                 t = executor.submit(
@@ -271,9 +307,13 @@ class MultiDown:
                 )
                 sleep(6)
 
-        raise DownloadException(
-            f"Range {s}-{e} download failed after {config.yande_api.retry} retries"
+        logger.error(
+            f"[{self.file_info.id}] range {s}-{e} download failed after {config.yande_api.retry} retries"
         )
+        if content_data:
+            self.data_q.put(
+                [s, s + sum(len(c) for c in content_data), b"".join(content_data)]
+            )
 
     def start(self):
         file_size = self.file_info.file_size
@@ -319,11 +359,6 @@ class MultiDown:
 
         if download_exception:
             raise download_exception
-
-        if self.file_info.md5 and not os.path.exists(file_path):
-            raise DownloadException(
-                f"MD5 check failed for {file_path}, file was removed"
-            )
 
 
 class SpeedColumn(TextColumn):

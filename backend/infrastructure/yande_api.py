@@ -1,4 +1,5 @@
 from typing import Union, Tuple, Optional, List
+from xml.etree import ElementTree as ET
 
 import requests
 from loguru import logger
@@ -9,9 +10,43 @@ from backend.models.yande import YandePostData, YandeSearchTags
 
 class YandeApi:
     def __init__(self):
-        self.post_api = "https://yande.re/post.json"
+        self.post_json_api = "https://yande.re/post.json"
+        self.post_xml_api = "https://yande.re/post.xml"
         self.proxies = config.yande_api.proxies
         self.headers = config.yande_api.headers
+
+    def get_count(self, tags: str = "") -> int:
+        """
+        使用 XML API 获取指定标签的总数
+        返回 -1 表示获取失败
+        """
+        query_params = {"page": 1, "limit": 1}
+        if tags:
+            query_params["tags"] = tags
+
+        for i in range(config.yande_api.retry):
+            try:
+                req = requests.get(
+                    self.post_xml_api,
+                    params=query_params,
+                    proxies=self.proxies,
+                    headers=self.headers,
+                    timeout=30,
+                )
+                if req.status_code != 200:
+                    logger.warning(
+                        f"[{i + 1}] get count error {req.status_code}: {req.text[:200]}"
+                    )
+                    continue
+
+                root = ET.fromstring(req.content)
+                count_attr = root.get("count")
+                if count_attr:
+                    return int(count_attr)
+                return 0
+            except Exception as e:
+                logger.warning(f"[{i + 1}] get count error: {e}")
+        return -1
 
     def search_trans(self, search_tags: YandeSearchTags) -> str:
         """将 YandeSearchTags 转换为 yande.re API 识别的搜索标签字符串"""
@@ -81,7 +116,7 @@ class YandeApi:
             req = None
             try:
                 req = requests.get(
-                    self.post_api,
+                    self.post_json_api,
                     params=query_params,
                     proxies=self.proxies,
                     headers=self.headers,

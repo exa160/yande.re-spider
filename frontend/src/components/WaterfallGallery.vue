@@ -49,6 +49,7 @@
           :alt="image.id.toString()"
           fit="cover"
           class="waterfall-image"
+          :style="{ height: getPlaceholderHeight(image) + 'px' }"
           :class="{ 
             'fade-in': pendingImages.has(image.id) || image.local_preview_path,
             'safe-blur': safeMode && image.rating !== 'Safe'
@@ -57,12 +58,12 @@
           @load="handleImageLoad(image)"
         >
           <template #error>
-            <div class="image-error" :style="{ height: getPlaceholderHeight(image) + 'px' }">
+            <div class="image-error">
               <el-icon><Picture /></el-icon>
             </div>
           </template>
           <template #placeholder>
-            <div class="image-placeholder skeleton-shimmer" :style="{ height: getPlaceholderHeight(image) + 'px' }"></div>
+            <div class="image-placeholder skeleton-shimmer"></div>
           </template>
         </el-image>
 
@@ -175,6 +176,7 @@ const touchFocusedId = ref(null)
 const longPressTimer = ref(null)
 const isLongPress = ref(false)
 const longPressSelectedId = ref(null) // 长按刚选中的图片 ID，滑动时跳过
+const touchMoved = ref(false) // 标记当前触摸是否已移动
 const LONG_PRESS_DURATION = 500
 const MOVE_THRESHOLD = 10 // 移动阈值，超过则不触发长按
 const touchStartPos = ref({ x: 0, y: 0 })
@@ -288,6 +290,10 @@ watch(() => props.images.length, () => {
   if (newImages.length === 0) {
     displayedImages.value = []
     visibleImages.value.clear()
+    failedImages.value.clear()
+    retryingImages.value.clear()
+    pendingImages.value.clear()
+    retrySuccessImages.value.clear()
     return
   }
   const existingIds = new Set(displayedImages.value.map(img => img.id))
@@ -308,6 +314,11 @@ const observeNewImages = () => {
           const imageId = parseInt(entry.target.dataset.imageId)
           if (entry.isIntersecting) {
             visibleImages.value.add(imageId)
+            // 非省流模式下，图片重新进入可视区时清除失败状态让其自动重试
+            // 省流模式下需要用户手动点击重试，所以不清除
+            if (!props.saveDataMode) {
+              failedImages.value.delete(imageId)
+            }
           }
         })
       },
@@ -369,22 +380,22 @@ const handleLongPress = (image) => {
   
   // 标记刚选中的图片，滑动时跳过不取消
   longPressSelectedId.value = image.id
-  setTimeout(() => {
-    longPressSelectedId.value = null
-  }, 500)
   
-  // 延迟重置isLongPress，让点击事件能正确检测到长按状态
+  // 使用 setTimeout 延迟清理状态，确保 click 事件能正确检测到长按状态
   setTimeout(() => {
     isLongPress.value = false
-  }, 300)
+    longPressSelectedId.value = null
+  }, 500)
 }
 
 // 触控开始
 const handleTouchStart = (image, event) => {
   if (!props.selectable) return
-  isLongPress.value = false
-  touchFocusedId.value = image.id
   
+  isLongPress.value = false
+  touchMoved.value = false
+  touchFocusedId.value = image.id
+    
   // 记录初始触摸位置
   if (event.touches && event.touches.length > 0) {
     touchStartPos.value = {
@@ -392,47 +403,45 @@ const handleTouchStart = (image, event) => {
       y: event.touches[0].clientY
     }
   }
-  
+   
   longPressTimer.value = setTimeout(() => {
-    handleLongPress(image)
-    // 长按成功后阻止后续的点击事件
-    event.stopPropagation()
+    // 长按触发：阻止浏览器默认菜单
     event.preventDefault()
+    event.stopPropagation()
+    touchMoved.value = true
+    handleLongPress(image)
   }, LONG_PRESS_DURATION)
 }
 
-// 触控移动 - 用 elementFromPoint 获取当前手指下的图片
+// 触控移动
 const handleTouchMove = (event) => {
   if (!props.selectable || !event.touches || event.touches.length === 0) return
-  
+   
   const touch = event.touches[0]
   const deltaX = Math.abs(touch.clientX - touchStartPos.value.x)
   const deltaY = Math.abs(touch.clientY - touchStartPos.value.y)
-  
-  // 移动超过阈值，取消长按计时器
+   
+  // 移动超过阈值，取消长按计时器，标记为已移动
   if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
+    touchMoved.value = true
     if (longPressTimer.value) {
       clearTimeout(longPressTimer.value)
       longPressTimer.value = null
     }
+    // 阻止页面滚动（允许选择功能）
+    event.preventDefault()
   }
-  
-  // 获取当前手指下的图片
-  const target = document.elementFromPoint(touch.clientX, touch.clientY)
-  if (target) {
-    const waterfallItem = target.closest('.waterfall-item')
-    if (waterfallItem) {
-      const imageId = parseInt(waterfallItem.dataset.imageId)
-      if (imageId) {
-        // 多选模式下，手指滑过自动选中/取消
-        // 但跳过刚长按选中的图片，避免取消选中
-        if (props.selectedImages.length > 0 && imageId !== touchFocusedId.value && imageId !== longPressSelectedId.value) {
-          const isCurrentlySelected = isSelectedById(imageId)
-          handleSelectById(imageId, !isCurrentlySelected)
-        }
-        touchFocusedId.value = imageId
-      }
-    }
+}
+
+// 触控结束
+const handleTouchEnd = (event) => {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  // 如果是滑动选择模式，阻止浏览器合成 click 事件
+  if (touchMoved.value) {
+    event.preventDefault()
   }
 }
 
@@ -447,16 +456,6 @@ const handleSelectById = (imageId, checked) => {
   if (image) {
     emit('image-select', image, checked)
   }
-}
-
-// 触控结束
-const handleTouchEnd = (event) => {
-  if (longPressTimer.value) {
-    clearTimeout(longPressTimer.value)
-    longPressTimer.value = null
-  }
-  // 触控结束时检测是否需要加载更多
-  handleTouchSlidEnd(event)
 }
 
 // PC端鼠标长按开始
@@ -548,12 +547,12 @@ const getPreviewUrl = (image) => {
     return ''
   }
   if (pendingImages.value.has(image.id)) {
-    return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
+    return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
   }
   if (props.saveDataMode) {
     return ''
   }
-  return `/api/v1/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
 }
 
 const handleImageError = (image) => {
@@ -591,7 +590,7 @@ const handleImageRetry = async (image, event) => {
     }
   } else {
     try {
-      await api.get(`/gallery/cache/preview/fetch/${image.id}?preview_url=${encodeURIComponent(image.preview_url)}&file_ext=${image.file_ext || 'jpg'}`)
+      await api.get(`/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`)
       apiSuccess = true
     } catch (e) {
       ElMessage.error('缓存预览图失败')
@@ -731,6 +730,9 @@ onUnmounted(() => {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .waterfall-item:hover {
@@ -748,23 +750,28 @@ onUnmounted(() => {
 
 .waterfall-item .el-image {
   width: 100%;
+  height: 100%;
   display: block;
-  min-height: 200px;
+  -webkit-touch-callout: none;
+  touch-action: pan-y pinch-zoom;  /* 允许垂直滚动和双指缩放 */
 }
 
 .waterfall-item .el-image__placeholder,
 .waterfall-item .el-image__error {
-  min-height: 200px;
-  background: #f5f7fa;
+  height: 100%;
+  background: var(--skeleton-bg, #f5f7fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 懒加载骨架屏 */
 .waterfall-item .el-image__placeholder {
   background: linear-gradient(
     90deg,
-    #f0f0f0 0%,
-    #e0e0e0 50%,
-    #f0f0f0 100%
+    var(--skeleton-bg, #f0f0f0) 0%,
+    var(--skeleton-shimmer, #e0e0e0) 50%,
+    var(--skeleton-bg, #f0f0f0) 100%
   );
   background-size: 200% 100%;
   animation: placeholder-shimmer 1.5s infinite;
@@ -855,7 +862,15 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
   align-items: center;
   justify-content: center;
   color: var(--text-muted, #909399);
-  background: var(--skeleton-bg, #f0f0f0);
+  background: var(--skeleton-bg, #f5f7fa);
+  width: 100%;
+  height: 100%;
+}
+
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--skeleton-bg, #f5f7fa);
 }
 
 /* 图片信息悬浮层 - 始终显示 */
