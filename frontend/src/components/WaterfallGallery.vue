@@ -31,7 +31,7 @@
         @click="handleImageClick(image)"
         @touchstart="handleTouchStart(image, $event)"
         @touchmove="handleTouchMove($event)"
-        @touchend="handleTouchEnd($event)"
+        @touchend="handleTouchEnd(image, $event)"
         @contextmenu.prevent="handleLongPress(image)"
         @mousedown="handleMouseDown(image, $event)"
         @mouseup="handleMouseUp(image, $event)"
@@ -180,6 +180,8 @@ const touchMoved = ref(false) // 标记当前触摸是否已移动
 const LONG_PRESS_DURATION = 500
 const MOVE_THRESHOLD = 10 // 移动阈值，超过则不触发长按
 const touchStartPos = ref({ x: 0, y: 0 })
+const longPressTriggered = ref(false) // 长按是否已触发
+const touchTargetImageId = ref(null) // 触摸目标图片 ID
 
 // 鼠标长按支持
 const isMouseDown = ref(false)
@@ -358,7 +360,7 @@ const isSelected = (image) => {
 
 const handleImageClick = (image) => {
   // 如果刚完成长按选择，忽略这次点击
-  if (isLongPress.value || longPressSelectedId.value === image.id) {
+  if (longPressTriggered.value && touchTargetImageId.value === image.id) {
     return
   }
   
@@ -374,27 +376,11 @@ const handleImageClick = (image) => {
 // 长按处理
 const handleLongPress = (image) => {
   if (!props.selectable) return
-  isLongPress.value = true
   emit('multi-select-start')
   handleSelect(image, !isSelected(image))
   
-  // 标记刚选中的图片，滑动时跳过不取消
+  // 标记刚选中的图片，用于滑动时跳过不取消
   longPressSelectedId.value = image.id
-  
-  // 先清除 isLongPress，保留 longPressSelectedId 更长时间
-  // 这样即使 500ms 后，只要图片仍处于选中状态，handleImageClick 就会忽略后续点击
-  setTimeout(() => {
-    isLongPress.value = false
-  }, 500)
-  
-  // longPressSelectedId 保持更长时间，确保点击不会被误判为普通点击
-  setTimeout(() => {
-    // 只有当图片仍然处于选中状态时才清除 longPressSelectedId
-    // 如果图片已被取消选中，说明是用户主动操作的，不需要保护
-    if (isSelectedById(longPressSelectedId.value)) {
-      longPressSelectedId.value = null
-    }
-  }, 1000)
 }
 
 // 触控开始
@@ -404,25 +390,33 @@ const handleTouchStart = (image, event) => {
   isLongPress.value = false
   touchMoved.value = false
   touchFocusedId.value = image.id
-    
-  // 记录初始触摸位置
+  touchTargetImageId.value = image.id
+  longPressTriggered.value = false
+  
   if (event.touches && event.touches.length > 0) {
     touchStartPos.value = {
       x: event.touches[0].clientX,
       y: event.touches[0].clientY
     }
   }
-   
+    
   longPressTimer.value = setTimeout(() => {
-    // 长按触发：阻止浏览器默认菜单
+    // 阻止后续的 click 事件
+    const el = event.currentTarget
+    el.addEventListener('click', function once(e) {
+      e.stopPropagation()
+      el.removeEventListener('click', once, true)
+    }, true)
+    
     event.preventDefault()
     event.stopPropagation()
     touchMoved.value = true
+    longPressTriggered.value = true
     handleLongPress(image)
   }, LONG_PRESS_DURATION)
 }
 
-// 触控移动
+// 触控移动 - 移动时不处理（去除滑动多选功能）
 const handleTouchMove = (event) => {
   if (!props.selectable || !event.touches || event.touches.length === 0) return
     
@@ -430,45 +424,35 @@ const handleTouchMove = (event) => {
   const deltaX = Math.abs(touch.clientX - touchStartPos.value.x)
   const deltaY = Math.abs(touch.clientY - touchStartPos.value.y)
    
-  // 移动超过阈值，取消长按计时器，标记为已移动
   if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
     touchMoved.value = true
     if (longPressTimer.value) {
       clearTimeout(longPressTimer.value)
       longPressTimer.value = null
     }
-    // 只有在多选模式下（已有选中图片）才阻止默认滚动
-    // 防止正常页面滑动被阻塞
-    if (props.selectedImages.length > 0) {
-      event.preventDefault()
-    }
   }
 }
 
 // 触控结束
-const handleTouchEnd = (event) => {
+const handleTouchEnd = (image, event) => {
   if (longPressTimer.value) {
     clearTimeout(longPressTimer.value)
     longPressTimer.value = null
   }
   
-  // 清除焦点
   touchFocusedId.value = null
   
-  // 如果是长按选中后抬起手指（图片仍在选中状态），保持 isLongPress 一段时间
-  // 防止 click 事件误触发取消选中
-  if (longPressSelectedId.value && isSelectedById(longPressSelectedId.value)) {
-    isLongPress.value = true
-    // 手指抬起后额外延迟清除 isLongPress
-    setTimeout(() => {
-      isLongPress.value = false
-    }, 300)
-  }
-  
-  // 如果是滑动选择模式，阻止浏览器合成 click 事件
   if (touchMoved.value) {
     event.preventDefault()
+  } else if (longPressTriggered.value && touchTargetImageId.value === image.id) {
+    event.preventDefault()
   }
+  
+  // 1.5秒后清除长按触发标志
+  setTimeout(() => {
+    longPressTriggered.value = false
+    touchTargetImageId.value = null
+  }, 1500)
 }
 
 // 根据 ID 查找图片是否选中
@@ -489,10 +473,13 @@ const handleMouseDown = (image, event) => {
   if (!props.selectable || event.button !== 0) return // 只响应左键
   isMouseDown.value = true
   mouseFocusedId.value = image.id
+  touchTargetImageId.value = image.id
+  longPressTriggered.value = false
   mouseStartPos.value = { x: event.clientX, y: event.clientY }
   
   longPressTimer.value = setTimeout(() => {
     if (isMouseDown.value && mouseFocusedId.value === image.id) {
+      longPressTriggered.value = true
       handleLongPress(image)
       isMouseDown.value = false
     }
@@ -536,6 +523,13 @@ const handleMouseUp = (image, event) => {
   }
   isMouseDown.value = false
   mouseFocusedId.value = null
+  
+  // 如果是长按触发，不阻止click（因为mouseup后click自然会被触发）
+  // click的阻止由handleImageClick中的检查来处理
+  setTimeout(() => {
+    longPressTriggered.value = false
+    touchTargetImageId.value = null
+  }, 1500)
 }
 
 const handleSelect = (image, checked) => {
