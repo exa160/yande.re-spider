@@ -19,6 +19,10 @@ class DownloadException(Exception):
     pass
 
 
+class MD5MismatchException(DownloadException):
+    pass
+
+
 class MultiDown:
     def __init__(
         self,
@@ -151,6 +155,9 @@ class MultiDown:
                 logger.warning(
                     f"md5 check err: {f_path}, expected {file_info.md5}, got {file_md5}"
                 )
+                raise MD5MismatchException(
+                    f"MD5 mismatch for {f_path}: expected {file_info.md5}, got {file_md5}"
+                )
 
     def down_file_in_range(self, file_size):
         split_size = config.downloader.split_size
@@ -227,46 +234,52 @@ class MultiDown:
         )
 
     def start(self):
-        file_size = self.file_info.file_size
-        file_path = self.file_info.file_path
-        description = (
-            file_path
-            if len(file_path) < 21
-            else f"{file_path[:10]}...{file_path[-10:]}"
-        )
+        max_retries = config.yande_api.retry
+        last_exception = None
 
-        writer_exception = None
-        download_exception = None
+        for attempt in range(max_retries):
+            self.data_q = Queue()
+            self.close_q = Queue(1)
 
-        def writer_target():
-            nonlocal writer_exception
+            file_size = self.file_info.file_size
+            writer_exception = None
+            download_exception = None
+
+            def writer_target():
+                nonlocal writer_exception
+                try:
+                    self.file_writer(self.file_info, self.data_q, self.close_q)
+                except DownloadException as e:
+                    writer_exception = e
+                except Exception as e:
+                    writer_exception = e
+
+            writer_t = Thread(target=writer_target)
+            writer_t.start()
+
             try:
-                self.file_writer(self.file_info, self.data_q, self.close_q)
+                self.down_file_in_range(file_size)
             except DownloadException as e:
-                writer_exception = e
+                download_exception = e
             except Exception as e:
-                writer_exception = e
+                download_exception = e
 
-        writer_t = Thread(target=writer_target)
-        writer_t.start()
+            self.close_q.put("1")
+            writer_t.join()
 
-        try:
-            self.down_file_in_range(file_size)
-        except DownloadException as e:
-            download_exception = e
-        except Exception as e:
-            download_exception = e
+            exception = writer_exception or download_exception
+            if exception:
+                last_exception = exception
+                if isinstance(exception, MD5MismatchException):
+                    logger.info(
+                        f"[{self.file_info.id}] MD5 mismatch, retrying download..."
+                    )
+                    continue
+                raise exception
 
-        self.close_q.put("1")
-        writer_t.join()
+            return
 
-        if writer_exception:
-            if isinstance(writer_exception, DownloadException):
-                raise writer_exception
-            raise DownloadException(str(writer_exception))
-
-        if download_exception:
-            raise download_exception
+        raise last_exception
 
 
 def queue_wait(data_q: Queue, close_q: Queue):

@@ -679,6 +679,8 @@ onMounted(() => {
 }
 
 .top-toolbar {
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -750,15 +752,15 @@ html.dark-mode .mode-buttons :deep(.el-button--primary) {
 /* 深色模式下省流按钮 */
 html.dark-mode .toolbar-left :deep(.el-button--warning),
 html.dark-mode .toolbar-left :deep(.el-button[type="warning"]) {
-  background: #CC5500 !important;
-  border-color: #CC5500 !important;
+  background: #993300 !important;
+  border-color: #993300 !important;
   color: white !important;
 }
 
 html.dark-mode .toolbar-left :deep(.el-button--warning:hover),
 html.dark-mode .toolbar-left :deep(.el-button[type="warning"]:hover) {
-  background: #DD6600 !important;
-  border-color: #DD6600 !important;
+  background: #AA4400 !important;
+  border-color: #AA4400 !important;
   color: white !important;
 }
 
@@ -773,6 +775,21 @@ html.dark-mode .toolbar-left :deep(.el-button.is-circle:hover) {
   background: var(--bg-primary);
   border-color: #E6A23C;
   color: #E6A23C;
+}
+
+/* 深色模式下安全模式按钮 */
+html.dark-mode .toolbar-left :deep(.el-button--danger),
+html.dark-mode .toolbar-left :deep(.el-button[type="danger"]) {
+  background: #A02020 !important;
+  border-color: #A02020 !important;
+  color: white !important;
+}
+
+html.dark-mode .toolbar-left :deep(.el-button--danger:hover),
+html.dark-mode .toolbar-left :deep(.el-button[type="danger"]:hover) {
+  background: #B03030 !important;
+  border-color: #B03030 !important;
+  color: white !important;
 }
 
 .selection-toolbar {
