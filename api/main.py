@@ -3,9 +3,12 @@ FastAPI 主应用入口
 提供RESTful API接口供前端调用
 """
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import sys
 
@@ -31,6 +34,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 获取项目根目录
+ROOT_DIR = Path(__file__).parent.parent
+FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
+
+# 挂载前端静态资源
+if FRONTEND_DIST.exists():
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    logger.info(f"前端静态文件已托管: {FRONTEND_DIST}")
 
 
 # 健康检查接口
@@ -75,6 +89,16 @@ try:
 
 except ImportError as e:
     logger.warning(f"部分路由模块未找到: {e}")
+
+
+@app.get("/{path:path}", include_in_schema=False)
+async def serve_spa(path: str):
+    if path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+    index_path = FRONTEND_DIST / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return JSONResponse(status_code=404, content={"message": "Frontend not found"})
 
 
 # 全局异常处理
