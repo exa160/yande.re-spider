@@ -41,20 +41,37 @@ class ImageDetail(BaseModel):
 class GalleryLoadRequest(BaseModel):
     page: int = Field(1, ge=1, description="页码")
     page_size: int = Field(20, ge=1, le=100, description="每页数量")
-    tags: Optional[str] = Field(None, description="标签过滤")
+    tags: Optional[str] = Field(None, description="标签过滤 (支持 AND/OR/NOT 语法)")
+    user: Optional[str] = Field(None, description="用户过滤: user:bob")
+    vote: Optional[int] = Field(None, description="投票数过滤: vote:3")
+    md5: Optional[str] = Field(None, description="MD5哈希过滤")
+    source: Optional[str] = Field(None, description="来源过滤: source:http://site.com")
     ratings: List[str] = Field(default_factory=list, description="评分过滤列表")
     author: Optional[str] = Field(None, description="作者过滤")
+    min_id: Optional[int] = Field(None, description="最小ID: id:>=100")
+    max_id: Optional[int] = Field(None, description="最大ID: id:<=100")
     min_width: Optional[int] = Field(None, description="最小宽度")
     max_width: Optional[int] = Field(None, description="最大宽度")
     min_height: Optional[int] = Field(None, description="最小高度")
     max_height: Optional[int] = Field(None, description="最大高度")
+    min_mpixels: Optional[float] = Field(
+        None, description="最小像素(百万): mpixels:>=2.5"
+    )
+    max_mpixels: Optional[float] = Field(None, description="最大像素(百万)")
+    ratio: Optional[str] = Field(None, description="宽高比: ratio:16:9")
+    min_date: Optional[str] = Field(None, description="最早日期: date:>=2007-01-01")
+    max_date: Optional[str] = Field(None, description="最晚日期: date:<=2007-01-01")
     min_file_size: Optional[int] = Field(None, description="最小文件大小(KB)")
     max_file_size: Optional[int] = Field(None, description="最大文件大小(KB)")
     file_types: List[str] = Field(default_factory=list, description="文件类型列表")
     min_score: Optional[int] = Field(None, description="最小评分")
     max_score: Optional[int] = Field(None, description="最大评分")
-    order: Optional[str] = Field("date", description="排序: date, id, score")
-    sort_order: Optional[str] = Field("desc", description="排序方向: desc, asc")
+    order: Optional[str] = Field(
+        "id",
+        description="排序: id, id_desc, score, score_asc, mpixels, mpixels_asc, landscape, portrait, vote",
+    )
+    parent_id: Optional[int] = Field(None, description="父贴ID: parent:1234")
+    parent_none: bool = Field(False, description="无父贴: parent:none")
     source: Optional[str] = Field(
         "local", description="数据源: yande=在线, local=本地数据库"
     )
@@ -86,26 +103,24 @@ def get_rating_value(rating_str: str) -> str:
 def query_local_database(params: dict) -> tuple[List[dict], int]:
     from backend.dao.yande_data import YandeDataRepository
 
-    repo = YandeDataRepository()
-    images, total = repo.query(
-        page=params.get("page", 1),
-        page_size=params.get("page_size", 20),
-        tags=params.get("tags"),
-        rating=params.get("rating"),
-        author=params.get("author"),
-        min_width=params.get("min_width"),
-        max_width=params.get("max_width"),
-        min_height=params.get("min_height"),
-        max_height=params.get("max_height"),
-        min_file_size=params.get("min_file_size"),
-        max_file_size=params.get("max_file_size"),
-        file_type=params.get("file_type"),
-        sort_by=params.get("sort_by", "created_at"),
-        sort_order=params.get("sort_order", "desc"),
-        downloaded_only=True,
-    )
-    if hasattr(repo, "session") and repo.session:
-        repo.session.close()
+    with YandeDataRepository() as repo:
+        images, total = repo.query(
+            page=params.get("page", 1),
+            page_size=params.get("page_size", 20),
+            tags=params.get("tags"),
+            rating=params.get("rating"),
+            author=params.get("author"),
+            min_width=params.get("min_width"),
+            max_width=params.get("max_width"),
+            min_height=params.get("min_height"),
+            max_height=params.get("max_height"),
+            min_file_size=params.get("min_file_size"),
+            max_file_size=params.get("max_file_size"),
+            file_type=params.get("file_type"),
+            sort_by=params.get("sort_by", "created_at"),
+            sort_order=params.get("sort_order", "desc"),
+            downloaded_only=True,
+        )
     return images, total
 
 
@@ -120,17 +135,30 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
 
     search_tags = YandeSearchTags(
         tags=params.get("tags"),
+        user=params.get("user"),
+        vote=params.get("vote"),
+        md5=params.get("md5"),
+        source=params.get("source"),
+        min_id=params.get("min_id"),
+        max_id=params.get("max_id"),
         min_width=params.get("min_width"),
         max_width=params.get("max_width"),
         min_height=params.get("min_height"),
         max_height=params.get("max_height"),
+        min_mpixels=params.get("min_mpixels"),
+        max_mpixels=params.get("max_mpixels"),
+        ratio=params.get("ratio"),
+        min_date=params.get("min_date"),
+        max_date=params.get("max_date"),
         min_score=params.get("min_score"),
         max_score=params.get("max_score"),
         min_filesize=params.get("min_file_size"),
         max_filesize=params.get("max_file_size"),
         ratings=params.get("ratings", []),
         file_exts=params.get("file_types", []),
-        order=params.get("order", "date"),
+        order=params.get("order", "id"),
+        parent_id=params.get("parent_id"),
+        parent_none=params.get("parent_none", False),
     )
 
     author_tags = params.get("author", "")
@@ -141,108 +169,114 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
     if not success:
         return [], 0
 
-    repo = YandeDataRepository()
-    client = MariaDBClient()
-    images = []
+    with YandeDataRepository() as repo:
+        client = MariaDBClient()
+        images = []
 
-    for item in yande_data.root:
-        file_ext = item.file_ext or "jpg"
-        record_exists = repo.check_exists(item.id)
-        is_downloaded = repo.check_downloaded(item.id)
+        for item in yande_data.root:
+            file_ext = item.file_ext or "jpg"
+            record_exists = repo.check_exists(item.id)
+            is_downloaded = repo.check_downloaded(item.id)
 
-        if not record_exists:
-            rating_val = item.rating.value if item.rating else "s"
-            if rating_val == "s":
-                rating = Rating.S
-            elif rating_val == "q":
-                rating = Rating.R15
-            else:
-                rating = Rating.R18
+            if not record_exists:
+                rating_val = item.rating.value if item.rating else "s"
+                if rating_val == "s":
+                    rating = Rating.S
+                elif rating_val == "q":
+                    rating = Rating.R15
+                else:
+                    rating = Rating.R18
 
-            new_record = client.YandeData(
-                id=item.id,
-                tags=item.tags or "",
-                created_at=item.created_at or dt.now(),
-                updated_at=item.updated_at or dt.now(),
-                creator_id=item.creator_id,
-                author=item.author or "",
-                change=item.change or 0,
-                source=item.source or "",
-                score=item.score or 0,
-                md5=item.md5 or "",
-                file_size=item.file_size or 0,
-                file_ext=file_ext,
-                file_url=item.file_url or "",
-                is_shown_in_index=item.is_shown_in_index
-                if hasattr(item, "is_shown_in_index")
-                else True,
-                preview_url=item.preview_url or "",
-                preview_width=item.preview_width or 0,
-                preview_height=item.preview_height or 0,
-                actual_preview_width=item.actual_preview_width or 0,
-                actual_preview_height=item.actual_preview_height or 0,
-                sample_url=item.sample_url or "",
-                sample_width=item.sample_width or 0,
-                sample_height=item.sample_height or 0,
-                sample_file_size=item.sample_file_size or 0,
-                jpeg_url=item.jpeg_url or "",
-                jpeg_width=item.jpeg_width or 0,
-                jpeg_height=item.jpeg_height or 0,
-                jpeg_file_size=item.jpeg_file_size or 0,
-                rating=rating,
-                is_rating_locked=item.is_rating_locked
-                if hasattr(item, "is_rating_locked")
-                else False,
-                has_children=item.has_children
-                if hasattr(item, "has_children")
-                else False,
-                parent_id=item.parent_id,
-                status=item.status or "active",
-                is_pending=item.is_pending if hasattr(item, "is_pending") else False,
-                width=item.width or 0,
-                height=item.height or 0,
-                is_held=item.is_held if hasattr(item, "is_held") else False,
-                down_flag=False,
+                new_record = client.YandeData(
+                    id=item.id,
+                    tags=item.tags or "",
+                    created_at=item.created_at or dt.now(),
+                    updated_at=item.updated_at or dt.now(),
+                    creator_id=item.creator_id,
+                    author=item.author or "",
+                    change=item.change or 0,
+                    source=item.source or "",
+                    score=item.score or 0,
+                    md5=item.md5 or "",
+                    file_size=item.file_size or 0,
+                    file_ext=file_ext,
+                    file_url=item.file_url or "",
+                    is_shown_in_index=item.is_shown_in_index
+                    if hasattr(item, "is_shown_in_index")
+                    else True,
+                    preview_url=item.preview_url or "",
+                    preview_width=item.preview_width or 0,
+                    preview_height=item.preview_height or 0,
+                    actual_preview_width=item.actual_preview_width or 0,
+                    actual_preview_height=item.actual_preview_height or 0,
+                    sample_url=item.sample_url or "",
+                    sample_width=item.sample_width or 0,
+                    sample_height=item.sample_height or 0,
+                    sample_file_size=item.sample_file_size or 0,
+                    jpeg_url=item.jpeg_url or "",
+                    jpeg_width=item.jpeg_width or 0,
+                    jpeg_height=item.jpeg_height or 0,
+                    jpeg_file_size=item.jpeg_file_size or 0,
+                    rating=rating,
+                    is_rating_locked=item.is_rating_locked
+                    if hasattr(item, "is_rating_locked")
+                    else False,
+                    has_children=item.has_children
+                    if hasattr(item, "has_children")
+                    else False,
+                    parent_id=item.parent_id,
+                    status=item.status or "active",
+                    is_pending=item.is_pending
+                    if hasattr(item, "is_pending")
+                    else False,
+                    width=item.width or 0,
+                    height=item.height or 0,
+                    is_held=item.is_held if hasattr(item, "is_held") else False,
+                    down_flag=False,
+                )
+                try:
+                    client.insert_data(new_record)
+                except Exception as e:
+                    pass
+
+            local_preview = (
+                _check_local_file(item.id, file_ext, "preview")
+                if is_downloaded
+                else None
             )
-            try:
-                client.insert_data(new_record)
-            except Exception as e:
-                pass
+            local_original = (
+                _check_local_file(item.id, file_ext, "original")
+                if is_downloaded
+                else None
+            )
 
-        local_preview = (
-            _check_local_file(item.id, file_ext, "preview") if is_downloaded else None
-        )
-        local_original = (
-            _check_local_file(item.id, file_ext, "original") if is_downloaded else None
-        )
+            images.append(
+                {
+                    "id": item.id,
+                    "tags": item.tags.split() if item.tags else [],
+                    "width": item.width,
+                    "height": item.height,
+                    "rating": RATING_DISPLAY_MAP.get(
+                        item.rating.value, item.rating.value
+                    )
+                    if item.rating
+                    else "Safe",
+                    "file_url": item.file_url,
+                    "preview_url": item.preview_url,
+                    "sample_url": item.sample_url,
+                    "file_size": item.file_size,
+                    "file_ext": file_ext,
+                    "author": item.author,
+                    "created_at": str(item.created_at),
+                    "md5": item.md5,
+                    "score": item.score,
+                    "is_downloaded": is_downloaded,
+                    "local_preview_path": local_preview,
+                    "local_file_path": local_original,
+                }
+            )
 
-        images.append(
-            {
-                "id": item.id,
-                "tags": item.tags.split() if item.tags else [],
-                "width": item.width,
-                "height": item.height,
-                "rating": RATING_DISPLAY_MAP.get(item.rating.value, item.rating.value)
-                if item.rating
-                else "Safe",
-                "file_url": item.file_url,
-                "preview_url": item.preview_url,
-                "sample_url": item.sample_url,
-                "file_size": item.file_size,
-                "file_ext": file_ext,
-                "author": item.author,
-                "created_at": str(item.created_at),
-                "md5": item.md5,
-                "score": item.score,
-                "is_downloaded": is_downloaded,
-                "local_preview_path": local_preview,
-                "local_file_path": local_original,
-            }
-        )
-
-    client.close()
-    if hasattr(repo, "session") and repo.session:
-        repo.session.close()
+        client.close()
     return images, len(images)
 
 
@@ -386,10 +420,8 @@ async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
     if preview_path.exists():
         return FileResponse(str(preview_path))
 
-    repo = YandeDataRepository()
-    image_data = repo.get_by_id(image_id)
-    if hasattr(repo, "session") and repo.session:
-        repo.session.close()
+    with YandeDataRepository() as repo:
+        image_data = repo.get_by_id(image_id)
     preview_url = image_data.get("preview_url") if image_data else None
     if not image_data or not preview_url:
         return JSONResponse(

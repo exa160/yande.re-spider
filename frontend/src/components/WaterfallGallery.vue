@@ -170,6 +170,7 @@ const pendingImages = ref(new Set())
 const retryingImages = ref(new Set())
 const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
+const imageLoadTimeouts = ref(new Map()) // 跟踪图片加载超时
 
 // 长按选择相关
 const touchFocusedId = ref(null)
@@ -296,12 +297,20 @@ watch(() => props.images.length, () => {
     retryingImages.value.clear()
     pendingImages.value.clear()
     retrySuccessImages.value.clear()
+    // 清除所有超时
+    imageLoadTimeouts.value.forEach(t => clearTimeout(t))
+    imageLoadTimeouts.value.clear()
     return
   }
   const existingIds = new Set(displayedImages.value.map(img => img.id))
   const newItems = newImages.filter(img => !existingIds.has(img.id))
   if (newItems.length > 0) {
     displayedImages.value = [...displayedImages.value, ...newItems]
+    // 为新图片设置加载超时
+    newItems.forEach(img => {
+      // 延迟设置超时，等图片开始加载
+      nextTick(() => setImageTimeout(img))
+    })
   }
   // 新图片加入后，重新观察
   nextTick(() => observeNewImages())
@@ -579,12 +588,39 @@ const getPreviewUrl = (image) => {
 const handleImageError = (image) => {
   failedImages.value.add(image.id)
   pendingImages.value.delete(image.id)
+  clearImageTimeout(image.id)
 }
 
 const handleImageLoad = (image) => {
   failedImages.value.delete(image.id)
   pendingImages.value.add(image.id)
   retrySuccessImages.value.delete(image.id)
+  clearImageTimeout(image.id)
+}
+
+// 超时检测图片加载失败
+const IMAGE_LOAD_TIMEOUT = 10000 // 10秒超时
+
+const clearImageTimeout = (imageId) => {
+  if (imageLoadTimeouts.value.has(imageId)) {
+    clearTimeout(imageLoadTimeouts.value.get(imageId))
+    imageLoadTimeouts.value.delete(imageId)
+  }
+}
+
+const setImageTimeout = (image) => {
+  clearImageTimeout(image.id)
+  const timeoutId = setTimeout(() => {
+    // 超时后检查：如果图片有URL但不在pendingImages中，认为加载失败
+    if (!pendingImages.value.has(image.id) && !retryingImages.value.has(image.id)) {
+      const url = getPreviewUrl(image)
+      if (url && !props.saveDataMode) {
+        failedImages.value.add(image.id)
+      }
+    }
+    imageLoadTimeouts.value.delete(image.id)
+  }, IMAGE_LOAD_TIMEOUT)
+  imageLoadTimeouts.value.set(image.id, timeoutId)
 }
 
 const shouldShowRetry = (image) => {
@@ -598,6 +634,7 @@ const handleImageRetry = async (image, event) => {
   
   retryingImages.value.add(image.id)
   failedImages.value.delete(image.id)
+  clearImageTimeout(image.id)
   
   let apiSuccess = false
   if (props.sourceMode === 'local') {
@@ -625,6 +662,8 @@ const handleImageRetry = async (image, event) => {
     retrySuccessImages.value.set(image.id, Date.now())
   } else {
     failedImages.value.add(image.id)
+    // 重试失败后设置新的超时
+    nextTick(() => setImageTimeout(image))
   }
 }
 

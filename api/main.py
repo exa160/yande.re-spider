@@ -5,7 +5,7 @@ FastAPI 主应用入口
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,7 +29,7 @@ app = FastAPI(
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应配置具体域名
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,14 +50,12 @@ if FRONTEND_DIST.exists():
 # 健康检查接口
 @app.get("/health", tags=["系统"])
 async def health_check():
-    """健康检查接口"""
     return {"status": "ok", "message": "API服务运行正常"}
 
 
-# 根路径
-@app.get("/", tags=["系统"])
+# API 根路径
+@app.get("/api", tags=["系统"])
 async def root():
-    """根路径"""
     return {
         "name": "Yande.re Spider API",
         "version": "2.0.0",
@@ -91,10 +89,9 @@ except ImportError as e:
     logger.warning(f"部分路由模块未找到: {e}")
 
 
+# SPA fallback - 必须放在所有API路由注册之后
 @app.get("/{path:path}", include_in_schema=False)
 async def serve_spa(path: str):
-    if path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="API endpoint not found")
     index_path = FRONTEND_DIST / "index.html"
     if index_path.exists():
         return FileResponse(index_path)
