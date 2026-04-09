@@ -55,6 +55,24 @@ class YandeApi:
         if search_tags.tags:
             parts.append(search_tags.tags)
 
+        if search_tags.user:
+            parts.append(f"user:{search_tags.user}")
+
+        if search_tags.vote is not None:
+            parts.append(f"vote:{search_tags.vote}")
+
+        if search_tags.md5:
+            parts.append(f"md5:{search_tags.md5}")
+
+        if search_tags.source:
+            parts.append(f"source:{search_tags.source}")
+
+        if search_tags.min_id is not None:
+            parts.append(f"id:>={search_tags.min_id}")
+
+        if search_tags.max_id is not None:
+            parts.append(f"id:<={search_tags.max_id}")
+
         if search_tags.min_width is not None:
             parts.append(f"width:>={search_tags.min_width}")
 
@@ -66,6 +84,21 @@ class YandeApi:
 
         if search_tags.max_height is not None:
             parts.append(f"height:<={search_tags.max_height}")
+
+        if search_tags.min_mpixels is not None:
+            parts.append(f"mpixels:>={search_tags.min_mpixels}")
+
+        if search_tags.max_mpixels is not None:
+            parts.append(f"mpixels:<={search_tags.max_mpixels}")
+
+        if search_tags.ratio:
+            parts.append(f"ratio:{search_tags.ratio}")
+
+        if search_tags.min_date:
+            parts.append(f"date:>={search_tags.min_date}")
+
+        if search_tags.max_date:
+            parts.append(f"date:<={search_tags.max_date}")
 
         if search_tags.min_score is not None:
             parts.append(f"score:>={search_tags.min_score}")
@@ -95,6 +128,15 @@ class YandeApi:
             else:
                 for ext in search_tags.file_exts:
                     parts.append(f"ext:{ext}")
+
+        if search_tags.order and search_tags.order not in ("id", "id_desc"):
+            parts.append(f"order:{search_tags.order}")
+
+        if search_tags.parent_id is not None:
+            parts.append(f"parent:{search_tags.parent_id}")
+
+        if search_tags.parent_none:
+            parts.append("parent:none")
 
         return " ".join(parts)
 

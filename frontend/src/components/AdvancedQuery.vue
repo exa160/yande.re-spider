@@ -197,22 +197,83 @@
             </div>
           </div>
 
-          <!-- 第三行：排序 -->
-          <div class="panel-row">
+          <!-- 第三行：排序 (仅在线模式) -->
+          <div class="panel-row" v-if="sourceMode === 'yande'">
             <div class="row-item">
               <label>排序</label>
               <div class="sort-selects">
                 <el-select v-model="queryParams.sortBy" size="small">
-                  <el-option label="创建时间" value="created_at" />
-                  <el-option label="评分" value="rating" />
-                  <el-option label="文件大小" value="file_size" />
-                  <el-option label="宽度" value="width" />
-                  <el-option label="高度" value="height" />
+                  <el-option label="ID" value="id" />
+                  <el-option label="评分" value="score" />
+                  <el-option label="像素" value="mpixels" />
+                  <el-option label="横向优先" value="landscape" />
+                  <el-option label="纵向优先" value="portrait" />
+                  <el-option label="投票" value="vote" />
                 </el-select>
                 <el-select v-model="queryParams.sortOrder" size="small">
                   <el-option label="降序" value="desc" />
                   <el-option label="升序" value="asc" />
                 </el-select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 第四行：ID范围 (仅在线模式) -->
+          <div class="panel-row" v-if="sourceMode === 'yande'">
+            <div class="row-item range-item">
+              <label>ID范围</label>
+              <div class="range-inputs">
+                <el-input-number v-model="queryParams.minId" :min="0" size="small" placeholder="最小" />
+                <span class="range-separator">-</span>
+                <el-input-number v-model="queryParams.maxId" :min="0" size="small" placeholder="最大" />
+              </div>
+            </div>
+
+            <div class="row-item range-item">
+              <label>像素(M)</label>
+              <div class="range-inputs">
+                <el-input-number v-model="queryParams.minMpixels" :min="0" :precision="1" size="small" placeholder="最小" />
+                <span class="range-separator">-</span>
+                <el-input-number v-model="queryParams.maxMpixels" :min="0" :precision="1" size="small" placeholder="最大" />
+              </div>
+            </div>
+
+            <div class="row-item">
+              <label>比例</label>
+              <el-input
+                v-model="queryParams.ratio"
+                placeholder="如 16:9"
+                size="small"
+                clearable
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <!-- 第五行：日期范围 (仅在线模式) -->
+          <div class="panel-row" v-if="sourceMode === 'yande'">
+            <div class="row-item range-item">
+              <label>日期范围</label>
+              <div class="range-inputs">
+                <el-date-picker
+                  v-model="queryParams.minDate"
+                  type="date"
+                  size="small"
+                  placeholder="开始日期"
+                  style="width: 140px;"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                />
+                <span class="range-separator">-</span>
+                <el-date-picker
+                  v-model="queryParams.maxDate"
+                  type="date"
+                  size="small"
+                  placeholder="结束日期"
+                  style="width: 140px;"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                />
               </div>
             </div>
           </div>
@@ -332,16 +393,14 @@ const buildCurrentTagsString = () => {
     })
   }
 
-  // 排序
-  if (queryParams.sortBy !== 'created_at' || queryParams.sortOrder !== 'desc') {
-    const orderMap = {
-      'created_at': 'date',
-      'rating': 'rating',
-      'file_size': 'file_size',
-      'width': 'width',
-      'height': 'height',
+  // 排序 (在线模式)
+  if (props.sourceMode === 'yande') {
+    const orderVal = queryParams.sortOrder === 'asc' 
+      ? `${queryParams.sortBy}_asc` 
+      : queryParams.sortBy
+    if (orderVal !== 'id') {
+      parts.push(`order:${orderVal}`)
     }
-    parts.push(`order:${orderMap[queryParams.sortBy] || 'date'}`)
   }
 
   // 文件格式
@@ -367,6 +426,31 @@ const buildCurrentTagsString = () => {
     parts.push(`height:<=${queryParams.maxHeight}`)
   }
 
+  // ID范围 (在线模式)
+  if (props.sourceMode === 'yande') {
+    if (queryParams.minId) {
+      parts.push(`id:>=${queryParams.minId}`)
+    }
+    if (queryParams.maxId) {
+      parts.push(`id:<=${queryParams.maxId}`)
+    }
+    if (queryParams.minMpixels) {
+      parts.push(`mpixels:>=${queryParams.minMpixels}`)
+    }
+    if (queryParams.maxMpixels) {
+      parts.push(`mpixels:<=${queryParams.maxMpixels}`)
+    }
+    if (queryParams.ratio) {
+      parts.push(`ratio:${queryParams.ratio}`)
+    }
+    if (queryParams.minDate) {
+      parts.push(`date:>=${queryParams.minDate}`)
+    }
+    if (queryParams.maxDate) {
+      parts.push(`date:<=${queryParams.maxDate}`)
+    }
+  }
+
   return parts.join(' ')
 }
 
@@ -386,7 +470,7 @@ const parseFavoriteTagsToParams = (tagsStr) => {
   for (const part of parts) {
     if (part.startsWith('rating:')) {
       params.ratings = [part.split(':')[1]]
-    } else if (part.startsWith('score:>')) {
+    } else if (part.startsWith('score:>=')) {
       params.min_score = parseInt(part.split(':')[1])
     } else if (part.startsWith('score:<=')) {
       params.max_score = parseInt(part.split(':')[1])
@@ -402,6 +486,20 @@ const parseFavoriteTagsToParams = (tagsStr) => {
       params.max_height = parseInt(part.split(':')[1])
     } else if (part.startsWith('ext:')) {
       params.file_types = [part.split(':')[1]]
+    } else if (part.startsWith('id:>=')) {
+      params.min_id = parseInt(part.split(':')[1])
+    } else if (part.startsWith('id:<=')) {
+      params.max_id = parseInt(part.split(':')[1])
+    } else if (part.startsWith('mpixels:>=')) {
+      params.min_mpixels = parseFloat(part.split(':')[1])
+    } else if (part.startsWith('mpixels:<=')) {
+      params.max_mpixels = parseFloat(part.split(':')[1])
+    } else if (part.startsWith('ratio:')) {
+      params.ratio = part.split(':')[1]
+    } else if (part.startsWith('date:>=')) {
+      params.min_date = part.split(':')[1]
+    } else if (part.startsWith('date:<=')) {
+      params.max_date = part.split(':')[1]
     } else if (!part.startsWith('-')) {
       if (!params.tags) {
         params.tags = part
@@ -458,8 +556,15 @@ const queryParams = reactive({
   maxFileSize: null,
   minScore: null,
   maxScore: null,
-  sortBy: 'created_at',
+  sortBy: 'id',
   sortOrder: 'desc',
+  minMpixels: null,
+  maxMpixels: null,
+  ratio: '',
+  minDate: '',
+  maxDate: '',
+  minId: null,
+  maxId: null,
 })
 
 // 计算激活的筛选标签
@@ -500,6 +605,28 @@ const activeFilters = computed(() => {
     filters.push({ key: 'fileSize', label: `大小:${min}-${max}KB` })
   }
 
+  // 在线模式专用筛选
+  if (props.sourceMode === 'yande') {
+    if (queryParams.minId || queryParams.maxId) {
+      const min = queryParams.minId || 0
+      const max = queryParams.maxId || '∞'
+      filters.push({ key: 'idRange', label: `ID:${min}-${max}` })
+    }
+    if (queryParams.minMpixels || queryParams.maxMpixels) {
+      const min = queryParams.minMpixels || 0
+      const max = queryParams.maxMpixels || '∞'
+      filters.push({ key: 'mpixels', label: `像素:${min}-${max}M` })
+    }
+    if (queryParams.ratio) {
+      filters.push({ key: 'ratio', label: `比例:${queryParams.ratio}` })
+    }
+    if (queryParams.minDate || queryParams.maxDate) {
+      const min = queryParams.minDate || '开始'
+      const max = queryParams.maxDate || '结束'
+      filters.push({ key: 'dateRange', label: `日期:${min}~${max}` })
+    }
+  }
+
   return filters
 })
 
@@ -529,6 +656,21 @@ const removeFilter = (filter) => {
     case 'fileSize':
       queryParams.minFileSize = null
       queryParams.maxFileSize = null
+      break
+    case 'idRange':
+      queryParams.minId = null
+      queryParams.maxId = null
+      break
+    case 'mpixels':
+      queryParams.minMpixels = null
+      queryParams.maxMpixels = null
+      break
+    case 'ratio':
+      queryParams.ratio = ''
+      break
+    case 'dateRange':
+      queryParams.minDate = ''
+      queryParams.maxDate = ''
       break
   }
 }
@@ -567,8 +709,15 @@ const resetParams = () => {
   queryParams.maxFileSize = null
   queryParams.minScore = null
   queryParams.maxScore = null
-  queryParams.sortBy = 'created_at'
+  queryParams.sortBy = 'id'
   queryParams.sortOrder = 'desc'
+  queryParams.minMpixels = null
+  queryParams.maxMpixels = null
+  queryParams.ratio = ''
+  queryParams.minDate = ''
+  queryParams.maxDate = ''
+  queryParams.minId = null
+  queryParams.maxId = null
 }
 
 // 解析标签文本中的包含/排除
@@ -643,8 +792,16 @@ const buildOnlineParams = () => {
     max_file_size: queryParams.maxFileSize || undefined,
     min_score: queryParams.minScore || undefined,
     max_score: queryParams.maxScore || undefined,
-    order: queryParams.sortBy === 'created_at' ? 'date' : queryParams.sortBy,
-    sort_order: queryParams.sortOrder,
+    min_mpixels: queryParams.minMpixels || undefined,
+    max_mpixels: queryParams.maxMpixels || undefined,
+    ratio: queryParams.ratio || undefined,
+    min_date: queryParams.minDate || undefined,
+    max_date: queryParams.maxDate || undefined,
+    min_id: queryParams.minId || undefined,
+    max_id: queryParams.maxId || undefined,
+    order: (queryParams.sortBy !== 'id' || queryParams.sortOrder !== 'desc') 
+      ? `${queryParams.sortBy}_${queryParams.sortOrder}` 
+      : undefined,
     page: 1,
     page_size: 20,
   }

@@ -199,12 +199,10 @@ async def preview_folder(folder_id: int, limit: int = 6):
 
     try:
         search_params = _parse_tags_to_params(folder.tags)
-        repo = YandeDataRepository()
-        images, total = repo.query(
-            page=1, page_size=limit, downloaded_only=True, **search_params
-        )
-        if hasattr(repo, "session") and repo.session:
-            repo.session.close()
+        with YandeDataRepository() as repo:
+            images, total = repo.query(
+                page=1, page_size=limit, downloaded_only=True, **search_params
+            )
 
         _refresh_local_count(folder_id, folder.tags)
 
@@ -284,12 +282,10 @@ def _refresh_local_count(folder_id: int, tags: str):
     """刷新收藏夹的本地图片数量"""
     try:
         search_params = _parse_tags_to_params(tags)
-        repo = YandeDataRepository()
-        _, total = repo.query(
-            page=1, page_size=1, downloaded_only=True, **search_params
-        )
-        if hasattr(repo, "session") and repo.session:
-            repo.session.close()
+        with YandeDataRepository() as repo:
+            _, total = repo.query(
+                page=1, page_size=1, downloaded_only=True, **search_params
+            )
         favorite_dao.update(folder_id, local_count=total, last_refresh=datetime.now())
     except Exception:
         favorite_dao.update(folder_id, local_count=0, last_refresh=datetime.now())

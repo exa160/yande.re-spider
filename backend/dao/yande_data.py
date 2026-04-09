@@ -90,6 +90,14 @@ class YandeDataRepository:
         self._session = session
         self._Model = YandeData
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._session:
+            self._session.close()
+        return False
+
     @property
     def session(self) -> Session:
         if self._session is None:
