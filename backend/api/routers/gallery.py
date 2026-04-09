@@ -104,6 +104,8 @@ def query_local_database(params: dict) -> tuple[List[dict], int]:
         sort_order=params.get("sort_order", "desc"),
         downloaded_only=True,
     )
+    if hasattr(repo, "session") and repo.session:
+        repo.session.close()
     return images, total
 
 
@@ -239,6 +241,8 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
         )
 
     client.close()
+    if hasattr(repo, "session") and repo.session:
+        repo.session.close()
     return images, len(images)
 
 
@@ -384,6 +388,8 @@ async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
 
     repo = YandeDataRepository()
     image_data = repo.get_by_id(image_id)
+    if hasattr(repo, "session") and repo.session:
+        repo.session.close()
     preview_url = image_data.get("preview_url") if image_data else None
     if not image_data or not preview_url:
         return JSONResponse(

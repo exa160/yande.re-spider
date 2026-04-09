@@ -203,8 +203,9 @@ async def preview_folder(folder_id: int, limit: int = 6):
         images, total = repo.query(
             page=1, page_size=limit, downloaded_only=True, **search_params
         )
+        if hasattr(repo, "session") and repo.session:
+            repo.session.close()
 
-        # 刷新本地数量
         _refresh_local_count(folder_id, folder.tags)
 
         return {
@@ -287,6 +288,8 @@ def _refresh_local_count(folder_id: int, tags: str):
         _, total = repo.query(
             page=1, page_size=1, downloaded_only=True, **search_params
         )
+        if hasattr(repo, "session") and repo.session:
+            repo.session.close()
         favorite_dao.update(folder_id, local_count=total, last_refresh=datetime.now())
     except Exception:
         favorite_dao.update(folder_id, local_count=0, last_refresh=datetime.now())
