@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     Enum,
     JSON,
+    Text,
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -22,6 +23,36 @@ class Base(DeclarativeBase):
 def _ensure_all_models():
     """延迟导入所有 ORM 模型以确保 create_all 能创建所有表"""
     from backend.dao import favorite_dao  # noqa: F401
+
+
+class YandeTag(Base):
+    """Yande.re 标签缓存表"""
+
+    __tablename__ = "yande_tags"
+
+    id = Column(Integer, primary_key=True, comment="标签ID")
+    name = Column(String(512), unique=True, nullable=False, comment="标签名称")
+    count = Column(Integer, default=0, comment="使用数量")
+    type = Column(
+        Integer,
+        default=0,
+        comment="类型: 0=general, 1=artist, 2=character, 3=copyright, 4=meta",
+    )
+    ambiguous = Column(Boolean, default=False, comment="是否模糊")
+    updated_at = Column(DateTime, nullable=True, comment="最后更新时间")
+
+
+class YandeArtist(Base):
+    """Yande.re 艺术家缓存表"""
+
+    __tablename__ = "yande_artists"
+
+    id = Column(Integer, primary_key=True, comment="艺术家ID")
+    name = Column(String(512), unique=True, nullable=False, comment="艺术家名称")
+    alias_id = Column(Integer, nullable=True, comment="别名ID")
+    group_id = Column(Integer, nullable=True, comment="组ID")
+    urls = Column(Text, nullable=True, comment="相关链接 (JSON)")
+    updated_at = Column(DateTime, nullable=True, comment="最后更新时间")
 
 
 class YandeData(Base):

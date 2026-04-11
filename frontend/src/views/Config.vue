@@ -25,6 +25,13 @@
       </div>
       <div 
         class="menu-item" 
+        :class="{ active: activeMenu === 'advanced' }"
+        @click="activeMenu = 'advanced'"
+      >
+        高级功能
+      </div>
+      <div 
+        class="menu-item" 
         :class="{ active: activeMenu === 'about' }"
         @click="activeMenu = 'about'"
       >
@@ -146,14 +153,78 @@
           </div>
         </div>
       </div>
+
+      <!-- 高级功能 -->
+      <div v-show="activeMenu === 'advanced'" class="config-section">
+        <div class="advanced-section">
+          <div class="advanced-title">缓存更新</div>
+          <div class="advanced-desc">从 yande.re API 刷新标签和艺术家信息到本地数据库（首次全量，之后增量）</div>
+          
+          <div class="cache-stats">
+            <div class="stat-item">
+              <span class="stat-label">标签缓存</span>
+              <span class="stat-value">{{ tagStats.total || 0 }}</span>
+              <span class="stat-tip">最大ID: {{ tagStats.max_id || 0 }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">艺术家缓存</span>
+              <span class="stat-value">{{ artistStats.total || 0 }}</span>
+            </div>
+          </div>
+
+          <div class="refresh-controls">
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">更新标签</div>
+                <div class="refresh-params">
+                  <span class="param-tip">从 ID {{ tagStats.max_id || 0 }} 开始增量更新</span>
+                  <span class="param-tip" style="color: #E6A23C; margin-left: 8px;">长按全量刷新</span>
+                </div>
+              </div>
+              <el-button 
+                type="primary" 
+                @click="handleRefreshTags" 
+                @mousedown.native="startLongPress"
+                @mouseup.native="endLongPress"
+                @mouseleave.native="endLongPress"
+                @touchstart.native="startLongPress"
+                @touchend.native="endLongPress"
+                :loading="refreshingTags"
+                size="small"
+              >
+                刷新
+              </el-button>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">更新艺术家</div>
+                <div class="refresh-params">
+                  <el-input-number v-model="refreshArtistsParams.max_pages" :min="1" :max="100" size="small" /> 页
+                  <span class="param-tip">(每页100条)</span>
+                </div>
+              </div>
+              <el-button 
+                type="primary" 
+                @click="handleRefreshArtists" 
+                :loading="refreshingArtists"
+                size="small"
+              >
+                刷新
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
+import { tagCacheApi } from '@/api/tagCache'
 
 const apiConfig = ref({
   retry_times: 3,
@@ -184,6 +255,96 @@ const saving = ref(false)
 const activeMenu = ref('api')
 const testing = ref(false)
 const tamperDetected = ref(false)
+
+// 高级功能 - 缓存更新
+const tagStats = ref({ total: 0, max_id: 0 })
+const artistStats = ref({ total: 0 })
+const refreshingTags = ref(false)
+const refreshingArtists = ref(false)
+const refreshTagsParams = ref({ after_id: 0 })
+const refreshArtistsParams = ref({ page: 1, limit: 100, max_pages: 10 })
+
+// 长按定时器
+const LONG_PRESS_DURATION = 500
+let longPressTimer = null
+
+const startLongPress = () => {
+  longPressTimer = setTimeout(async () => {
+    longPressTimer = null
+    try {
+      await ElMessageBox.confirm(
+        '全量更新将清空现有标签缓存并重新获取所有标签，此操作不可恢复。是否继续？',
+        '全量更新确认',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      return
+    }
+    
+    refreshingTags.value = true
+    try {
+      const result = await tagCacheApi.refreshTags({ full_refresh: true, limit: 0 })
+      ElMessage.success(`全量刷新已启动，预计获取 ${result.total_updated || '大量'} 标签`)
+      await loadCacheStats()
+    } catch (error) {
+      ElMessage.error('全量更新失败')
+    } finally {
+      refreshingTags.value = false
+    }
+  }, LONG_PRESS_DURATION)
+}
+
+const endLongPress = () => {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+const loadCacheStats = async () => {
+  try {
+    const [tagsRes, artistsRes] = await Promise.all([
+      tagCacheApi.getTagsStats(),
+      tagCacheApi.getArtistsStats()
+    ])
+    tagStats.value = tagsRes
+    artistStats.value = artistsRes
+  } catch (error) {
+    console.error('Load cache stats error:', error)
+  }
+}
+
+const handleRefreshTags = async () => {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+    return
+  }
+  
+  refreshingTags.value = true
+  try {
+    const result = await tagCacheApi.refreshTags({ after_id: tagStats.value.max_id || 0 })
+    ElMessage.success(`标签增量更新完成: 更新了 ${result.total_updated} 条 (最新ID: ${result.last_id})`)
+    await loadCacheStats()
+  } catch (error) {
+    ElMessage.error('标签更新失败')
+  } finally {
+    refreshingTags.value = false
+  }
+}
+
+const handleRefreshArtists = async () => {
+  refreshingArtists.value = true
+  try {
+    const result = await tagCacheApi.refreshArtists(refreshArtistsParams.value)
+    ElMessage.success(`艺术家更新完成: 更新了 ${result.total_updated} 条 (共 ${result.pages_done} 页)`)
+    await loadCacheStats()
+  } catch (error) {
+    ElMessage.error('艺术家更新失败')
+  } finally {
+    refreshingArtists.value = false
+  }
+}
 
 // 防修改检测状态
 const originalElements = new Map()
@@ -397,14 +558,7 @@ onMounted(() => {
   }
 })
 
-onUnmounted(() => {
-  stopProtection()
-  document.removeEventListener('contextmenu', disableContextMenu)
-  document.removeEventListener('keydown', handleKeyDown)
-})
-
-// 监听 activeMenu 变化，动态启停保护
-import { watch } from 'vue'
+// 监听切换到高级功能时加载缓存统计
 watch(activeMenu, (newVal) => {
   if (newVal === 'about') {
     startProtection()
@@ -415,6 +569,15 @@ watch(activeMenu, (newVal) => {
     document.removeEventListener('contextmenu', disableContextMenu)
     document.removeEventListener('keydown', handleKeyDown)
   }
+  if (newVal === 'advanced') {
+    loadCacheStats()
+  }
+}, { immediate: false })
+
+onUnmounted(() => {
+  stopProtection()
+  document.removeEventListener('contextmenu', disableContextMenu)
+  document.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
@@ -526,9 +689,156 @@ watch(activeMenu, (newVal) => {
   max-width: 300px;
 }
 
+/* 高级功能样式 */
+.advanced-section {
+  max-width: 500px;
+}
+
+.advanced-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.advanced-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+.cache-stats {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stat-tip {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.refresh-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.refresh-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+}
+
+.refresh-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.refresh-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.refresh-params {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-tip {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* 暗色模式适配 */
 :deep(.dark) .menu-item.active {
   background: #1a1a2e;
   border-right: 3px solid #409EFF;
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .config-page {
+    flex-direction: column;
+  }
+
+  .config-menu {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0;
+    gap: 0;
+  }
+
+  .menu-item {
+    flex-shrink: 0;
+    padding: 12px 16px;
+    border-right: none;
+    border-bottom: 3px solid transparent;
+  }
+
+  .menu-item.active {
+    border-right: none;
+    border-bottom: 3px solid #409EFF;
+    background: var(--bg-primary);
+  }
+
+  .config-content {
+    padding: 12px;
+    overflow-y: auto;
+  }
+
+  .advanced-section {
+    max-width: 100%;
+  }
+
+  .cache-stats {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .refresh-controls {
+    gap: 12px;
+  }
+
+  .refresh-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .refresh-item .el-button {
+    width: 100%;
+  }
 }
 </style>

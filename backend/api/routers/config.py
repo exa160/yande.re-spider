@@ -122,11 +122,13 @@ async def get_system_config():
                 proxy=proxy_val,
             ),
             downloader=DownloaderConfig(
-                thread_num=clamp(thread_num, 4, 1, 32),
-                max_concurrent_tasks=clamp(max_concurrent_tasks, 1, 10),
-                chunk_size=clamp(chunk_size, 10, 1, 102400),
-                split_size=clamp(split_size, 200, 1, 1000000),
-                retry_times=clamp(retry_times, 3, 0, 500),
+                thread_num=clamp(thread_num, default=4, min_val=1, max_val=32),
+                max_concurrent_tasks=clamp(
+                    max_concurrent_tasks, default=3, min_val=1, max_val=10
+                ),
+                chunk_size=clamp(chunk_size, default=10, min_val=1, max_val=102400),
+                split_size=clamp(split_size, default=200, min_val=1, max_val=1000000),
+                retry_times=clamp(retry_times, default=3, min_val=0, max_val=500),
             ),
             database=DatabaseConfig(
                 enable=database_cfg.get("enable", False),

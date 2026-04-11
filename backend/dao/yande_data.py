@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Session, declarative_base
 from typing import List, Optional, Tuple
 from backend.config.settings import config
+from loguru import logger
 import os
 
 
@@ -319,3 +320,221 @@ class YandeDataRepository:
         Model = self._get_model()
         stmt = select(Model.id).filter_by(id=image_id, down_flag=True)
         return self.session.execute(stmt).scalar_one_or_none() is not None
+
+
+class TagRepository:
+    """标签缓存仓库"""
+
+    def __init__(self, session: Session = None):
+        from backend.dao.database import YandeTag
+
+        self._session = session
+        self._Model = YandeTag
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._session:
+            self._session.close()
+
+    @property
+    def session(self):
+        if self._session is None:
+            self._session = Session(bind=get_engine())
+        return self._session
+
+    def upsert_tags(self, tags: List[dict]) -> int:
+        """批量插入或更新标签，返回成功更新的数量"""
+        from backend.dao.database import YandeTag
+        from datetime import datetime
+
+        count = 0
+        for tag_data in tags:
+            try:
+                stmt = select(YandeTag).filter_by(id=tag_data.get("id"))
+                existing = self.session.execute(stmt).scalar_one_or_none()
+                if existing:
+                    existing.name = tag_data.get("name", existing.name)
+                    existing.count = tag_data.get("count", existing.count)
+                    existing.type = tag_data.get("type", existing.type)
+                    existing.ambiguous = tag_data.get("ambiguous", existing.ambiguous)
+                    existing.updated_at = datetime.now()
+                else:
+                    new_tag = YandeTag(
+                        id=tag_data["id"],
+                        name=tag_data.get("name", ""),
+                        count=tag_data.get("count", 0),
+                        type=tag_data.get("type", 0),
+                        ambiguous=tag_data.get("ambiguous", False),
+                        updated_at=datetime.now(),
+                    )
+                    self.session.add(new_tag)
+                count += 1
+            except Exception as e:
+                logger.warning(f"Upsert tag error: {e}")
+        self.session.commit()
+        return count
+
+    def get_tag_by_id(self, tag_id: int) -> Optional[dict]:
+        """根据ID获取标签"""
+        from backend.dao.database import YandeTag
+
+        stmt = select(YandeTag).filter_by(id=tag_id)
+        tag = self.session.execute(stmt).scalar_one_or_none()
+        if tag:
+            return {
+                "id": tag.id,
+                "name": tag.name,
+                "count": tag.count,
+                "type": tag.type,
+                "ambiguous": tag.ambiguous,
+            }
+        return None
+
+    def get_tag_count(self) -> int:
+        """获取缓存的标签总数"""
+        from backend.dao.database import YandeTag
+
+        stmt = select(func.count(YandeTag.id))
+        return self.session.execute(stmt).scalar() or 0
+
+    def get_max_id(self) -> int:
+        """获取缓存中标签的最大ID"""
+        from backend.dao.database import YandeTag
+
+        stmt = select(func.max(YandeTag.id))
+        result = self.session.execute(stmt).scalar()
+        return result or 0
+
+    def clear_all_tags(self):
+        """清空所有标签缓存"""
+        from backend.dao.database import YandeTag
+
+        self.session.query(YandeTag).delete()
+        self.session.commit()
+
+    def search_tags(self, keyword: str, limit: int = 20) -> List[dict]:
+        """搜索标签"""
+        from backend.dao.database import YandeTag
+
+        stmt = (
+            select(YandeTag)
+            .filter(YandeTag.name.like(f"%{keyword}%"))
+            .order_by(YandeTag.count.desc())
+            .limit(limit)
+        )
+        results = self.session.execute(stmt).scalars().all()
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "count": t.count,
+                "type": t.type,
+                "ambiguous": t.ambiguous,
+            }
+            for t in results
+        ]
+
+
+class ArtistRepository:
+    """艺术家缓存仓库"""
+
+    def __init__(self, session: Session = None):
+        from backend.dao.database import YandeArtist
+
+        self._session = session
+        self._Model = YandeArtist
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._session:
+            self._session.close()
+
+    @property
+    def session(self):
+        if self._session is None:
+            self._session = Session(bind=get_engine())
+        return self._session
+
+    def upsert_artists(self, artists: List[dict]) -> int:
+        """批量插入或更新艺术家，返回成功更新的数量"""
+        from backend.dao.database import YandeArtist
+        from datetime import datetime
+        import json
+
+        count = 0
+        for artist_data in artists:
+            try:
+                stmt = select(YandeArtist).filter_by(id=artist_data.get("id"))
+                existing = self.session.execute(stmt).scalar_one_or_none()
+                urls_json = json.dumps(artist_data.get("urls", []))
+                if existing:
+                    existing.name = artist_data.get("name", existing.name)
+                    existing.alias_id = artist_data.get("alias_id")
+                    existing.group_id = artist_data.get("group_id")
+                    existing.urls = urls_json
+                    existing.updated_at = datetime.now()
+                else:
+                    new_artist = YandeArtist(
+                        id=artist_data["id"],
+                        name=artist_data.get("name", ""),
+                        alias_id=artist_data.get("alias_id"),
+                        group_id=artist_data.get("group_id"),
+                        urls=urls_json,
+                        updated_at=datetime.now(),
+                    )
+                    self.session.add(new_artist)
+                count += 1
+            except Exception as e:
+                logger.warning(f"Upsert artist error: {e}")
+        self.session.commit()
+        return count
+
+    def get_artist_by_id(self, artist_id: int) -> Optional[dict]:
+        """根据ID获取艺术家"""
+        from backend.dao.database import YandeArtist
+        import json
+
+        stmt = select(YandeArtist).filter_by(id=artist_id)
+        artist = self.session.execute(stmt).scalar_one_or_none()
+        if artist:
+            return {
+                "id": artist.id,
+                "name": artist.name,
+                "alias_id": artist.alias_id,
+                "group_id": artist.group_id,
+                "urls": json.loads(artist.urls) if artist.urls else [],
+            }
+        return None
+
+    def get_artist_count(self) -> int:
+        """获取缓存的艺术家总数"""
+        from backend.dao.database import YandeArtist
+
+        stmt = select(func.count(YandeArtist.id))
+        return self.session.execute(stmt).scalar() or 0
+
+    def search_artists(self, keyword: str, limit: int = 20) -> List[dict]:
+        """搜索艺术家"""
+        from backend.dao.database import YandeArtist
+        import json
+
+        stmt = (
+            select(YandeArtist)
+            .filter(YandeArtist.name.like(f"%{keyword}%"))
+            .limit(limit)
+        )
+        results = self.session.execute(stmt).scalars().all()
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "alias_id": t.alias_id,
+                "group_id": t.group_id,
+                "urls": json.loads(t.urls) if t.urls else [],
+            }
+            for t in results
+        ]
