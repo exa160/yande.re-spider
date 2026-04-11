@@ -1,5 +1,6 @@
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional, List, Any
 from xml.etree import ElementTree as ET
+import json
 
 import requests
 from loguru import logger
@@ -12,6 +13,8 @@ class YandeApi:
     def __init__(self):
         self.post_json_api = "https://yande.re/post.json"
         self.post_xml_api = "https://yande.re/post.xml"
+        self.tag_json_api = "https://yande.re/tag.json"
+        self.artist_json_api = "https://yande.re/artist.json"
         self.proxies = config.yande_api.proxies
         self.headers = config.yande_api.headers
 
@@ -178,3 +181,112 @@ class YandeApi:
                     f"page: {page} tag: {combined_tags}: {e} {req.content if req is not None else req}"
                 )
         return False, b""
+
+    def get_tags(
+        self,
+        page: int = 1,
+        limit: int = 100,
+        name_pattern: str = None,
+        after_id: int = None,
+    ) -> Tuple[bool, List[dict]]:
+        """
+        获取标签列表
+        :param page: 页码
+        :param limit: 每页数量 (最大 1000)
+        :param name_pattern: 标签名匹配模式 (可选)
+        :param after_id: 仅返回 ID 大于此值的标签 (用于增量更新)
+        :return: (成功标志, 标签列表)
+        """
+        query_params = {"page": page, "limit": min(limit, 1000)}
+        if name_pattern:
+            query_params["name"] = name_pattern
+        if after_id is not None:
+            query_params["after_id"] = after_id
+
+        for i in range(config.yande_api.retry):
+            try:
+                req = requests.get(
+                    self.tag_json_api,
+                    params=query_params,
+                    proxies=self.proxies,
+                    headers=self.headers,
+                    timeout=60,
+                )
+                if req.status_code != 200:
+                    logger.warning(f"[{i + 1}] get tags error {req.status_code}")
+                    continue
+                tags = req.json()
+                return True, tags
+            except Exception as e:
+                logger.warning(f"[{i + 1}] get tags error: {e}")
+        return False, []
+
+    def get_artists(
+        self, page: int = 1, limit: int = 100, name_pattern: str = None
+    ) -> Tuple[bool, List[dict]]:
+        """
+        获取艺术家列表
+        :param page: 页码
+        :param limit: 每页数量 (最大 1000)
+        :param name_pattern: 艺术家名匹配模式 (可选)
+        :return: (成功标志, 艺术家列表)
+        """
+        query_params = {"page": page, "limit": min(limit, 1000)}
+        if name_pattern:
+            query_params["name"] = name_pattern
+
+        for i in range(config.yande_api.retry):
+            try:
+                req = requests.get(
+                    self.artist_json_api,
+                    params=query_params,
+                    proxies=self.proxies,
+                    headers=self.headers,
+                    timeout=60,
+                )
+                if req.status_code != 200:
+                    logger.warning(f"[{i + 1}] get artists error {req.status_code}")
+                    continue
+                artists = req.json()
+                return True, artists
+            except Exception as e:
+                logger.warning(f"[{i + 1}] get artists error: {e}")
+        return False, []
+
+    def get_tag_count(self) -> int:
+        """获取标签总数"""
+        for i in range(config.yande_api.retry):
+            try:
+                req = requests.get(
+                    self.tag_json_api,
+                    params={"page": 1, "limit": 1},
+                    proxies=self.proxies,
+                    headers=self.headers,
+                    timeout=30,
+                )
+                if req.status_code == 200:
+                    data = req.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        return data[0].get("id", 0)
+            except Exception as e:
+                logger.warning(f"[{i + 1}] get tag count error: {e}")
+        return 0
+
+    def get_artist_count(self) -> int:
+        """获取艺术家总数"""
+        for i in range(config.yande_api.retry):
+            try:
+                req = requests.get(
+                    self.artist_json_api,
+                    params={"page": 1, "limit": 1},
+                    proxies=self.proxies,
+                    headers=self.headers,
+                    timeout=30,
+                )
+                if req.status_code == 200:
+                    data = req.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        return data[0].get("id", 0)
+            except Exception as e:
+                logger.warning(f"[{i + 1}] get artist count error: {e}")
+        return 0

@@ -65,7 +65,14 @@ async def root():
 
 
 try:
-    from backend.api.routers import query, download, gallery, config, favorites
+    from backend.api.routers import (
+        query,
+        download,
+        gallery,
+        config,
+        favorites,
+        tag_cache,
+    )
     from backend.infrastructure.download_queue import download_queue
 
     app.include_router(query.router, prefix="/api/v1/query", tags=["查询"])
@@ -73,6 +80,7 @@ try:
     app.include_router(gallery.router, prefix="/api/v1/gallery", tags=["图库"])
     app.include_router(config.router, prefix="/api/v1/config", tags=["配置"])
     app.include_router(favorites.router, prefix="/api/v1/favorites", tags=["收藏夹"])
+    app.include_router(tag_cache.router, prefix="/api/v1/tag-cache", tags=["标签缓存"])
     logger.info("API路由加载成功")
 
     @app.on_event("startup")
