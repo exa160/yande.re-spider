@@ -5,6 +5,7 @@ rich
 pathvalidate
 sqlalchemy
 mariadb
+pyyaml
 
 # FastAPI 相关依赖
 fastapi>=0.104.0
