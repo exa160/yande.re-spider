@@ -1,0 +1,10 @@
+services:
+  yande-spider:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config/data.cfg:/app/config/data.cfg
+      - ./data/yande_data.db:/app/data/yande_data.db
+      - ./downloads:/app/downloads
+    restart: unless-stopped
