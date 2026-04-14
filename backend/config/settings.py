@@ -1,4 +1,4 @@
-import yaml
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -44,70 +44,23 @@ class Config(ConfigModel):
     downloader: DownloaderConfig = DownloaderConfig()
 
 
-def load_config(config_path: str = "data.yaml") -> Config:
-    config_path = Path(config_path)
-    cfg_path = config_path.with_suffix(".cfg")
+def load_config(config_path: str = "data.cfg") -> Config:
+    if os.path.exists(config_path):
+        with open(config_path, "rb") as f:
+            try:
+                return Config.model_validate_json(f.read())
+            except Exception as e:
+                logger.warning(f"load cfg err: {e}")
 
-    if config_path.exists():
-        try:
-            config_data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            if config_data:
-                return Config.model_validate(config_data)
-        except yaml.YAMLError as e:
-            logger.error(f"YAML parsing error in {config_path}: {e}")
-        except Exception as e:
-            logger.error(f"Failed to load config from {config_path}: {e}")
-
-    if cfg_path.exists():
-        try:
-            import json
-
-            config_data = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if config_data:
-                cfg_config = Config.model_validate(config_data)
-                try:
-                    config_path.parent.mkdir(parents=True, exist_ok=True)
-                    config_path.write_text(
-                        yaml.dump(
-                            cfg_config.model_dump(),
-                            default_flow_style=False,
-                            allow_unicode=True,
-                            sort_keys=False,
-                        ),
-                        encoding="utf-8",
-                    )
-                    logger.info(f"Migrated config from JSON to YAML: {config_path}")
-                except Exception as e:
-                    logger.error(f"Failed to save migrated config: {e}")
-                return cfg_config
-        except Exception as e:
-            logger.error(f"Failed to load config from {cfg_path}: {e}")
-
-    logger.warning(
-        f"Config file not found or invalid, creating default config at {config_path}"
-    )
     default_config = Config()
-
-    try:
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(
-            yaml.dump(
-                default_config.model_dump(),
-                default_flow_style=False,
-                allow_unicode=True,
-                sort_keys=False,
-            ),
-            encoding="utf-8",
-        )
-        logger.info(f"Default configuration saved to {config_path}")
-    except Exception as e:
-        logger.error(f"Failed to save default config: {e}")
+    with open(config_path, "w") as f:
+        f.write(default_config.model_dump_json(indent=4))
 
     return default_config
 
 
 def get_config() -> Config:
-    config_path = Path(__file__).parent.parent.parent / "config" / "data.yaml"
+    config_path = Path(__file__).parent.parent.parent / "config" / "data.cfg"
     return load_config(str(config_path))
 
 
