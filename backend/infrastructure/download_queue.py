@@ -217,7 +217,9 @@ async def run_download_async(task_id: str):
                             {
                                 "downloaded_size": int(downloaded_size * 1024 * 1024),
                                 "progress": progress,
-                                "speed": download_speed,
+                                "speed": download_speed
+                                * 1024
+                                * 1024,  # Convert MB/s to bytes/s
                             },
                         )
 
