@@ -9,8 +9,68 @@
       </el-button>
     </div>
 
-    <!-- 任务列表 -->
-    <el-table :data="tasks" style="width: 100%" v-loading="loading" size="small">
+    <!-- 移动端卡片列表 -->
+    <div class="task-cards" v-if="isMobile && tasks.length > 0">
+      <div v-for="task in tasks" :key="task.task_id" class="task-card">
+        <div class="card-header">
+          <span class="card-id">ID: {{ task.image_id }}</span>
+          <el-tag :type="getStatusType(task.status)" size="small">
+            {{ task.status }}
+          </el-tag>
+        </div>
+        <div class="card-progress">
+          <el-progress
+            :percentage="Math.round(task.progress * 100)"
+            :status="getProgressStatus(task.status)"
+            :stroke-width="6"
+          />
+        </div>
+        <div class="card-info">
+          <span class="card-size">
+            {{ formatFileSize(task.downloaded_size) }} / {{ task.total_size ? formatFileSize(task.total_size) : '-' }}
+          </span>
+          <span v-if="task.speed" class="card-speed">
+            {{ formatSpeed(task.speed) }}
+          </span>
+        </div>
+        <div class="card-actions">
+          <el-button
+            v-if="task.status === 'failed'"
+            type="primary"
+            size="small"
+            @click="startTask(task.task_id)"
+          >
+            重试
+          </el-button>
+          <el-button
+            v-if="task.status === 'downloading'"
+            type="warning"
+            size="small"
+            @click="pauseTask(task.task_id)"
+          >
+            暂停
+          </el-button>
+          <el-button
+            v-if="task.status === 'paused'"
+            type="success"
+            size="small"
+            @click="resumeTask(task.task_id)"
+          >
+            恢复
+          </el-button>
+          <el-button
+            type="danger"
+            size="small"
+            @click="deleteTask(task.task_id)"
+          >
+            删除
+          </el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 大屏表格列表 -->
+    <el-table v-if="!isMobile" :data="tasks" style="width: 100%" v-loading="loading" size="small">
       <el-table-column prop="image_id" label="图片ID" width="100" />
       <el-table-column prop="file_name" label="文件名" show-overflow-tooltip />
       <el-table-column prop="status" label="状态" width="90">
@@ -29,21 +89,27 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="大小" width="120">
+      <el-table-column label="大小" width="130">
         <template #default="{ row }">
           {{ formatFileSize(row.downloaded_size) }} / {{ row.total_size ? formatFileSize(row.total_size) : '-' }}
+        </template>
+      </el-table-column>
+      <el-table-column label="速度" width="90">
+        <template #default="{ row }">
+          <span v-if="row.speed">{{ formatSpeed(row.speed) }}</span>
+          <span v-else>-</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button
-            v-if="row.status === 'pending'"
+            v-if="row.status === 'failed'"
             type="primary"
             size="small"
             link
             @click="startTask(row.task_id)"
           >
-            启动
+            重试
           </el-button>
           <el-button
             v-if="row.status === 'downloading'"
@@ -75,12 +141,15 @@
       </el-table-column>
     </el-table>
 
+    <!-- 空状态 -->
+    <el-empty v-if="tasks.length === 0 && !loading" description="暂无下载任务" />
+
     <!-- 分页 -->
     <el-pagination
       v-model:current-page="currentPage"
       :page-size="pageSize"
       :total="total"
-      layout="total, prev, pager, next"
+      :layout="isMobile ? 'total, prev, next' : 'total, prev, pager, next'"
       style="margin-top: 15px;"
       @current-change="loadTasks"
     />
@@ -88,7 +157,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, onBeforeMount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
@@ -98,6 +167,16 @@ const loading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const isMobile = ref(false)
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+onBeforeMount(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
 
 let pollTimer = null
 
@@ -235,12 +314,20 @@ const formatFileSize = (bytes) => {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
+const formatSpeed = (bytesPerSecond) => {
+  if (!bytesPerSecond) return '0 B/s'
+  if (bytesPerSecond < 1024) return `${bytesPerSecond.toFixed(0)} B/s`
+  if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
+  return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
+}
+
 onMounted(() => {
   loadTasks()
 })
 
 onUnmounted(() => {
   stopPolling()
+  window.removeEventListener('resize', checkMobile)
 })
 </script>
 
@@ -269,5 +356,78 @@ onUnmounted(() => {
 
 :deep(.el-progress__text) {
   font-size: 11px !important;
+}
+
+/* 移动端卡片列表 */
+.task-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.task-card {
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.card-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.card-progress {
+  margin-bottom: 6px;
+}
+
+.card-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.card-size {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.card-speed {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-actions .el-button {
+  flex: 1;
+  min-width: 60px;
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .toolbar .el-button {
+    width: 100%;
+  }
 }
 </style>
