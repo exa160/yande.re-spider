@@ -7,7 +7,7 @@ from typing import Optional, List, Dict
 
 from loguru import logger
 
-from backend.config.settings import config
+from backend.src.common import config
 
 
 class TaskStatus(str, Enum):
@@ -142,8 +142,8 @@ download_queue = DownloadQueue()
 
 
 async def run_download_async(task_id: str):
-    from backend.infrastructure.downloader import MultiDown
-    from backend.config.constant import ORIGINALS_DIR, PREVIEWS_DIR
+    from backend.src.infrastructure.downloader import MultiDown
+    from backend.src.common import ORIGINALS_DIR, PREVIEWS_DIR
 
     task = task_store.get_task(task_id)
     if not task:
@@ -263,8 +263,8 @@ async def run_download_async(task_id: str):
                     logger.warning(f"Failed to download preview: {e}")
 
         try:
-            from backend.dao.database import MariaDBClient
-            from backend.models.yande import Rating
+            from backend.src.dao import MariaDBClient
+            from backend.src.models.yande import Rating
             from datetime import datetime as dt
 
             client = MariaDBClient()

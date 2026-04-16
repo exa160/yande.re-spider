@@ -2,12 +2,12 @@
 图库展示相关API路由
 """
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-from backend.infrastructure.yande_api import YandeApi
-from backend.config.constant import (
+from backend.src.infrastructure.yande_api import YandeApi
+from backend.src.common.constant import (
     DOWNLOADS_DIR,
     TIMEOUT_PREVIEW,
     THUMBNAIL_MAX_SIZE,
@@ -101,7 +101,7 @@ def get_rating_value(rating_str: str) -> str:
 
 
 def query_local_database(params: dict) -> tuple[List[dict], int]:
-    from backend.dao.yande_data import YandeDataRepository
+    from backend.src.dao.yande_data import YandeDataRepository
 
     with YandeDataRepository() as repo:
         images, total = repo.query(
@@ -125,9 +125,9 @@ def query_local_database(params: dict) -> tuple[List[dict], int]:
 
 
 def query_yande_api(params: dict) -> tuple[List[dict], int]:
-    from backend.dao.yande_data import YandeDataRepository, _check_local_file
-    from backend.dao.database import MariaDBClient
-    from backend.models.yande import Rating, YandeSearchTags
+    from backend.src.dao.yande_data import YandeDataRepository, _check_local_file
+    from backend.src.dao.database import MariaDBClient
+    from backend.src.models.yande import Rating, YandeSearchTags
     from datetime import datetime as dt
 
     yande_api = YandeApi()
@@ -369,7 +369,6 @@ async def get_gallery_statistics(source: str = Query("local", description="数�
 @router.get("/cache/preview/{filename}")
 async def get_preview_image(filename: str):
     from fastapi.responses import FileResponse
-    from pathlib import Path
 
     preview_path = DOWNLOADS_DIR / "previews" / filename
     if preview_path.exists():
@@ -380,9 +379,8 @@ async def get_preview_image(filename: str):
 @router.get("/cache/preview/generate/{image_id}")
 async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
     from fastapi.responses import FileResponse, JSONResponse
-    from pathlib import Path
     import asyncio
-    from backend.infrastructure.image_cache import ImageCache
+    from backend.src.infrastructure.image_cache import ImageCache
 
     cache = ImageCache()
     preview_path = cache.PREVIEWS_DIR / f"{image_id}.{file_ext}"
@@ -409,10 +407,9 @@ async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
 @router.get("/cache/preview/fetch/{image_id}")
 async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
     from fastapi.responses import FileResponse, JSONResponse
-    from pathlib import Path
     import asyncio
-    from backend.infrastructure.image_cache import ImageCache
-    from backend.dao.yande_data import YandeDataRepository
+    from backend.src.infrastructure.image_cache import ImageCache
+    from backend.src.dao.yande_data import YandeDataRepository
 
     cache = ImageCache()
     preview_path = cache.PREVIEWS_DIR / f"{image_id}.{file_ext}"
@@ -454,7 +451,7 @@ def generate_thumbnail(
 
 def download_preview_image(preview_url: str, preview_path: str):
     import requests
-    from backend.config.settings import config
+    from backend.src.common.settings import config
 
     proxies = config.yande_api.proxies if config.yande_api.proxies else None
     resp = requests.get(preview_url, proxies=proxies, timeout=TIMEOUT_PREVIEW)
@@ -466,7 +463,6 @@ def download_preview_image(preview_url: str, preview_path: str):
 @router.get("/cache/original/{filename}")
 async def get_original_image(filename: str):
     from fastapi.responses import FileResponse
-    from pathlib import Path
 
     original_path = DOWNLOADS_DIR / "originals" / filename
     if original_path.exists():

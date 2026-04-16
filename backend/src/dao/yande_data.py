@@ -1,17 +1,12 @@
 from sqlalchemy import (
     select,
     func,
-    Column,
-    Integer,
-    String,
-    Boolean,
-    DateTime,
     create_engine,
     or_,
 )
 from sqlalchemy.orm import Session, declarative_base
 from typing import List, Optional, Tuple
-from backend.config.settings import config
+from backend.src.common import config
 from loguru import logger
 import os
 
@@ -49,7 +44,7 @@ _cached_table_name = None
 
 
 def get_engine():
-    from backend.dao.database import get_db_engine as _get_db_engine
+    from backend.src.dao.database import get_db_engine as _get_db_engine
 
     global _cached_engine, _cached_table_name
     current_table_name = get_table_name()
@@ -86,7 +81,7 @@ def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[
 
 class YandeDataRepository:
     def __init__(self, session: Session = None):
-        from backend.dao.database import YandeData
+        from backend.src.dao.database import YandeData
 
         self._session = session
         self._Model = YandeData
@@ -326,7 +321,7 @@ class TagRepository:
     """标签缓存仓库"""
 
     def __init__(self, session: Session = None):
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
 
         self._session = session
         self._Model = YandeTag
@@ -346,7 +341,7 @@ class TagRepository:
 
     def upsert_tags(self, tags: List[dict]) -> int:
         """批量插入或更新标签，返回成功更新的数量"""
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
         from datetime import datetime
 
         count = 0
@@ -378,7 +373,7 @@ class TagRepository:
 
     def get_tag_by_id(self, tag_id: int) -> Optional[dict]:
         """根据ID获取标签"""
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
 
         stmt = select(YandeTag).filter_by(id=tag_id)
         tag = self.session.execute(stmt).scalar_one_or_none()
@@ -394,14 +389,14 @@ class TagRepository:
 
     def get_tag_count(self) -> int:
         """获取缓存的标签总数"""
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
 
         stmt = select(func.count(YandeTag.id))
         return self.session.execute(stmt).scalar() or 0
 
     def get_max_id(self) -> int:
         """获取缓存中标签的最大ID"""
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
 
         stmt = select(func.max(YandeTag.id))
         result = self.session.execute(stmt).scalar()
@@ -409,14 +404,14 @@ class TagRepository:
 
     def clear_all_tags(self):
         """清空所有标签缓存"""
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
 
         self.session.query(YandeTag).delete()
         self.session.commit()
 
     def search_tags(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索标签"""
-        from backend.dao.database import YandeTag
+        from backend.src.dao.database import YandeTag
 
         stmt = (
             select(YandeTag)
@@ -441,7 +436,7 @@ class ArtistRepository:
     """艺术家缓存仓库"""
 
     def __init__(self, session: Session = None):
-        from backend.dao.database import YandeArtist
+        from backend.src.dao.database import YandeArtist
 
         self._session = session
         self._Model = YandeArtist
@@ -461,7 +456,7 @@ class ArtistRepository:
 
     def upsert_artists(self, artists: List[dict]) -> int:
         """批量插入或更新艺术家，返回成功更新的数量"""
-        from backend.dao.database import YandeArtist
+        from backend.src.dao.database import YandeArtist
         from datetime import datetime
         import json
 
@@ -495,7 +490,7 @@ class ArtistRepository:
 
     def get_artist_by_id(self, artist_id: int) -> Optional[dict]:
         """根据ID获取艺术家"""
-        from backend.dao.database import YandeArtist
+        from backend.src.dao.database import YandeArtist
         import json
 
         stmt = select(YandeArtist).filter_by(id=artist_id)
@@ -512,14 +507,14 @@ class ArtistRepository:
 
     def get_artist_count(self) -> int:
         """获取缓存的艺术家总数"""
-        from backend.dao.database import YandeArtist
+        from backend.src.dao.database import YandeArtist
 
         stmt = select(func.count(YandeArtist.id))
         return self.session.execute(stmt).scalar() or 0
 
     def search_artists(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索艺术家"""
-        from backend.dao.database import YandeArtist
+        from backend.src.dao.database import YandeArtist
         import json
 
         stmt = (

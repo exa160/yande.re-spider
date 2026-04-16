@@ -5,10 +5,10 @@
 import uuid
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from backend.infrastructure.download_queue import (
+from backend.src.infrastructure.download_queue import (
     task_store,
     download_queue,
     TaskStatus,

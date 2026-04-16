@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from loguru import logger
 
-from backend.infrastructure.yande_api import YandeApi
-from backend.dao.yande_data import TagRepository, ArtistRepository
+from backend.src.infrastructure.yande_api import YandeApi
+from backend.src.dao.yande_data import TagRepository, ArtistRepository
 
 
 router = APIRouter()

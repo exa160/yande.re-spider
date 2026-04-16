@@ -8,7 +8,7 @@ from typing import List, Optional
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import Session
 
-from backend.dao.database import Base, get_db_engine
+from backend.src.dao.database import Base, get_db_engine
 
 
 class FavoriteFolder(Base):
