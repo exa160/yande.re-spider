@@ -4,6 +4,7 @@ FastAPI 主应用入口
 """
 
 from pathlib import Path
+from backend.src.api import APILoader
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +20,7 @@ logger.add("logs/api.log", rotation="10 MB", retention="7 days", level="DEBUG")
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="Yande.re Spider API",
+    title="Yande.re Local Picture Manager",
     description="yande.re图片爬虫下载器API接口",
     version="2.0.0",
     docs_url="/docs",
@@ -37,7 +38,7 @@ app.add_middleware(
 
 # 获取项目根目录
 ROOT_DIR = Path(__file__).parent.parent
-FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
+FRONTEND_DIST = ROOT_DIR / "dist"
 
 # 挂载前端静态资源
 if FRONTEND_DIST.exists():
@@ -65,23 +66,13 @@ async def root():
 
 
 try:
-    from backend.api.routers import (
+    from backend.src.api.v1 import (
         query,
-        download,
-        gallery,
-        config,
-        favorites,
         tag_cache,
     )
-    from backend.infrastructure.download_queue import download_queue
+    from backend.src.infrastructure.download_queue import download_queue
 
-    app.include_router(query.router, prefix="/api/v1/query", tags=["查询"])
-    app.include_router(download.router, prefix="/api/v1/download", tags=["下载"])
-    app.include_router(gallery.router, prefix="/api/v1/gallery", tags=["图库"])
-    app.include_router(config.router, prefix="/api/v1/config", tags=["配置"])
-    app.include_router(favorites.router, prefix="/api/v1/favorites", tags=["收藏夹"])
-    app.include_router(tag_cache.router, prefix="/api/v1/tag-cache", tags=["标签缓存"])
-    logger.info("API路由加载成功")
+    APILoader.init_app(app)
 
     @app.on_event("startup")
     async def startup_event():
@@ -94,6 +85,7 @@ try:
         logger.info("下载队列已停止")
 
 except ImportError as e:
+
     logger.warning(f"部分路由模块未找到: {e}")
 
 

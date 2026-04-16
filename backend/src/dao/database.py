@@ -11,8 +11,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
-from backend.config.settings import config
-from backend.models.yande import Rating
+from backend.src.common import config
+from backend.src.models.yande import Rating
 import os
 
 
@@ -22,7 +22,6 @@ class Base(DeclarativeBase):
 
 def _ensure_all_models():
     """延迟导入所有 ORM 模型以确保 create_all 能创建所有表"""
-    from backend.dao import favorite_dao  # noqa: F401
 
 
 class YandeTag(Base):

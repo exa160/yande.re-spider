@@ -6,11 +6,16 @@ BASE_DIR = Path(__file__).parent.parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 PREVIEWS_DIR = DOWNLOADS_DIR / "previews"
 ORIGINALS_DIR = DOWNLOADS_DIR / "originals"
+CONFIG_DIR = BASE_DIR / "config"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 DATA_DIR = BASE_DIR / "data"
+FRONTEND_DIST = BASE_DIR / "frontend-dist"
+
 
 YANDE_RE_BASE_URL = "https://yande.re"
 YANDE_RE_POST_API = f"{YANDE_RE_BASE_URL}/post.json"
+YANDE_RE_TAG_API = f"{YANDE_RE_BASE_URL}/post.json"
 YANDE_RE_FILES_HOST = "files.yande.re"
 YANDE_RE_REFERER = f"{YANDE_RE_BASE_URL}/"
 
@@ -34,16 +39,6 @@ DEFAULT_SPLIT_SIZE = 5 * 1024 * 1024
 THUMBNAIL_MAX_SIZE = 300
 THUMBNAIL_QUALITY = 85
 THUMBNAIL_RESAMPLING = "LANCZOS"
-
-
-class TaskStatus(str, Enum):
-    PENDING = "pending"
-    DOWNLOADING = "downloading"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
 
 RATING_MAP = {
     "Safe": "s",
@@ -70,3 +65,27 @@ SUPPORTED_IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
 
 MD5_CHECK_ENABLED = True
 FILE_WRITE_PLACEHOLDER = "\x00"
+
+
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class RouterMap(Enum):
+    config = ["配置"]
+    download = ["下载"]
+    favorites = ["收藏夹"]
+    gallery = ["图库"]
+    query = ["查询"]
+    tag_cache = ["标签缓存"]
+
+    @classmethod
+    def get_tags(cls, name: str):
+        member = cls.__members__.get(name)
+        return member.value if member else None
+

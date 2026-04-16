@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from pathvalidate import sanitize_filename
 
-from backend.config.settings import config
-from backend.models.download import FileInfo
+from backend.src.common import config
+from backend.src.models.download import FileInfo
 
 
 class DownloadException(Exception):

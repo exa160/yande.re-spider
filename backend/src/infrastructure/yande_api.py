@@ -1,12 +1,11 @@
-from typing import Union, Tuple, Optional, List, Any
+from typing import Union, Tuple, List
 from xml.etree import ElementTree as ET
-import json
 
 import requests
 from loguru import logger
 
-from backend.config.settings import config
-from backend.models.yande import YandePostData, YandeSearchTags
+from backend.src.common import config
+from backend.src.models.yande import YandePostData, YandeSearchTags
 
 
 class YandeApi:

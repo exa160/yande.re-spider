@@ -1,10 +1,9 @@
 import os
-import hashlib
 import requests
 from pathlib import Path
 from typing import Optional, Tuple
 
-from backend.config.constant import (
+from backend.src.common import (
     DOWNLOADS_DIR,
     PREVIEWS_DIR,
     ORIGINALS_DIR,
@@ -86,7 +85,7 @@ class ImageCache:
 
 
 def current_proxy() -> Optional[dict]:
-    from backend.config.settings import config
+    from backend.src.common import config
 
     if config.yande_api.proxies:
         return config.yande_api.proxies
