@@ -2,21 +2,12 @@ import asyncio
 import threading
 import time
 from datetime import datetime
-from enum import Enum
 from typing import Optional, List, Dict
 
 from loguru import logger
 
 from backend.src.common import config
-
-
-class TaskStatus(str, Enum):
-    PENDING = "pending"
-    DOWNLOADING = "downloading"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+from backend.src.common.constant import TaskStatus
 
 
 class TaskStore:
@@ -91,9 +82,6 @@ class DownloadQueue:
         self._running = False
         self._max_concurrent = 3
 
-    def _get_max_concurrent(self) -> int:
-        return config.downloader.max_concurrent_tasks
-
     async def _worker(self, worker_id: int):
         while self._running:
             try:
@@ -105,7 +93,7 @@ class DownloadQueue:
                 self._queue.put_nowait(task_id)
                 break
 
-            semaphore = asyncio.Semaphore(self._get_max_concurrent())
+            semaphore = asyncio.Semaphore(config.downloader.max_concurrent_tasks)
             async with semaphore:
                 await run_download_async(task_id)
             self._queue.task_done()

@@ -8,7 +8,7 @@ COPY pyproject.toml .
 RUN uv sync --no-dev
 
 COPY backend/ ./
-COPY frontend/dist/ ./frontend-dist/
+COPY frontend/dist/ ./frontend/dist/
 COPY config/ ./config/
 
 EXPOSE 8000

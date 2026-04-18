@@ -1,16 +1,8 @@
 from enum import Enum
+from http import HTTPStatus
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.parent.parent
-
-DOWNLOADS_DIR = BASE_DIR / "downloads"
-PREVIEWS_DIR = DOWNLOADS_DIR / "previews"
-ORIGINALS_DIR = DOWNLOADS_DIR / "originals"
-CONFIG_DIR = BASE_DIR / "config"
-CONFIG_FILE = CONFIG_DIR / "config.yaml"
-
-DATA_DIR = BASE_DIR / "data"
-FRONTEND_DIST = BASE_DIR / "frontend-dist"
+from pydantic import BaseModel, ConfigDict
 
 
 YANDE_RE_BASE_URL = "https://yande.re"
@@ -63,9 +55,29 @@ MAX_PAGE_SIZE = 100
 
 SUPPORTED_IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
 
-MD5_CHECK_ENABLED = True
 FILE_WRITE_PLACEHOLDER = "\x00"
 
+
+class ConstantModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class PathConstant(ConstantModel):
+    base_dir: Path = Path(__file__).parent.parent.parent
+
+    download_dir: Path = base_dir / "downloads"
+    previews_dir: Path = download_dir / "previews"
+    originals_dir: Path = download_dir / "originals"
+    config_dir: Path = base_dir / "config"
+    config_file: Path = config_dir / "config.yaml"
+    data_dir: Path = base_dir / "data"
+    sqlite_file: Path = data_dir / "yande_data.db"
+    log_dir: Path = base_dir / "log"
+    frontend_dist: Path = base_dir / "frontend-dist"
+
+
+class DownloadConstant(ConstantModel):
+    ...
 
 
 class TaskStatus(str, Enum):
@@ -75,6 +87,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
 
 class RouterMap(Enum):
     config = ["配置"]
@@ -89,3 +102,24 @@ class RouterMap(Enum):
         member = cls.__members__.get(name)
         return member.value if member else None
 
+
+class BaseMsgEnum(Enum):
+    def __new__(cls, code: str, msg: str, http_status: HTTPStatus = None):
+        obj = object.__new__(cls)
+        obj.code = code
+        obj.msg = msg
+        obj.http_status = HTTPStatus.OK
+        if http_status:
+            obj.http_status = http_status
+        return obj
+
+
+class ErrMsg(BaseMsgEnum):
+    OK = ("0000", "OK.")
+    CONFIG_UPDATE_SUCCESS = ("0000", "配置更新成功")
+
+    CONFIG_UPDATE_ERROR = ("0001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    CONFIG_RESET_ERROR = ("0002", "Config reset error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+
+path_constant = PathConstant()

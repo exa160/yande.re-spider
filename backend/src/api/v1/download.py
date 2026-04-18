@@ -11,8 +11,8 @@ from pydantic import BaseModel
 from backend.src.infrastructure.download_queue import (
     task_store,
     download_queue,
-    TaskStatus,
 )
+from backend.src.common.constant import TaskStatus
 
 router = APIRouter()
 

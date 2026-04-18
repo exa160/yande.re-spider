@@ -7,8 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from backend.src.infrastructure.yande_api import YandeApi
-from backend.src.common.constant import (
-    DOWNLOADS_DIR,
+from backend.src.common.constant import (path_constant,
     TIMEOUT_PREVIEW,
     THUMBNAIL_MAX_SIZE,
     THUMBNAIL_QUALITY,
@@ -370,7 +369,7 @@ async def get_gallery_statistics(source: str = Query("local", description="Êï∞Êç
 async def get_preview_image(filename: str):
     from fastapi.responses import FileResponse
 
-    preview_path = DOWNLOADS_DIR / "previews" / filename
+    preview_path = path_constant.previews_dir / filename
     if preview_path.exists():
         return FileResponse(str(preview_path))
     return {"error": "Preview not found"}

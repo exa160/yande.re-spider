@@ -113,7 +113,7 @@ def get_db_engine():
 
     if use_mariadb:
         engine = create_engine(
-            f"mariadb+mariadbconnector://{config.database.user}:{config.database.password}@"
+            f"mariadb+mariadbconnector://{config.database.user}:{config.database.password.get_secret_value()}@"
             f"{config.database.host}:{config.database.port}/{config.database.schema_name}"
         )
     else:
