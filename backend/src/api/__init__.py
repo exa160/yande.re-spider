@@ -24,6 +24,7 @@ API_BLACKLIST: set[str] = {
     "__pypackages__",
 }
 
+
 class APILoader:
     def __init__(self):
         self.base_path = Path(__file__).resolve().parent
@@ -39,8 +40,10 @@ class APILoader:
         python_files: list[Path] = []
         folders = list(api_dir.glob("*/"))
         for folder_path in folders:
+            if folder_path.name in API_BLACKLIST:
+                continue
             logger.info("Find router version {}", folder_path.stem)
-            python_files.extend(folder_path.rglob("*"))
+            python_files.extend(folder_path.rglob("*.py"))
         return python_files
 
     def registry_router_from_file(self, app: FastAPI, file_path) -> ModuleType:

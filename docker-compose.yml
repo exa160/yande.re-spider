@@ -7,4 +7,5 @@ services:
       - ./config/config.yaml:/app/config/config.yaml
       - ./data/yande_data.db:/app/data/yande_data.db
       - ./downloads:/app/downloads
+      - ./logs:/app/logs
     restart: unless-stopped

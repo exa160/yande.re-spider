@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from starlette.staticfiles import StaticFiles
+
+from backend.src.api import APILoader
+from backend.src.common.constant import path_constant
+from backend.src.middleware.downloader import DownloadMiddleware
+from backend.src.middleware.errors import ErrorHandleMiddleware
+from backend.src.middleware.loggers import LoggerMiddleware
 
 
 def init_app(app: FastAPI) -> FastAPI:
@@ -13,18 +20,17 @@ def init_app(app: FastAPI) -> FastAPI:
         allow_headers=["*"],
     )
     # 初始化中间件
-    LoggerMiddleware.init_app(app)
-    RequestIDMiddleware.init_app(app)
-    ErrorHandlerMiddleware.init_app(app)
-
-    # 初始化Celery（如果启用）
-    if config.celery and config.celery.broker_url:
-        from src.celery_task import init_celery_app
-        init_celery_app(app)
-
-    # 注册蓝图
-    from src.api.v1 import api_v1
-    app.register_blueprint(api_v1, url_prefix='/api/v1')
+    DownloadMiddleware.init_app(app)
+    APILoader.init_app(app)
+    LoggerMiddleware.init_app(app, path_constant.log_dir)
+    ErrorHandleMiddleware.init_app(app)
+    frontend_dist = path_constant.frontend_dist
+    if frontend_dist.exists():
+        assets_dir = frontend_dist / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="root")
+        logger.info(f"frontend file load: {frontend_dist}")
 
     logger.info("Flask application initialized successfully")
 
