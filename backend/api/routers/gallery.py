@@ -181,11 +181,11 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
             if not record_exists:
                 rating_val = item.rating.value if item.rating else "s"
                 if rating_val == "s":
-                    rating = Rating.S
+                    rating = Rating.S.value
                 elif rating_val == "q":
-                    rating = Rating.R15
+                    rating = Rating.R15.value
                 else:
-                    rating = Rating.R18
+                    rating = Rating.R18.value
 
                 new_record = client.YandeData(
                     id=item.id,
@@ -237,7 +237,7 @@ def query_yande_api(params: dict) -> tuple[List[dict], int]:
                 try:
                     client.insert_data(new_record)
                 except Exception as e:
-                    pass
+                    logger.warning(f"Failed to insert yande_data id={item.id}: {e}")
 
             local_preview = (
                 _check_local_file(item.id, file_ext, "preview")

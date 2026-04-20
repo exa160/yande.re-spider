@@ -271,11 +271,11 @@ async def run_download_async(task_id: str):
             if not client.update_down_flag(task["image_id"], True):
                 rating_str = task.get("rating", "s")
                 if rating_str in ["Safe", "s", "S"]:
-                    rating = Rating.S
+                    rating = Rating.S.value
                 elif rating_str in ["Questionable", "q", "Q"]:
-                    rating = Rating.R15
+                    rating = Rating.R15.value
                 else:
-                    rating = Rating.R18
+                    rating = Rating.R18.value
 
                 file_ext = (
                     task.get("file_name", "jpg").rsplit(".", 1)[-1]
