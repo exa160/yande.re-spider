@@ -2,11 +2,10 @@
 配置管理相关API路由
 """
 
-import os
-import json
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -14,8 +13,8 @@ from backend.dao.yande_data import refresh_engine
 
 router = APIRouter()
 
-CONFIG_DIR = Path(__file__).parent.parent.parent.parent / "config"
-CONFIG_FILE = CONFIG_DIR / "data.cfg"
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent.parent / "config"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 
 class ApiConfig(BaseModel):
@@ -49,17 +48,23 @@ class SystemConfigResponse(BaseModel):
     database: DatabaseConfig
 
 
-def load_json_config() -> dict:
+def load_yaml_config() -> dict:
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
+        with CONFIG_FILE.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
     return {}
 
 
-def save_json_config(config_data: dict):
+def save_yaml_config(config_data: dict):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config_data, f, indent=4)
+    with CONFIG_FILE.open("w", encoding="utf-8") as f:
+        yaml.dump(
+            config_data,
+            f,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        )
 
 
 def clamp(value, default, min_val=None, max_val=None):
@@ -73,7 +78,7 @@ def clamp(value, default, min_val=None, max_val=None):
 @router.get("/", response_model=SystemConfigResponse)
 async def get_system_config():
     try:
-        config_data = load_json_config()
+        config_data = load_yaml_config()
 
         api_cfg = config_data.get("yande_api", {})
         downloader_cfg = config_data.get("downloader", {})
@@ -147,7 +152,7 @@ async def get_system_config():
 @router.put("/api")
 async def update_api_config(config: ApiConfig):
     try:
-        config_data = load_json_config()
+        config_data = load_yaml_config()
 
         if "yande_api" not in config_data:
             config_data["yande_api"] = {}
@@ -166,7 +171,7 @@ async def update_api_config(config: ApiConfig):
         else:
             config_data["yande_api"]["proxies"] = None
 
-        save_json_config(config_data)
+        save_yaml_config(config_data)
         return {"message": "API配置更新成功"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
@@ -175,7 +180,7 @@ async def update_api_config(config: ApiConfig):
 @router.put("/downloader")
 async def update_downloader_config(config: DownloaderConfig):
     try:
-        config_data = load_json_config()
+        config_data = load_yaml_config()
 
         if "downloader" not in config_data:
             config_data["downloader"] = {}
@@ -186,7 +191,7 @@ async def update_downloader_config(config: DownloaderConfig):
         config_data["downloader"]["split_size"] = config.split_size
         config_data["downloader"]["retry"] = config.retry_times
 
-        save_json_config(config_data)
+        save_yaml_config(config_data)
         return {"message": "下载器配置更新成功"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
@@ -195,7 +200,7 @@ async def update_downloader_config(config: DownloaderConfig):
 @router.put("/database")
 async def update_database_config(config: DatabaseConfig):
     try:
-        config_data = load_json_config()
+        config_data = load_yaml_config()
 
         if "database" not in config_data:
             config_data["database"] = {}
@@ -208,7 +213,7 @@ async def update_database_config(config: DatabaseConfig):
         config_data["database"]["schema_name"] = config.schema_name
         config_data["database"]["datatable"] = config.datatable
 
-        save_json_config(config_data)
+        save_yaml_config(config_data)
         refresh_engine()
         return {"message": "数据库配置更新成功"}
     except Exception as e:
@@ -240,7 +245,7 @@ async def test_database_connection(config: DatabaseConfig):
 @router.post("/reset")
 async def reset_config(section: Optional[str] = None):
     try:
-        config_data = load_json_config()
+        config_data = load_yaml_config()
 
         if section is None:
             return {"message": "请指定要重置的配置段: api, downloader, database"}
@@ -275,7 +280,7 @@ async def reset_config(section: Optional[str] = None):
         else:
             return {"message": f"未知配置段: {section}"}
 
-        save_json_config(config_data)
+        save_yaml_config(config_data)
         return {"message": f"{section}配置已重置"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"重置失败: {str(e)}")
@@ -284,7 +289,7 @@ async def reset_config(section: Optional[str] = None):
 @router.get("/export")
 async def export_config():
     try:
-        config_data = load_json_config()
+        config_data = load_yaml_config()
         return {"message": "配置导出成功", "config": config_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
@@ -293,7 +298,7 @@ async def export_config():
 @router.post("/import")
 async def import_config(config: dict):
     try:
-        save_json_config(config)
+        save_yaml_config(config)
         return {"message": "配置导入成功"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
