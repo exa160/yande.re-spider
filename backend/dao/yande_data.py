@@ -1,77 +1,58 @@
-from sqlalchemy import (
-    select,
-    func,
-    Column,
-    Integer,
-    String,
-    Boolean,
-    DateTime,
-    create_engine,
-    or_,
-)
-from sqlalchemy.orm import Session, declarative_base
+"""
+Yande.re 数据仓库
+
+提供图片、标签、艺术家的数据访问接口。
+使用新的 DatabaseManager 进行会话管理和事务控制。
+"""
+
+from sqlalchemy import select, func, or_
+from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple
-from backend.config.settings import config
+
+from backend.src.model.database import DatabaseManager, get_session_factory
+from backend.src.model.database.models import YandeTag, YandeArtist, YandeData
 from loguru import logger
 import os
 
 
-Base = declarative_base()
+def get_table_name() -> str:
+    """获取当前配置的表名（MariaDB 模式下有效）"""
+    from backend.config.settings import config
 
-
-def get_db_engine():
-    use_mariadb = config.database.enable and config.database.host
-
-    if use_mariadb:
-        engine = create_engine(
-            f"mariadb+mariadbconnector://{config.database.user}:{config.database.password}@"
-            f"{config.database.host}:{config.database.port}/{config.database.schema_name}"
-        )
-    else:
-        db_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "data",
-            "yande_data.db",
-        )
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(bind=engine)
-
-    return engine
-
-
-def get_table_name():
     return config.database.datatable if config.database.enable else "yande_data"
 
 
+# 缓存引擎和表名（向后兼容）
 _cached_engine = None
 _cached_table_name = None
 
 
 def get_engine():
-    from backend.dao.database import get_db_engine as _get_db_engine
-
+    """获取数据库引擎（向后兼容）"""
     global _cached_engine, _cached_table_name
     current_table_name = get_table_name()
     if _cached_engine is None or _cached_table_name != current_table_name:
-        _cached_engine = _get_db_engine()
+        _cached_engine = DatabaseManager.get_engine()
         _cached_table_name = current_table_name
     return _cached_engine
 
 
 def refresh_engine():
+    """刷新引擎（向后兼容）"""
     global _cached_engine, _cached_table_name
     _cached_engine = None
     _cached_table_name = None
 
 
-def _get_local_file_base():
+def _get_local_file_base() -> str:
+    """获取本地文件基础目录"""
     return os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "downloads"
     )
 
 
 def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[str]:
+    """检查本地文件是否存在"""
     base = _get_local_file_base()
     subdir = "previews" if file_type == "preview" else "originals"
     extensions = (
@@ -85,28 +66,40 @@ def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[
 
 
 class YandeDataRepository:
-    def __init__(self, session: Session = None):
-        from backend.dao.database import YandeData
+    """
+    Yande 图片数据仓库
 
+    使用新的 DatabaseManager 进行会话管理。
+    """
+
+    def __init__(self, session: Session = None):
         self._session = session
-        self._Model = YandeData
+        self._session_owns = session is None
 
     def __enter__(self):
+        if self._session is None:
+            self._session = get_session_factory()()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._session:
+        if self._session and self._session_owns:
+            if exc_type is not None:
+                self._session.rollback()
+            else:
+                try:
+                    self._session.commit()
+                except Exception as e:
+                    logger.error(f"Database commit error: {e}")
+                    self._session.rollback()
+                    raise
             self._session.close()
         return False
 
     @property
     def session(self) -> Session:
         if self._session is None:
-            self._session = Session(bind=get_engine())
+            self._session = get_session_factory()()
         return self._session
-
-    def _get_model(self):
-        return self._Model
 
     def query(
         self,
@@ -126,13 +119,12 @@ class YandeDataRepository:
         sort_order: str = "desc",
         downloaded_only: bool = False,
     ) -> Tuple[List[dict], int]:
-        Model = self._get_model()
+        """查询图片列表"""
+        Model = YandeData
         query_stmt = select(Model)
         count_stmt = select(func.count()).select_from(Model)
 
         if tags:
-            # 强制 AND 逻辑：忽略 OR，只保留 AND 语义
-            # 先把 OR 替换成 AND，再统一处理
             tags_normalized = tags.upper().replace(" OR ", " AND ")
             tags_filter = [t for t in tags_normalized.split(" AND ") if t.strip()]
             for tag in tags_filter:
@@ -226,9 +218,7 @@ class YandeDataRepository:
         images = []
         for row in results:
             tags_list = row.tags.split() if row.tags else []
-            rating_val = (
-                row.rating.value if hasattr(row.rating, "value") else row.rating
-            )
+            rating_val = row.rating
             rating_display = (
                 rating_display_map.get(rating_val, rating_val) if rating_val else "Safe"
             )
@@ -263,7 +253,8 @@ class YandeDataRepository:
         return images, total
 
     def get_by_id(self, image_id: int) -> Optional[dict]:
-        Model = self._get_model()
+        """根据ID获取图片详情"""
+        Model = YandeData
         stmt = select(Model).filter_by(id=image_id)
         row = self.session.execute(stmt).scalar_one_or_none()
         if not row:
@@ -300,53 +291,66 @@ class YandeDataRepository:
         }
 
     def insert(self, data: dict) -> bool:
-        Model = self._get_model()
+        """插入图片数据"""
         try:
-            record = Model(**data)
+            record = YandeData(**data)
             self.session.add(record)
             self.session.commit()
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Insert yande data error: {e}")
             self.session.rollback()
             return False
 
     def check_exists(self, image_id: int) -> bool:
-        Model = self._get_model()
-        stmt = select(Model.id).filter_by(id=image_id)
+        """检查图片是否存在"""
+        stmt = select(YandeData.id).filter_by(id=image_id)
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
     def check_downloaded(self, image_id: int) -> bool:
         """检查图片是否已下载（记录存在且 down_flag=True）"""
-        Model = self._get_model()
-        stmt = select(Model.id).filter_by(id=image_id, down_flag=True)
+        stmt = select(YandeData.id).filter_by(id=image_id, down_flag=True)
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
 
 class TagRepository:
-    """标签缓存仓库"""
+    """
+    标签缓存仓库
+
+    使用新的 DatabaseManager 进行会话管理。
+    """
 
     def __init__(self, session: Session = None):
-        from backend.dao.database import YandeTag
-
         self._session = session
-        self._Model = YandeTag
+        self._session_owns = session is None
 
     def __enter__(self):
+        if self._session is None:
+            self._session = get_session_factory()()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._session:
+        if self._session and self._session_owns:
+            if exc_type is not None:
+                self._session.rollback()
+            else:
+                try:
+                    self._session.commit()
+                except Exception as e:
+                    logger.error(f"Database commit error: {e}")
+                    self._session.rollback()
+                    raise
             self._session.close()
+        return False
 
     @property
-    def session(self):
+    def session(self) -> Session:
         if self._session is None:
-            self._session = Session(bind=get_engine())
+            self._session = get_session_factory()()
         return self._session
 
     def upsert_tags(self, tags: List[dict]) -> int:
         """批量插入或更新标签，返回成功更新的数量"""
-        from backend.dao.database import YandeTag
         from datetime import datetime
 
         count = 0
@@ -378,8 +382,6 @@ class TagRepository:
 
     def get_tag_by_id(self, tag_id: int) -> Optional[dict]:
         """根据ID获取标签"""
-        from backend.dao.database import YandeTag
-
         stmt = select(YandeTag).filter_by(id=tag_id)
         tag = self.session.execute(stmt).scalar_one_or_none()
         if tag:
@@ -394,30 +396,22 @@ class TagRepository:
 
     def get_tag_count(self) -> int:
         """获取缓存的标签总数"""
-        from backend.dao.database import YandeTag
-
         stmt = select(func.count(YandeTag.id))
         return self.session.execute(stmt).scalar() or 0
 
     def get_max_id(self) -> int:
         """获取缓存中标签的最大ID"""
-        from backend.dao.database import YandeTag
-
         stmt = select(func.max(YandeTag.id))
         result = self.session.execute(stmt).scalar()
         return result or 0
 
     def clear_all_tags(self):
         """清空所有标签缓存"""
-        from backend.dao.database import YandeTag
-
         self.session.query(YandeTag).delete()
         self.session.commit()
 
     def search_tags(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索标签"""
-        from backend.dao.database import YandeTag
-
         stmt = (
             select(YandeTag)
             .filter(YandeTag.name.like(f"%{keyword}%"))
@@ -438,30 +432,43 @@ class TagRepository:
 
 
 class ArtistRepository:
-    """艺术家缓存仓库"""
+    """
+    艺术家缓存仓库
+
+    使用新的 DatabaseManager 进行会话管理。
+    """
 
     def __init__(self, session: Session = None):
-        from backend.dao.database import YandeArtist
-
         self._session = session
-        self._Model = YandeArtist
+        self._session_owns = session is None
 
     def __enter__(self):
+        if self._session is None:
+            self._session = get_session_factory()()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._session:
+        if self._session and self._session_owns:
+            if exc_type is not None:
+                self._session.rollback()
+            else:
+                try:
+                    self._session.commit()
+                except Exception as e:
+                    logger.error(f"Database commit error: {e}")
+                    self._session.rollback()
+                    raise
             self._session.close()
+        return False
 
     @property
-    def session(self):
+    def session(self) -> Session:
         if self._session is None:
-            self._session = Session(bind=get_engine())
+            self._session = get_session_factory()()
         return self._session
 
     def upsert_artists(self, artists: List[dict]) -> int:
         """批量插入或更新艺术家，返回成功更新的数量"""
-        from backend.dao.database import YandeArtist
         from datetime import datetime
         import json
 
@@ -495,7 +502,6 @@ class ArtistRepository:
 
     def get_artist_by_id(self, artist_id: int) -> Optional[dict]:
         """根据ID获取艺术家"""
-        from backend.dao.database import YandeArtist
         import json
 
         stmt = select(YandeArtist).filter_by(id=artist_id)
@@ -512,14 +518,11 @@ class ArtistRepository:
 
     def get_artist_count(self) -> int:
         """获取缓存的艺术家总数"""
-        from backend.dao.database import YandeArtist
-
         stmt = select(func.count(YandeArtist.id))
         return self.session.execute(stmt).scalar() or 0
 
     def search_artists(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索艺术家"""
-        from backend.dao.database import YandeArtist
         import json
 
         stmt = (
