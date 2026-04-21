@@ -73,7 +73,7 @@ class PathConstant(ConstantModel):
     data_dir: Path = base_dir / "data"
     sqlite_file: Path = data_dir / "yande_data.db"
     log_dir: Path = base_dir / "log"
-    frontend_dist: Path = base_dir / "frontend-dist"
+    frontend_dist: Path = base_dir / "frontend" / "dist"
 
 
 class DownloadConstant(ConstantModel):
@@ -118,8 +118,10 @@ class ErrMsg(BaseMsgEnum):
     OK = ("0000", "OK.")
     CONFIG_UPDATE_SUCCESS = ("0000", "配置更新成功")
 
-    CONFIG_UPDATE_ERROR = ("0001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
-    CONFIG_RESET_ERROR = ("0002", "Config reset error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    CONFIG_RESET_ERROR = ("1002", "Config reset error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    NOT_FOUND_ERROR = ("1404", "Frontend not found.", HTTPStatus.NOT_FOUND)
 
 
 path_constant = PathConstant()

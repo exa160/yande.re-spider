@@ -3,7 +3,7 @@
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Type
 
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import Session
@@ -75,7 +75,7 @@ class FavoriteDao:
         finally:
             session.close()
 
-    def get_all(self) -> List[FavoriteFolder]:
+    def get_all(self) -> list[Type[FavoriteFolder]]:
         """获取所有收藏夹，按sort_order排序"""
         session = self._get_session()
         try:

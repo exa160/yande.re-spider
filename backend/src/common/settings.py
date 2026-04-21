@@ -4,7 +4,7 @@ from typing import Optional
 
 import yaml
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer
 
 from backend.src.common.constant import path_constant
 
@@ -55,6 +55,10 @@ class MariaDBConfig(ConfigModel):
     schema_name: str = Field(default="Pictures")
     datatable: str = Field(default="YandeRE")
 
+    @field_serializer('password', when_used="json")
+    def serialize_password(self, password: SecretStr) -> str:
+        return password.get_secret_value()
+
 
 class Config(ConfigModel):
     database: MariaDBConfig = MariaDBConfig()
@@ -87,7 +91,7 @@ def save_config(_config: Config, config_path: Path = path_constant.config_file) 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
         yaml.dump(
-            _config.model_dump(),
+            _config.model_dump(mode="json"),
             default_flow_style=False,
             allow_unicode=True,
             sort_keys=False,

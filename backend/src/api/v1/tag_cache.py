@@ -1,24 +1,13 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 from loguru import logger
 
 from backend.src.infrastructure.yande_api import YandeApi
 from backend.src.dao.yande_data import TagRepository, ArtistRepository
-
+from backend.src.models.request.tag_cache import RefreshTagsRequest, RefreshArtistsRequest
 
 router = APIRouter()
-
-
-class RefreshTagsRequest(BaseModel):
-    full_refresh: bool = Field(False, description="是否全量更新（limit=0获取全部）")
-    limit: int = Field(100, ge=0, le=1000, description="每页数量，0表示获取全部")
-
-
-class RefreshArtistsRequest(BaseModel):
-    page: int = Field(1, ge=1, description="起始页码")
-    limit: int = Field(100, ge=1, le=1000, description="每页数量")
-    max_pages: int = Field(10, ge=1, description="最大页数")
 
 
 class TagInfo(BaseModel):
