@@ -6,33 +6,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, declarative_base
 from typing import List, Optional, Tuple
+
+from backend.src import path_constant
 from backend.src.common import config
 from loguru import logger
 import os
 
 
 Base = declarative_base()
-
-
-def get_db_engine():
-    use_mariadb = config.database.enable and config.database.host
-
-    if use_mariadb:
-        engine = create_engine(
-            f"mariadb+mariadbconnector://{config.database.user}:{config.database.password.get_secret_value()}@"
-            f"{config.database.host}:{config.database.port}/{config.database.schema_name}"
-        )
-    else:
-        db_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "data",
-            "yande_data.db",
-        )
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(bind=engine)
-
-    return engine
 
 
 def get_table_name():
@@ -54,26 +35,13 @@ def get_engine():
     return _cached_engine
 
 
-def refresh_engine():
-    global _cached_engine, _cached_table_name
-    _cached_engine = None
-    _cached_table_name = None
-
-
-def _get_local_file_base():
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "downloads"
-    )
-
-
 def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[str]:
-    base = _get_local_file_base()
-    subdir = "previews" if file_type == "preview" else "originals"
+    base = path_constant.previews_dir if file_type == "preview" else path_constant.download
     extensions = (
         ["jpg", "jpeg", "png", "gif", "webp"] if file_type == "preview" else [file_ext]
     )
     for ext in extensions:
-        file_path = os.path.join(base, subdir, f"{image_id}.{ext}")
+        file_path = os.path.join(base, f"{image_id}.{ext}")
         if os.path.exists(file_path):
             return f"{image_id}.{ext}"
     return None
@@ -81,7 +49,7 @@ def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[
 
 class YandeDataRepository:
     def __init__(self, session: Session = None):
-        from backend.src.dao.database import YandeData
+        from backend.src.models.database.yande import YandeData
 
         self._session = session
         self._Model = YandeData
@@ -321,7 +289,7 @@ class TagRepository:
     """标签缓存仓库"""
 
     def __init__(self, session: Session = None):
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
 
         self._session = session
         self._Model = YandeTag
@@ -341,7 +309,7 @@ class TagRepository:
 
     def upsert_tags(self, tags: List[dict]) -> int:
         """批量插入或更新标签，返回成功更新的数量"""
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
         from datetime import datetime
 
         count = 0
@@ -373,7 +341,7 @@ class TagRepository:
 
     def get_tag_by_id(self, tag_id: int) -> Optional[dict]:
         """根据ID获取标签"""
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
 
         stmt = select(YandeTag).filter_by(id=tag_id)
         tag = self.session.execute(stmt).scalar_one_or_none()
@@ -389,14 +357,14 @@ class TagRepository:
 
     def get_tag_count(self) -> int:
         """获取缓存的标签总数"""
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
 
         stmt = select(func.count(YandeTag.id))
         return self.session.execute(stmt).scalar() or 0
 
     def get_max_id(self) -> int:
         """获取缓存中标签的最大ID"""
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
 
         stmt = select(func.max(YandeTag.id))
         result = self.session.execute(stmt).scalar()
@@ -404,14 +372,14 @@ class TagRepository:
 
     def clear_all_tags(self):
         """清空所有标签缓存"""
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
 
         self.session.query(YandeTag).delete()
         self.session.commit()
 
     def search_tags(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索标签"""
-        from backend.src.dao.database import YandeTag
+        from backend.src.models.database.yande import YandeTag
 
         stmt = (
             select(YandeTag)
@@ -436,7 +404,7 @@ class ArtistRepository:
     """艺术家缓存仓库"""
 
     def __init__(self, session: Session = None):
-        from backend.src.dao.database import YandeArtist
+        from backend.src.models.database.yande import YandeArtist
 
         self._session = session
         self._Model = YandeArtist
@@ -456,7 +424,7 @@ class ArtistRepository:
 
     def upsert_artists(self, artists: List[dict]) -> int:
         """批量插入或更新艺术家，返回成功更新的数量"""
-        from backend.src.dao.database import YandeArtist
+        from backend.src.models.database.yande import YandeArtist
         from datetime import datetime
         import json
 
@@ -490,7 +458,7 @@ class ArtistRepository:
 
     def get_artist_by_id(self, artist_id: int) -> Optional[dict]:
         """根据ID获取艺术家"""
-        from backend.src.dao.database import YandeArtist
+        from backend.src.models.database.yande import YandeArtist
         import json
 
         stmt = select(YandeArtist).filter_by(id=artist_id)
@@ -507,14 +475,14 @@ class ArtistRepository:
 
     def get_artist_count(self) -> int:
         """获取缓存的艺术家总数"""
-        from backend.src.dao.database import YandeArtist
+        from backend.src.models.database.yande import YandeArtist
 
         stmt = select(func.count(YandeArtist.id))
         return self.session.execute(stmt).scalar() or 0
 
     def search_artists(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索艺术家"""
-        from backend.src.dao.database import YandeArtist
+        from backend.src.models.database.yande import YandeArtist
         import json
 
         stmt = (

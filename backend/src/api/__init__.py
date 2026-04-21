@@ -1,6 +1,7 @@
 import inspect
 import os
 import importlib.util
+import traceback
 from pathlib import Path
 from types import ModuleType
 from typing import Optional
@@ -69,5 +70,6 @@ class APILoader:
                 _ = self.registry_router_from_file(app, file_path)
             except Exception as e:
                 logger.warning("Load router failed: {}", str(e))
+                logger.warning(traceback.print_exc())
 
         logger.info("API registry finish.")

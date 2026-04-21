@@ -6,6 +6,7 @@ from typing import Optional, List, Dict
 
 from loguru import logger
 
+import backend.src.models.database.yande
 from backend.src.common import config
 from backend.src.common.constant import TaskStatus
 
@@ -164,6 +165,7 @@ async def run_download_async(task_id: str):
         error_message = None
 
         if original_path.exists() and expected_md5:
+
             file_md5 = hashlib.md5(open(original_path, "rb").read()).hexdigest()
             if file_md5 == expected_md5:
                 logger.info(
@@ -180,7 +182,6 @@ async def run_download_async(task_id: str):
             last_update_time = time.time()
             last_downloaded_size = 0
             download_speed = 0.0
-            progress_lock = asyncio.Lock()
 
             def progress_callback(chunk_mb: float):
                 nonlocal \
@@ -221,7 +222,6 @@ async def run_download_async(task_id: str):
                     file_size=total_size,
                     _md5=task.get("md5"),
                     _id=task["image_id"],
-                    _show_progress=False,
                     _progress_callback=progress_callback,
                 )
             except Exception as download_err:
@@ -271,7 +271,7 @@ async def run_download_async(task_id: str):
                     else "jpg"
                 )
 
-                new_record = client.YandeData(
+                new_record = backend.src.models.database.yande.YandeData(
                     id=task["image_id"],
                     tags=task.get("tags", ""),
                     created_at=dt.now(),

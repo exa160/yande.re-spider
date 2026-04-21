@@ -32,13 +32,11 @@ class MultiDown:
         file_size: int = 0,
         _md5: str = None,
         _id: int = None,
-        _show_progress: bool = True,
         _progress_callback=None,
     ) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
         self.close_q: Queue = Queue(1)
-        self.show_progress = _show_progress
         self.progress_callback = _progress_callback
         if file_size == 0:
             file_size = self.get_file_size(url)
