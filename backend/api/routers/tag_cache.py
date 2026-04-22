@@ -29,6 +29,15 @@ class TagInfo(BaseModel):
     ambiguous: bool
 
 
+class TagInfoWithStats(BaseModel):
+    id: int
+    name: str
+    count: int
+    type: int
+    ambiguous: bool
+    local_count: int = 0
+
+
 class ArtistInfo(BaseModel):
     id: int
     name: str
@@ -182,4 +191,39 @@ async def search_artists(keyword: str, limit: int = 20):
         return results
     except Exception as e:
         logger.error(f"Search artists error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tags/calculate-local-stats", summary="计算本地标签统计")
+async def calculate_local_stats():
+    """从本地已下载图片计算每个标签的使用次数并存储到 tag_local_stats 表"""
+    try:
+        with TagRepository() as repo:
+            stats_updated = repo.calculate_local_stats()
+        logger.info(f"Local stats calculated: {stats_updated} tags updated")
+        return {"success": True, "tags_updated": stats_updated}
+    except Exception as e:
+        logger.error(f"Calculate local stats error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tags/with-stats", summary="获取标签列表（带本地统计）")
+async def get_tags_with_stats(
+    type: Optional[int] = None,
+    search: Optional[str] = None,
+    limit: int = 100,
+    has_local_only: bool = False,
+):
+    """获取标签列表，包含 yande.re 远程数量和本地使用数量"""
+    try:
+        with TagRepository() as repo:
+            tags, total = repo.get_tags_with_stats(
+                tag_type=type,
+                search_keyword=search,
+                limit=limit,
+                has_local_only=has_local_only,
+            )
+        return {"tags": tags, "total": total}
+    except Exception as e:
+        logger.error(f"Get tags with stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
