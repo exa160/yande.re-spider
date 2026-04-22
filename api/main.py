@@ -66,6 +66,7 @@ async def root():
 
 from backend.api import init_api
 from backend.infrastructure.download_queue import download_queue
+from backend.src.model.database import init_database
 
 init_api(app, prefix_base="/api/v1")
 logger.info("API路由加载成功")
@@ -73,7 +74,9 @@ logger.info("API路由加载成功")
 
 @app.on_event("startup")
 async def startup_event():
+    init_database()
     await download_queue.start(num_workers=5)
+    logger.info("数据库初始化完成")
     logger.info("下载队列已启动")
 
 
