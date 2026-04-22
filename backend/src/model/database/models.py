@@ -102,6 +102,15 @@ class YandeData(SQLModel, table=True):
     last_commented_at: Optional[int] = Field(default=None)
 
 
+class TagLocalStats(SQLModel, table=True):
+    __tablename__ = "tag_local_stats"
+    __table_args__ = {"extend_existing": True}
+
+    tag_id: int = Field(primary_key=True)
+    local_count: int = Field(default=0)
+    last_calculated: Optional[datetime] = Field(default=None)
+
+
 class FavoriteFolder(SQLModel, table=True):
     __tablename__ = "favorite_folders"
     __table_args__ = {"extend_existing": True}
@@ -114,9 +123,9 @@ class FavoriteFolder(SQLModel, table=True):
     sort_order: int = 0
     local_count: int = 0
     online_count: int = 0
-    last_refresh: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    last_refresh: Optional[datetime] = Field(default=None)
+    created_at: Optional[datetime] = Field(default_factory=datetime.now)
+    updated_at: Optional[datetime] = Field(default_factory=datetime.now)
 
 
 __all__ = [
@@ -124,6 +133,7 @@ __all__ = [
     "YandeArtist",
     "YandeData",
     "FavoriteFolder",
+    "TagLocalStats",
     "RatingEnum",
     "TagTypeEnum",
 ]
