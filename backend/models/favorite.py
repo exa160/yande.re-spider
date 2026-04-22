@@ -41,8 +41,8 @@ class FavoriteFolder(FavoriteFolderBase):
     local_count: int = 0
     online_count: int = 0
     last_refresh: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

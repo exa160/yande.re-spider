@@ -430,6 +430,96 @@ class TagRepository:
             for t in results
         ]
 
+    def calculate_local_stats(self) -> int:
+        """从 yande_data 计算本地 tag 使用统计并存储到 tag_local_stats 表"""
+        from datetime import datetime
+        from collections import Counter
+        from backend.src.model.database.models import TagLocalStats, YandeData
+
+        tag_counter: Counter = Counter()
+        stmt = select(YandeData.tags).where(YandeData.down_flag == True)
+        results = self.session.execute(stmt).scalars().all()
+
+        for tags_str in results:
+            if tags_str:
+                tag_list = tags_str.split()
+                tag_counter.update(tag_list)
+
+        stats_updated = 0
+        for tag_name, local_count in tag_counter.items():
+            tag_stmt = select(YandeTag).filter_by(name=tag_name)
+            tag_obj = self.session.execute(tag_stmt).scalar_one_or_none()
+            if tag_obj:
+                stats_stmt = select(TagLocalStats).filter_by(tag_id=tag_obj.id)
+                existing = self.session.execute(stats_stmt).scalar_one_or_none()
+                if existing:
+                    existing.local_count = local_count
+                    existing.last_calculated = datetime.now()
+                else:
+                    new_stats = TagLocalStats(
+                        tag_id=tag_obj.id,
+                        local_count=local_count,
+                        last_calculated=datetime.now(),
+                    )
+                    self.session.add(new_stats)
+                stats_updated += 1
+
+        self.session.commit()
+        return stats_updated
+
+    def get_tags_with_stats(
+        self,
+        tag_type: Optional[int] = None,
+        search_keyword: Optional[str] = None,
+        limit: int = 100,
+        has_local_only: bool = False,
+    ) -> List[dict]:
+        """获取标签列表（带本地和远程统计）"""
+        from backend.src.model.database.models import TagLocalStats
+
+        stmt = select(YandeTag)
+        count_stmt = select(func.count(YandeTag.id))
+
+        if tag_type is not None:
+            stmt = stmt.filter(YandeTag.type == tag_type)
+            count_stmt = count_stmt.filter(YandeTag.type == tag_type)
+
+        if search_keyword:
+            stmt = stmt.filter(YandeTag.name.like(f"%{search_keyword}%"))
+            count_stmt = count_stmt.filter(YandeTag.name.like(f"%{search_keyword}%"))
+
+        if has_local_only:
+            stmt = stmt.join(TagLocalStats, YandeTag.id == TagLocalStats.tag_id)
+            count_stmt = count_stmt.join(
+                TagLocalStats, YandeTag.id == TagLocalStats.tag_id
+            )
+
+        stmt = stmt.order_by(YandeTag.count.desc()).limit(limit)
+        results = self.session.execute(stmt).scalars().all()
+        total = self.session.execute(count_stmt).scalar() or 0
+
+        tag_ids = [t.id for t in results]
+        local_stats_map = {}
+        if tag_ids:
+            stats_stmt = select(TagLocalStats).filter(TagLocalStats.tag_id.in_(tag_ids))
+            local_stats = self.session.execute(stats_stmt).scalars().all()
+            local_stats_map = {s.tag_id: s.local_count for s in local_stats}
+
+        tags = []
+        for t in results:
+            tags.append(
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "count": t.count,
+                    "type": t.type,
+                    "ambiguous": t.ambiguous,
+                    "local_count": local_stats_map.get(t.id, 0),
+                }
+            )
+
+        return tags, total
+
 
 class ArtistRepository:
     """
