@@ -251,6 +251,7 @@ class DatabaseManager:
             YandeArtist,
             YandeData,
             FavoriteFolder,
+            TagLocalStats,
         )
 
         # 使用 checkfirst=True 跳过已存在的表，避免重复定义错误
