@@ -41,35 +41,115 @@
           </el-button>
         </div>
 
-        <!-- 收藏夹面板 -->
+        <!-- 收藏夹/Tags 面板 -->
         <transition name="el-fade-in-linear">
           <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop>
-            <div class="favorite-header">
-              <span>我的收藏</span>
-              <el-button size="small" type="primary" @click="subscribeCurrentSearch">
+            <div class="panel-header">
+              <div class="segmented-control">
+                <div
+                  :class="['segment-item', { active: activePanelTab === 'favorites' }]"
+                  @click="activePanelTab = 'favorites'"
+                >
+                  我的收藏
+                </div>
+                <div
+                  :class="['segment-item', { active: activePanelTab === 'tags' }]"
+                  @click="switchToTagsTab"
+                >
+                  标签浏览
+                </div>
+              </div>
+              <el-button 
+                size="small" 
+                type="primary" 
+                class="subscribe-btn"
+                @click="subscribeCurrentSearch"
+              >
                 订阅当前
               </el-button>
             </div>
-            <div class="favorite-list">
-              <div
-                v-for="folder in favoriteFolders"
-                :key="folder.id"
-                class="favorite-item"
-                @click="selectFavorite(folder)"
-              >
-                <div class="favorite-icon" :style="{ backgroundColor: folder.color }">
-                  <el-icon><Folder /></el-icon>
+
+            <!-- 收藏夹内容 -->
+            <div v-if="activePanelTab === 'favorites'" class="panel-content">
+              <div class="favorite-list">
+                <div
+                  v-for="folder in favoriteFolders"
+                  :key="folder.id"
+                  class="favorite-item"
+                  @click="selectFavorite(folder)"
+                  @touchstart.passive="handleTouchStart(folder, $event)"
+                  @touchend="handleTouchEnd(folder)"
+                  @touchmove.passive="handleTouchMove"
+                >
+                  <div class="favorite-icon" :style="{ backgroundColor: folder.color }">
+                    <el-icon><Star v-if="folder.icon === 'star'" /><Folder v-else /></el-icon>
+                  </div>
+                  <div class="favorite-info">
+                    <div class="favorite-name">{{ folder.name }}</div>
+                    <div class="favorite-tags">{{ folder.tags || '无标签' }}</div>
+                  </div>
+                  <div class="favorite-count">
+                    {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
+                  </div>
                 </div>
-                <div class="favorite-info">
-                  <div class="favorite-name">{{ folder.name }}</div>
-                  <div class="favorite-tags">{{ folder.tags || '无标签' }}</div>
-                </div>
-                <div class="favorite-count">
-                  {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
+                <div v-if="favoriteFolders.length === 0" class="favorite-empty">
+                  暂无收藏夹
                 </div>
               </div>
-              <div v-if="favoriteFolders.length === 0" class="favorite-empty">
-                暂无收藏夹，点击「订阅当前」创建
+            </div>
+
+            <!-- 标签浏览内容 -->
+            <div v-if="activePanelTab === 'tags'" class="panel-content">
+              <div class="tag-search-bar">
+                <el-input
+                  v-model="tagSearchKeyword"
+                  placeholder="搜索标签..."
+                  size="small"
+                  clearable
+                  @input="handleTagSearch"
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </div>
+              <div class="tag-type-tabs">
+                <span
+                  v-for="type in tagTypeOptions"
+                  :key="type.value"
+                  :class="{ active: selectedTagType === type.value }"
+                  @click="selectTagType(type.value)"
+                >
+                  {{ type.label }}
+                </span>
+              </div>
+              <div class="tag-list">
+                <div
+                  v-for="tag in tagList"
+                  :key="tag.id"
+                  class="tag-item"
+                  @click="selectTag(tag)"
+                >
+                  <el-icon 
+                    class="tag-star" 
+                    :class="{ starred: isTagFavorited(tag.name) }"
+                    @click.stop="favoriteTag(tag)"
+                  >
+                    <Star />
+                  </el-icon>
+                  <span class="tag-name">#{{ tag.name }}</span>
+                  <span class="tag-stats">
+                    <span v-if="sourceMode === 'local'" class="stat-local">
+                      本地 {{ tag.local_count || 0 }}
+                    </span>
+                    <span class="stat-remote">
+                      / yande {{ formatCount(tag.count) }}
+                    </span>
+                  </span>
+                </div>
+                <div v-if="tagList.length === 0" class="tag-empty">
+                  暂无标签
+                </div>
               </div>
             </div>
           </div>
@@ -291,9 +371,10 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { Search, Setting, Minus, Folder, Close } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { getFoldersWithCount, createFolder } from '@/api/favorites'
+import { Search, Setting, Minus, Folder, Close, Star } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getFoldersWithCount, createFolder, deleteFolder } from '@/api/favorites'
+import { tagCacheApi } from '@/api/tagCache'
 
 const props = defineProps({
   sourceMode: {
@@ -315,11 +396,168 @@ const subscribeForm = reactive({
   color: '#409EFF',
 })
 
+// 标签浏览相关
+const activePanelTab = ref('favorites')
+const tagSearchKeyword = ref('')
+const selectedTagType = ref(0)
+const tagList = ref([])
+const tagStatsLoaded = ref(false)
+
+const tagTypeOptions = [
+  { label: '通用', value: 0 },
+  { label: '艺术家', value: 1 },
+  { label: '角色', value: 2 },
+  { label: '版权', value: 3 },
+  { label: 'Meta', value: 4 },
+]
+
+const formatCount = (count) => {
+  if (count >= 1000) {
+    return (count / 1000).toFixed(1) + 'k'
+  }
+  return count
+}
+
+const switchToTagsTab = async () => {
+  activePanelTab.value = 'tags'
+  await loadFavoriteFolders()
+  if (!tagStatsLoaded.value) {
+    await calculateLocalStats()
+    tagStatsLoaded.value = true
+  }
+  loadTags()
+}
+
+const selectTagType = (type) => {
+  selectedTagType.value = type
+  loadTags()
+}
+
+const handleTagSearch = () => {
+  loadTags()
+}
+
+const calculateLocalStats = async () => {
+  try {
+    await tagCacheApi.calculateLocalStats()
+  } catch (error) {
+    console.error('计算本地统计失败:', error)
+  }
+}
+
+const loadTags = async () => {
+  try {
+    const params = {
+      type: selectedTagType.value,
+      limit: 100,
+    }
+    if (tagSearchKeyword.value) {
+      params.search = tagSearchKeyword.value
+    }
+    if (props.sourceMode === 'local') {
+      params.has_local_only = true
+    }
+    const res = await tagCacheApi.getTagsWithStats(params)
+    tagList.value = res.tags || []
+  } catch (error) {
+    console.error('加载标签失败:', error)
+    tagList.value = []
+  }
+}
+
+const selectTag = (tag) => {
+  searchText.value = tag.name
+  handleSearch()
+  showFavoritePanel.value = false
+}
+
+const isTagFavorited = (tagName) => {
+  return favoriteFolders.value.some(folder => 
+    folder.tags === tagName || folder.tags === `#${tagName}`
+  )
+}
+
+const favoriteTag = async (tag) => {
+  const existingFolder = favoriteFolders.value.find(folder =>
+    folder.tags === tag.name || folder.tags === `#${tag.name}`
+  )
+
+  if (existingFolder) {
+    try {
+      await deleteFolder(existingFolder.id)
+      ElMessage.success('已取消收藏')
+      loadFavoriteFolders()
+    } catch (error) {
+      ElMessage.error('取消收藏失败')
+    }
+    return
+  }
+
+  try {
+    await createFolder({
+      name: `#${tag.name}`,
+      tags: tag.name,
+      color: '#E6A23C',
+      icon: 'star',
+      sort_order: favoriteFolders.value.length,
+    })
+    ElMessage.success('已收藏标签')
+    loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('收藏失败')
+  }
+}
+
 const loadFavoriteFolders = async () => {
   try {
     favoriteFolders.value = await getFoldersWithCount()
   } catch (error) {
     console.error('加载收藏夹失败:', error)
+  }
+}
+
+// 长按删除相关
+let pressTimer = null
+let pressTarget = null
+let isLongPress = false
+
+const handleTouchStart = (folder, event) => {
+  isLongPress = false
+  pressTarget = folder
+  pressTimer = setTimeout(() => {
+    isLongPress = true
+    ElMessageBox.confirm(`确定删除收藏夹「${folder.name}」？`, '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }).then(async () => {
+      try {
+        await deleteFolder(folder.id)
+        ElMessage.success('已删除')
+        loadFavoriteFolders()
+      } catch (error) {
+        ElMessage.error('删除失败')
+      }
+    }).catch(() => {})
+  }, 500)
+}
+
+const handleTouchEnd = (folder) => {
+  if (pressTimer) {
+    clearTimeout(pressTimer)
+    pressTimer = null
+  }
+  if (!isLongPress && pressTarget && pressTarget.id === folder.id) {
+    selectFavorite(folder)
+  }
+  pressTarget = null
+}
+
+const handleTouchMove = () => {
+  if (pressTimer) {
+    clearTimeout(pressTimer)
+    pressTimer = null
+    pressTarget = null
   }
 }
 
@@ -1195,6 +1433,161 @@ defineExpose({
 }
 
 .favorite-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Segmented Control 样式 */
+.panel-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.segmented-control {
+  display: flex;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+  flex: 1;
+}
+
+.subscribe-btn {
+  flex-shrink: 0;
+}
+
+.segment-item {
+  flex: 1;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.segment-item:hover {
+  color: var(--text-primary);
+}
+
+.segment-item.active {
+  background: var(--bg-secondary);
+  color: #409EFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-footer-btn {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+}
+
+/* 标签浏览 */
+.tag-search-bar {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tag-type-tabs {
+  display: flex;
+  padding: 8px 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.tag-type-tabs span {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.tag-type-tabs span:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.tag-type-tabs span.active {
+  background: #409EFF;
+  color: white;
+}
+
+.tag-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.tag-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.tag-star {
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.tag-star:hover {
+  color: #E6A23C;
+}
+
+.tag-star.starred {
+  color: #E6A23C;
+}
+
+.tag-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-stats {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tag-stats .stat-local {
+  color: #67C23A;
+}
+
+.tag-empty {
   text-align: center;
   padding: 24px 16px;
   color: var(--text-muted);

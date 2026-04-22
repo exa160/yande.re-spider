@@ -24,4 +24,12 @@ export const tagCacheApi = {
   searchArtists(keyword, limit = 20) {
     return api.get('/tag_cache/artists/search', { params: { keyword, limit } })
   },
+
+  calculateLocalStats() {
+    return api.post('/tag_cache/tags/calculate-local-stats')
+  },
+
+  getTagsWithStats(params = {}) {
+    return api.get('/tag_cache/tags/with-stats', { params })
+  },
 }

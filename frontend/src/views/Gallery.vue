@@ -317,10 +317,10 @@ const analyzeImageColor = (imgUrl) => {
 // 监听 currentImage 变化，分析图片颜色
 watch(currentImage, (img) => {
   if (previewVisible.value && img) {
-    // 使用预览图或原图进行分析
+    // 使用本地预览图进行分析，无本地路径时不尝试加载远程图片（避免CORS）
     const imgUrl = img.local_preview_path 
       ? `/api/v1/gallery/cache/preview/${img.id}.${img.file_ext || 'jpg'}`
-      : img.preview_url || img.sample_url || img.jpeg_url
+      : ''
     analyzeImageColor(imgUrl)
   }
 })
@@ -650,11 +650,12 @@ const getDetailUrl = (image) => {
     const filename = `${image.id}.${image.file_ext || 'jpg'}`
     return `/api/v1/gallery/cache/preview/${filename}`
   }
-  // 在线模式：使用缓存的预览图API
+  // 在线模式：使用缓存的预览图API（避免直接访问远程URL导致CORS）
   if (image.preview_url) {
     return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
   }
-  return image.file_url
+  // 无本地路径时返回空字符串，不直接返回远程file_url
+  return ''
 }
 
 // 页面加载时自动查询本地
