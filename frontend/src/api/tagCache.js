@@ -32,4 +32,8 @@ export const tagCacheApi = {
   getTagsWithStats(params = {}) {
     return api.get('/tag_cache/tags/with-stats', { params })
   },
+
+  getTagsByNames(names = []) {
+    return api.get('/tag_cache/tags/by-names', { params: { names: names.join(',') } })
+  },
 }

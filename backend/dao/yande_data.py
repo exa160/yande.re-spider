@@ -520,6 +520,12 @@ class TagRepository:
 
         return tags, total
 
+    def get_tags_by_names(self, names: List[str]) -> dict:
+        """根据名称列表获取标签类型"""
+        stmt = select(YandeTag).filter(YandeTag.name.in_(names))
+        results = self.session.execute(stmt).scalars().all()
+        return {t.name: t.type for t in results}
+
 
 class ArtistRepository:
     """
