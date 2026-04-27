@@ -227,3 +227,19 @@ async def get_tags_with_stats(
     except Exception as e:
         logger.error(f"Get tags with stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tags/by-names", summary="根据名称批量获取标签类型")
+async def get_tags_by_names(names: str):
+    """根据逗号分隔的 tag 名称字符串返回类型信息"""
+    try:
+        name_list = [n.strip() for n in names.split(",") if n.strip()]
+        if not name_list:
+            return {}
+
+        with TagRepository() as repo:
+            result = repo.get_tags_by_names(name_list)
+        return result
+    except Exception as e:
+        logger.error(f"Get tags by names error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
