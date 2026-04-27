@@ -4,17 +4,18 @@ from xml.etree import ElementTree as ET
 import requests
 from loguru import logger
 
-from backend.src.common import config
-from backend.src.models.yande import YandePostData, YandeSearchTags
+from src.common import config
+from src.common.constant import yande_constant
+from src.models.yande import YandePostData, YandeSearchTags
 
 
 class YandeApi:
     def __init__(self):
-        self.post_json_api = "https://yande.re/post.json"
-        self.post_xml_api = "https://yande.re/post.xml"
-        self.tag_json_api = "https://yande.re/tag.json"
-        self.artist_json_api = "https://yande.re/artist.json"
-        self.proxies = config.yande_api.proxies
+        self.post_json_api = yande_constant.post_json_api
+        self.post_xml_api = yande_constant.post_xml_api
+        self.tag_json_api = yande_constant.tag_json_api
+        self.artist_json_api = yande_constant.artist_json_api
+        config.yande_api.proxies = config.yande_api.proxies
         self.headers = config.yande_api.headers
 
     def get_count(self, tags: str = "") -> int:
@@ -31,9 +32,9 @@ class YandeApi:
                 req = requests.get(
                     self.post_xml_api,
                     params=query_params,
-                    proxies=self.proxies,
+                    proxies=config.yande_api.proxies,
                     headers=self.headers,
-                    timeout=30,
+                    timeout=config.yande_api.timeout,
                 )
                 if req.status_code != 200:
                     logger.warning(
@@ -54,89 +55,77 @@ class YandeApi:
         """将 YandeSearchTags 转换为 yande.re API 识别的搜索标签字符串"""
         parts = []
 
-        if search_tags.tags:
-            parts.append(search_tags.tags)
+        # 简单字段映射: {模型字段名: 格式字符串}
+        simple_mappings = {
+            "tags": "{value}",
+            "user": "user:{value}",
+            "vote": "vote:{value}",
+            "md5": "md5:{value}",
+            "source": "source:{value}",
+            "ratio": "ratio:{value}",
+            "parent_id": "parent:{value}",
+        }
 
-        if search_tags.user:
-            parts.append(f"user:{search_tags.user}")
+        # 范围字段映射: {模型字段名: (最小值前缀, 最大值前缀)}
+        range_mappings = {
+            "min_id": ("id:>=", "id:<="),
+            "max_id": ("id:<=", "id:>="),
+            "min_width": ("width:>=", "width:<="),
+            "max_width": ("width:<=", "width:>="),
+            "min_height": ("height:>=", "height:<="),
+            "max_height": ("height:<=", "height:>="),
+            "min_mpixels": ("mpixels:>=", "mpixels:<="),
+            "max_mpixels": ("mpixels:<=", "mpixels:>="),
+            "min_date": ("date:>=", "date:<="),
+            "max_date": ("date:<=", "date:>="),
+            "min_score": ("score:>=", "score:<="),
+            "max_score": ("score:<=", "score:>="),
+            "min_filesize": ("filesize:>=", "filesize:<="),
+            "max_filesize": ("filesize:<=", "filesize:>="),
+        }
 
-        if search_tags.vote is not None:
-            parts.append(f"vote:{search_tags.vote}")
+        # 处理简单映射字段
+        for field, fmt in simple_mappings.items():
+            value = getattr(search_tags, field, None)
+            if value:
+                parts.append(fmt.format(value=value))
 
-        if search_tags.md5:
-            parts.append(f"md5:{search_tags.md5}")
+        # 处理范围映射字段
+        for field, (min_prefix, max_prefix) in range_mappings.items():
+            if field.startswith("min_"):
+                value = getattr(search_tags, field, None)
+                if value is not None:
+                    parts.append(f"{min_prefix}{value}")
+            elif field.startswith("max_"):
+                value = getattr(search_tags, field, None)
+                if value is not None:
+                    parts.append(f"{max_prefix}{value}")
 
-        if search_tags.source:
-            parts.append(f"source:{search_tags.source}")
-
-        if search_tags.min_id is not None:
-            parts.append(f"id:>={search_tags.min_id}")
-
-        if search_tags.max_id is not None:
-            parts.append(f"id:<={search_tags.max_id}")
-
-        if search_tags.min_width is not None:
-            parts.append(f"width:>={search_tags.min_width}")
-
-        if search_tags.max_width is not None:
-            parts.append(f"width:<={search_tags.max_width}")
-
-        if search_tags.min_height is not None:
-            parts.append(f"height:>={search_tags.min_height}")
-
-        if search_tags.max_height is not None:
-            parts.append(f"height:<={search_tags.max_height}")
-
-        if search_tags.min_mpixels is not None:
-            parts.append(f"mpixels:>={search_tags.min_mpixels}")
-
-        if search_tags.max_mpixels is not None:
-            parts.append(f"mpixels:<={search_tags.max_mpixels}")
-
-        if search_tags.ratio:
-            parts.append(f"ratio:{search_tags.ratio}")
-
-        if search_tags.min_date:
-            parts.append(f"date:>={search_tags.min_date}")
-
-        if search_tags.max_date:
-            parts.append(f"date:<={search_tags.max_date}")
-
-        if search_tags.min_score is not None:
-            parts.append(f"score:>={search_tags.min_score}")
-
-        if search_tags.max_score is not None:
-            parts.append(f"score:<={search_tags.max_score}")
-
-        if search_tags.min_filesize is not None:
-            parts.append(f"filesize:>={search_tags.min_filesize}")
-
-        if search_tags.max_filesize is not None:
-            parts.append(f"filesize:<={search_tags.max_filesize}")
-
+        # 处理 ratings
         if search_tags.ratings:
-            if len(search_tags.ratings) == 3:
-                pass
-            elif len(search_tags.ratings) == 2:
-                parts.append(
-                    f"-rating:{list(set(['e', 'q', 's']) - set(search_tags.ratings))[0]}"
-                )
+            ratings = search_tags.ratings
+            if len(ratings) == 3:
+                pass  # 全部评级，无需添加
+            elif len(ratings) == 2:
+                excluded = list(set(["e", "q", "s"]) - set(ratings))
+                if excluded:
+                    parts.append(f"-rating:{excluded[0]}")
             else:
-                parts.append(f"rating:{search_tags.ratings[0]}")
+                parts.append(f"rating:{ratings[0]}")
 
+        # 处理 file_exts
         if search_tags.file_exts:
-            if len(search_tags.file_exts) == 1:
-                parts.append(f"ext:{search_tags.file_exts[0]}")
+            exts = search_tags.file_exts
+            if len(exts) == 1:
+                parts.append(f"ext:{exts[0]}")
             else:
-                for ext in search_tags.file_exts:
-                    parts.append(f"ext:{ext}")
+                parts.extend(f"ext:{ext}" for ext in exts)
 
+        # 处理 order (排除默认排序)
         if search_tags.order and search_tags.order not in ("id", "id_desc"):
             parts.append(f"order:{search_tags.order}")
 
-        if search_tags.parent_id is not None:
-            parts.append(f"parent:{search_tags.parent_id}")
-
+        # 处理 parent_none
         if search_tags.parent_none:
             parts.append("parent:none")
 
@@ -162,7 +151,7 @@ class YandeApi:
                 req = requests.get(
                     self.post_json_api,
                     params=query_params,
-                    proxies=self.proxies,
+                    proxies=config.yande_api.proxies,
                     headers=self.headers,
                 )
                 if req.status_code > 300:
@@ -207,7 +196,7 @@ class YandeApi:
                 req = requests.get(
                     self.tag_json_api,
                     params=query_params,
-                    proxies=self.proxies,
+                    proxies=config.yande_api.proxies,
                     headers=self.headers,
                     timeout=60,
                 )
@@ -239,7 +228,7 @@ class YandeApi:
                 req = requests.get(
                     self.artist_json_api,
                     params=query_params,
-                    proxies=self.proxies,
+                    proxies=config.yande_api.proxies,
                     headers=self.headers,
                     timeout=60,
                 )
@@ -259,7 +248,7 @@ class YandeApi:
                 req = requests.get(
                     self.tag_json_api,
                     params={"page": 1, "limit": 1},
-                    proxies=self.proxies,
+                    proxies=config.yande_api.proxies,
                     headers=self.headers,
                     timeout=30,
                 )
@@ -278,7 +267,7 @@ class YandeApi:
                 req = requests.get(
                     self.artist_json_api,
                     params={"page": 1, "limit": 1},
-                    proxies=self.proxies,
+                    proxies=config.yande_api.proxies,
                     headers=self.headers,
                     timeout=30,
                 )

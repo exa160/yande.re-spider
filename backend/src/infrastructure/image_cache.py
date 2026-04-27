@@ -3,38 +3,35 @@ import requests
 from pathlib import Path
 from typing import Optional, Tuple
 
-from backend.src.common import (
-    DOWNLOADS_DIR,
-    PREVIEWS_DIR,
-    ORIGINALS_DIR,
-)
+from src.common import config, path_constant
 
 
 class ImageCache:
-    DOWNLOADS_DIR = Path(DOWNLOADS_DIR)
-    PREVIEWS_DIR = Path(PREVIEWS_DIR)
-    ORIGINALS_DIR = Path(ORIGINALS_DIR)
-
     def __init__(self):
+        self.DOWNLOADS_DIR = path_constant.download_dir
+        self.PREVIEWS_DIR = path_constant.previews_dir
+        self.ORIGINALS_DIR = path_constant.originals_dir
+
+    def _ensure_dirs(self):
         self.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
         self.PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
         self.ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def get_preview_path(self, image_id: int, file_ext: str = "jpg") -> str:
-        return str(self.PREVIEWS_DIR / f"{image_id}.{file_ext}")
+    def get_preview_path(self, image_id: int, file_ext: str = "jpg") -> Path:
+        return self.PREVIEWS_DIR / f"{image_id}.{file_ext}"
 
-    def get_original_path(self, image_id: int, file_ext: str = "jpg") -> str:
-        return str(self.ORIGINALS_DIR / f"{image_id}.{file_ext}")
+    def get_original_path(self, image_id: int, file_ext: str = "jpg") -> Path:
+        return self.ORIGINALS_DIR / f"{image_id}.{file_ext}"
 
     def get_preview_url(self, image_id: int, file_ext: str = "jpg") -> str:
         preview_path = self.get_preview_path(image_id, file_ext)
-        if os.path.exists(preview_path):
+        if preview_path.exists():
             return f"/api/v1/cache/preview/{image_id}.{file_ext}"
         return None
 
     def get_original_url(self, image_id: int, file_ext: str = "jpg") -> str:
         original_path = self.get_original_path(image_id, file_ext)
-        if os.path.exists(original_path):
+        if original_path.exists():
             return f"/api/v1/cache/original/{image_id}.{file_ext}"
         return None
 
@@ -43,15 +40,16 @@ class ImageCache:
     ) -> Optional[str]:
         preview_path = self.get_preview_path(image_id, file_ext)
 
-        if os.path.exists(preview_path):
-            return preview_path
+        if preview_path.exists():
+            return str(preview_path)
 
         try:
-            resp = requests.get(preview_url, proxies=current_proxy(), timeout=10)
+            resp = requests.get(preview_url, proxies=self._get_proxy(), timeout=10)
             if resp.status_code == 200:
+                self._ensure_dirs()
                 with open(preview_path, "wb") as f:
                     f.write(resp.content)
-                return preview_path
+                return str(preview_path)
         except Exception as e:
             print(f"Failed to download preview {preview_url}: {e}")
 
@@ -62,15 +60,16 @@ class ImageCache:
     ) -> Optional[str]:
         original_path = self.get_original_path(image_id, file_ext)
 
-        if os.path.exists(original_path):
-            return original_path
+        if original_path.exists():
+            return str(original_path)
 
         try:
-            resp = requests.get(file_url, proxies=current_proxy(), timeout=30)
+            resp = requests.get(file_url, proxies=self._get_proxy(), timeout=30)
             if resp.status_code == 200:
+                self._ensure_dirs()
                 with open(original_path, "wb") as f:
                     f.write(resp.content)
-                return original_path
+                return str(original_path)
         except Exception as e:
             print(f"Failed to download original {file_url}: {e}")
 
@@ -79,17 +78,14 @@ class ImageCache:
     def check_local_files(
         self, image_id: int, file_ext: str = "jpg"
     ) -> Tuple[bool, bool]:
-        preview_exists = os.path.exists(self.get_preview_path(image_id, file_ext))
-        original_exists = os.path.exists(self.get_original_path(image_id, file_ext))
+        preview_exists = self.get_preview_path(image_id, file_ext).exists()
+        original_exists = self.get_original_path(image_id, file_ext).exists()
         return preview_exists, original_exists
 
-
-def current_proxy() -> Optional[dict]:
-    from backend.src.common import config
-
-    if config.yande_api.proxies:
-        return config.yande_api.proxies
-    return None
+    def _get_proxy(self) -> Optional[dict]:
+        if config.yande_api.proxies:
+            return config.yande_api.proxies
+        return None
 
 
 cache = ImageCache()

@@ -3,7 +3,7 @@ from typing import TypeVar, Generic, Optional, Any
 
 from pydantic import BaseModel, model_validator
 
-from backend.src.common.constant import ErrMsg
+from src.common.constant import ErrMsg
 
 T = TypeVar('T')
 

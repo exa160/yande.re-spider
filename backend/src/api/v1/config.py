@@ -8,46 +8,16 @@ import yaml
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from backend.src import path_constant
-from backend.src.common import config
-from backend.src.common.constant import ErrMsg
-from backend.src.middleware.errors import APIException
-from backend.src.models.request.config import ResetConfig
-from backend.src.models.response.base_response import BaseResponse
-from backend.src.models.response.config import ConfigResponse
+from src import path_constant
+from src.common import config
+from src.common.constant import ErrMsg
+from src.middleware.errors import APIException
+from src.common.settings import DownloaderConfig, DatabaseConfig
+from src.models.request.config import ApiConfig, ResetConfig
+from src.models.response.base_response import BaseResponse
+from src.models.response.config import ConfigResponse
 
 router = APIRouter()
-
-
-class ApiConfig(BaseModel):
-    retry_times: int = Field(default=3)
-    timeout: int = Field(default=30)
-    proxy_enable: bool = Field(default=False)
-    proxy: Optional[str] = Field(default=None)
-
-
-class DownloaderConfig(BaseModel):
-    thread_num: int = Field(default=4)
-    max_concurrent_tasks: int = Field(default=3)
-    chunk_size: int = Field(default=10)
-    split_size: int = Field(default=200)
-    retry_times: int = Field(default=3)
-
-
-class DatabaseConfig(BaseModel):
-    enable: bool = Field(default=False)
-    host: str = Field(default="localhost")
-    port: int = Field(default=3306)
-    user: str = Field(default="root")
-    password: str = Field(default="")
-    schema_name: str = Field(default="Pictures")
-    datatable: str = Field(default="YandeRE")
-
-
-class SystemConfigResponse(BaseModel):
-    api: ApiConfig
-    downloader: DownloaderConfig
-    database: DatabaseConfig
 
 
 @router.get("")
@@ -58,7 +28,9 @@ async def get_system_config() -> ConfigResponse:
 @router.put("/api")
 async def update_api_config(api_config: ApiConfig) -> BaseResponse:
     try:
-        config.update_config(ApiConfig.model_validate(api_config))
+        tmp_config = config.yande_api.model_dump(mode="json")
+        tmp_config.update(api_config)
+        config.update_config(ApiConfig.model_validate(tmp_config))
         return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
     except Exception as e:
         raise APIException(ErrMsg.CONFIG_UPDATE_ERROR, e=e)
