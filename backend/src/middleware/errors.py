@@ -5,8 +5,8 @@ from fastapi import FastAPI, status, HTTPException
 from loguru import logger
 from starlette.responses import JSONResponse
 
-from backend.src.common.constant import ErrMsg
-from backend.src.models.response.base_response import ErrorResponse
+from src.common.constant import ErrMsg
+from src.models.response.base_response import ErrorResponse
 
 T = TypeVar('T')
 

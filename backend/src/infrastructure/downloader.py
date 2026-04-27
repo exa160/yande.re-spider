@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from pathvalidate import sanitize_filename
 
-from backend.src.common import config
-from backend.src.models.download import FileInfo
+from src.common import config
+from src.models.download import FileInfo
 
 
 class DownloadException(Exception):
@@ -76,7 +76,7 @@ class MultiDown:
         success = False
         actual_start = s
 
-        for retry in range(config.yande_api.retry):
+        for retry in range(config.downloader.retry_times):
             current_start = actual_start
             try:
                 headers = {
@@ -122,7 +122,7 @@ class MultiDown:
             data_q.put([s, current_start, b"".join(content_data)])
         else:
             logger.error(
-                f"[{_id}] download failed after {config.yande_api.retry} retries: {url} {s}-{e}"
+                f"[{_id}] download failed after {config.downloader.retry_times} retries: {url} {s}-{e}"
             )
             if content_data:
                 data_q.put([s, current_start, b"".join(content_data)])
@@ -199,7 +199,7 @@ class MultiDown:
         headers = {"authority": "files.yande.re", "Referer": "https://yande.re/"}
         headers.update(config.yande_api.headers)
 
-        for retry in range(config.yande_api.retry):
+        for retry in range(config.downloader.retry_times):
             try:
                 with closing(
                     requests.get(
@@ -228,11 +228,11 @@ class MultiDown:
                 sleep(6)
 
         raise DownloadException(
-            f"Single-thread download failed after {config.yande_api.retry} retries"
+            f"Single-thread download failed after {config.downloader.retry_times} retries"
         )
 
     def start(self):
-        max_retries = config.yande_api.retry
+        max_retries = config.downloader.retry_times
         last_exception = None
 
         for attempt in range(max_retries):

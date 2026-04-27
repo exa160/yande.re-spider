@@ -7,16 +7,16 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
-from backend.src.dao.favorite_dao import favorite_dao
-from backend.src.models.favorite import (
+from src.dao.favorite_dao import favorite_dao
+from src.models.favorite import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
     FavoriteFolder,
     FavoriteFolderWithCount,
     ReorderRequest,
 )
-from backend.src.dao.yande_data import YandeDataRepository
-from backend.src.infrastructure.yande_api import YandeApi
+from src.dao.yande_data import YandeDataRepository
+from src.infrastructure.yande_api import YandeApi
 
 router = APIRouter()
 

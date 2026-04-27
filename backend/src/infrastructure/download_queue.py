@@ -6,42 +6,65 @@ from typing import Optional, List, Dict
 
 from loguru import logger
 
-import backend.src.models.database.yande
-from backend.src.common import config
-from backend.src.common.constant import TaskStatus
+from src.common import config
+from src.common.constant import TaskStatus
+from src.models.database import yande as yande_db
 
 
 class TaskStore:
+    # 任务字段映射配置: 外部字段名 -> 内部字段名 (None 表示同名)
+    TASK_FIELD_MAPPING = {
+        "image_id": "image_id",
+        "file_url": "file_url",
+        "save_path": "save_path",
+        "file_name": "file_name",
+        "thread_num": "thread_num",
+        "total_size": "total_size",
+        "tags": "tags",
+        "width": "width",
+        "height": "height",
+        "rating": "rating",
+        "author": "author",
+        "md5": "md5",
+    }
+
+    # 内部任务默认值
+    TASK_DEFAULTS = {
+        "status": TaskStatus.PENDING,
+        "progress": 0.0,
+        "downloaded_size": 0,
+        "speed": 0.0,
+        "error_message": None,
+        "started_at": None,
+        "completed_at": None,
+    }
+
     def __init__(self):
         self._tasks: Dict[str, Dict] = {}
         self._lock = threading.Lock()
 
     def create_task(self, task_id: str, task_data: dict) -> dict:
         with self._lock:
-            self._tasks[task_id] = {
+            # 从映射配置构建任务数据
+            task = {
                 "task_id": task_id,
-                "image_id": task_data["image_id"],
-                "file_url": task_data["file_url"],
-                "save_path": task_data["save_path"],
-                "file_name": task_data["file_name"],
-                "thread_num": task_data.get("thread_num", 4),
-                "status": TaskStatus.PENDING,
-                "progress": 0.0,
-                "downloaded_size": 0,
-                "total_size": task_data.get("total_size", 0),
-                "speed": 0.0,
-                "error_message": None,
                 "created_at": datetime.now().isoformat(),
-                "started_at": None,
-                "completed_at": None,
-                "tags": task_data.get("tags"),
-                "width": task_data.get("width"),
-                "height": task_data.get("height"),
-                "rating": task_data.get("rating"),
-                "author": task_data.get("author"),
-                "md5": task_data.get("md5"),
             }
-            return self._tasks[task_id]
+
+            # 应用字段映射
+            for src_field, dest_field in self.TASK_FIELD_MAPPING.items():
+                if src_field in task_data:
+                    task[dest_field] = task_data[src_field]
+
+            # 应用默认值
+            task.update(self.TASK_DEFAULTS)
+
+            # 处理默认值字段
+            task["thread_num"] = task_data.get("thread_num", 4)
+            task["total_size"] = task_data.get("total_size", 0)
+
+            self._tasks[task_id] = task
+            return task
 
     def get_task(self, task_id: str) -> Optional[dict]:
         with self._lock:
@@ -131,8 +154,8 @@ download_queue = DownloadQueue()
 
 
 async def run_download_async(task_id: str):
-    from backend.src.infrastructure.downloader import MultiDown
-    from backend.src.common import ORIGINALS_DIR, PREVIEWS_DIR
+    from src.infrastructure.downloader import MultiDown
+    from src.common import path_constant
 
     task = task_store.get_task(task_id)
     if not task:
@@ -151,13 +174,15 @@ async def run_download_async(task_id: str):
         import hashlib
         from pathlib import Path
 
-        ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
-        PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+        originals_dir = path_constant.originals_dir
+        previews_dir = path_constant.previews_dir
+        originals_dir.mkdir(parents=True, exist_ok=True)
+        previews_dir.mkdir(parents=True, exist_ok=True)
 
         file_ext = (
             task["file_name"].rsplit(".", 1)[-1] if "." in task["file_name"] else "jpg"
         )
-        original_path = ORIGINALS_DIR / f"{task['image_id']}.{file_ext}"
+        original_path = originals_dir / f"{task['image_id']}.{file_ext}"
 
         expected_md5 = task.get("md5")
         need_download = True
@@ -217,7 +242,7 @@ async def run_download_async(task_id: str):
                 await asyncio.to_thread(
                     MultiDown,
                     url=task["file_url"],
-                    file_path=str(ORIGINALS_DIR),
+                    file_path=str(originals_dir),
                     file_name=f"{task['image_id']}.{file_ext}",
                     file_size=total_size,
                     _md5=task.get("md5"),
@@ -231,7 +256,7 @@ async def run_download_async(task_id: str):
 
         preview_url = task.get("preview_url")
         if preview_url:
-            preview_path = PREVIEWS_DIR / f"{task['image_id']}.{file_ext}"
+            preview_path = previews_dir / f"{task['image_id']}.{file_ext}"
             if not preview_path.exists():
                 try:
                     import requests
@@ -251,8 +276,8 @@ async def run_download_async(task_id: str):
                     logger.warning(f"Failed to download preview: {e}")
 
         try:
-            from backend.src.dao import MariaDBClient
-            from backend.src.models.yande import Rating
+            from src.dao import MariaDBClient
+            from src.models.yande import Rating
             from datetime import datetime as dt
 
             client = MariaDBClient()
@@ -271,7 +296,7 @@ async def run_download_async(task_id: str):
                     else "jpg"
                 )
 
-                new_record = backend.src.models.database.yande.YandeData(
+                new_record = yande_db.YandeData(
                     id=task["image_id"],
                     tags=task.get("tags", ""),
                     created_at=dt.now(),

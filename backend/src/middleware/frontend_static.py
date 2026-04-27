@@ -3,10 +3,10 @@ from loguru import logger
 from starlette.responses import FileResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
-from backend.src import path_constant
-from backend.src.common.constant import ErrMsg
-from backend.src.middleware.errors import APIException
-from backend.src.models.response.base_response import BaseResponse
+from src import path_constant
+from src.common.constant import ErrMsg
+from src.middleware.errors import APIException
+from src.models.response.base_response import BaseResponse
 
 
 class FrontendStaticLoader:

@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import FastAPI, APIRouter
 from loguru import logger
 
-from backend.src.common.constant import RouterMap
+from src.common.constant import RouterMap
 
 API_BLACKLIST: set[str] = {
     "__pycache__",

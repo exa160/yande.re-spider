@@ -3,8 +3,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
-from backend.src.common import config
-from backend.src.models.database.yande import YandeData
+from src.common import config
+from src.models.database.yande import YandeData
 import os
 
 

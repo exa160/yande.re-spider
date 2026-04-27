@@ -8,11 +8,11 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from backend.src.infrastructure.download_queue import (
+from src.infrastructure.download_queue import (
     task_store,
     download_queue,
 )
-from backend.src.common.constant import TaskStatus
+from src.common.constant import TaskStatus
 
 router = APIRouter()
 

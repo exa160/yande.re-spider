@@ -5,33 +5,46 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 
+# ==================== Yande.re API 相关 ====================
 YANDE_RE_BASE_URL = "https://yande.re"
 YANDE_RE_POST_API = f"{YANDE_RE_BASE_URL}/post.json"
 YANDE_RE_TAG_API = f"{YANDE_RE_BASE_URL}/post.json"
 YANDE_RE_FILES_HOST = "files.yande.re"
 YANDE_RE_REFERER = f"{YANDE_RE_BASE_URL}/"
 
+
+# ==================== API 路由 ====================
 API_V1_PREFIX = "/api/v1"
 CACHE_PREVIEW_PATH = f"{API_V1_PREFIX}/cache/preview"
 CACHE_ORIGINAL_PATH = f"{API_V1_PREFIX}/cache/original"
 
+
+# ==================== 超时配置 ====================
 TIMEOUT_PREVIEW = 10
 TIMEOUT_ORIGINAL = 30
 TIMEOUT_RANGE_DOWNLOAD = 50
 TIMEOUT_API_DEFAULT = 30
 
+
+# ==================== 重试配置 ====================
 RETRY_COUNT = 3
 RETRY_DOWNLOAD = 3
 RETRY_SLEEP_SECONDS = 6
 
+
+# ==================== 下载器配置 ====================
 DEFAULT_THREAD_NUM = 4
 DEFAULT_CHUNK_SIZE = 10 * 1024
 DEFAULT_SPLIT_SIZE = 5 * 1024 * 1024
 
+
+# ==================== 缩略图配置 ====================
 THUMBNAIL_MAX_SIZE = 300
 THUMBNAIL_QUALITY = 85
 THUMBNAIL_RESAMPLING = "LANCZOS"
 
+
+# ==================== Rating 映射 ====================
 RATING_MAP = {
     "Safe": "s",
     "Questionable": "q",
@@ -43,25 +56,29 @@ RATING_MAP = {
     "Q": "q",
     "E": "e",
 }
-
 RATING_DISPLAY_MAP = {
     "s": "Safe",
     "q": "Questionable",
     "e": "Explicit",
 }
 
+
+# ==================== 分页配置 ====================
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
-SUPPORTED_IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
 
+# ==================== 文件类型 ====================
+SUPPORTED_IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
 FILE_WRITE_PLACEHOLDER = "\x00"
 
 
+# ==================== Pydantic 模型基类 ====================
 class ConstantModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+# ==================== 路径配置 ====================
 class PathConstant(ConstantModel):
     base_dir: Path = Path(__file__).parent.parent.parent
 
@@ -80,6 +97,7 @@ class DownloadConstant(ConstantModel):
     ...
 
 
+# ==================== 任务状态 ====================
 class TaskStatus(str, Enum):
     PENDING = "pending"
     DOWNLOADING = "downloading"
@@ -89,6 +107,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+# ==================== 路由映射 ====================
 class RouterMap(Enum):
     config = ["配置"]
     download = ["下载"]
@@ -103,6 +122,7 @@ class RouterMap(Enum):
         return member.value if member else None
 
 
+# ==================== 错误码枚举 ====================
 class BaseMsgEnum(Enum):
     def __new__(cls, code: str, msg: str, http_status: HTTPStatus = None):
         obj = object.__new__(cls)

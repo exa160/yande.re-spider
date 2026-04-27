@@ -7,8 +7,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Session, declarative_base
 from typing import List, Optional, Tuple
 
-from backend.src import path_constant
-from backend.src.common import config
+from src import path_constant
+from src.common import config
 from loguru import logger
 import os
 
@@ -25,7 +25,7 @@ _cached_table_name = None
 
 
 def get_engine():
-    from backend.src.dao.database import get_db_engine as _get_db_engine
+    from src.dao.database import get_db_engine as _get_db_engine
 
     global _cached_engine, _cached_table_name
     current_table_name = get_table_name()
@@ -49,7 +49,7 @@ def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[
 
 class YandeDataRepository:
     def __init__(self, session: Session = None):
-        from backend.src.models.database.yande import YandeData
+        from src.models.database.yande import YandeData
 
         self._session = session
         self._Model = YandeData
@@ -289,7 +289,7 @@ class TagRepository:
     """标签缓存仓库"""
 
     def __init__(self, session: Session = None):
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
 
         self._session = session
         self._Model = YandeTag
@@ -309,7 +309,7 @@ class TagRepository:
 
     def upsert_tags(self, tags: List[dict]) -> int:
         """批量插入或更新标签，返回成功更新的数量"""
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
         from datetime import datetime
 
         count = 0
@@ -341,7 +341,7 @@ class TagRepository:
 
     def get_tag_by_id(self, tag_id: int) -> Optional[dict]:
         """根据ID获取标签"""
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
 
         stmt = select(YandeTag).filter_by(id=tag_id)
         tag = self.session.execute(stmt).scalar_one_or_none()
@@ -357,14 +357,14 @@ class TagRepository:
 
     def get_tag_count(self) -> int:
         """获取缓存的标签总数"""
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
 
         stmt = select(func.count(YandeTag.id))
         return self.session.execute(stmt).scalar() or 0
 
     def get_max_id(self) -> int:
         """获取缓存中标签的最大ID"""
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
 
         stmt = select(func.max(YandeTag.id))
         result = self.session.execute(stmt).scalar()
@@ -372,14 +372,14 @@ class TagRepository:
 
     def clear_all_tags(self):
         """清空所有标签缓存"""
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
 
         self.session.query(YandeTag).delete()
         self.session.commit()
 
     def search_tags(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索标签"""
-        from backend.src.models.database.yande import YandeTag
+        from src.models.database.yande import YandeTag
 
         stmt = (
             select(YandeTag)
@@ -399,12 +399,108 @@ class TagRepository:
             for t in results
         ]
 
+    def calculate_local_stats(self) -> int:
+        """从 yande_data 计算本地 tag 使用统计并存储到 tag_local_stats 表"""
+        from datetime import datetime
+        from collections import Counter
+        from src.models.database.yande import TagLocalStats, YandeData
+
+        tag_counter: Counter = Counter()
+        stmt = select(YandeData.tags).where(YandeData.down_flag == True)
+        results = self.session.execute(stmt).scalars().all()
+
+        for tags_str in results:
+            if tags_str:
+                tag_list = tags_str.split()
+                tag_counter.update(tag_list)
+
+        stats_updated = 0
+        for tag_name, local_count in tag_counter.items():
+            tag_stmt = select(YandeTag).filter_by(name=tag_name)
+            tag_obj = self.session.execute(tag_stmt).scalar_one_or_none()
+            if tag_obj:
+                stats_stmt = select(TagLocalStats).filter_by(tag_id=tag_obj.id)
+                existing = self.session.execute(stats_stmt).scalar_one_or_none()
+                if existing:
+                    existing.local_count = local_count
+                    existing.last_calculated = datetime.now()
+                else:
+                    new_stats = TagLocalStats(
+                        tag_id=tag_obj.id,
+                        local_count=local_count,
+                        last_calculated=datetime.now(),
+                    )
+                    self.session.add(new_stats)
+                stats_updated += 1
+
+        self.session.commit()
+        return stats_updated
+
+    def get_tags_with_stats(
+        self,
+        tag_type: Optional[int] = None,
+        search_keyword: Optional[str] = None,
+        limit: int = 100,
+        has_local_only: bool = False,
+    ) -> Tuple[List[dict], int]:
+        """获取标签列表（带本地和远程统计）"""
+        from src.models.database.yande import TagLocalStats
+
+        stmt = select(YandeTag)
+        count_stmt = select(func.count(YandeTag.id))
+
+        if tag_type is not None:
+            stmt = stmt.filter(YandeTag.type == tag_type)
+            count_stmt = count_stmt.filter(YandeTag.type == tag_type)
+
+        if search_keyword:
+            stmt = stmt.filter(YandeTag.name.like(f"%{search_keyword}%"))
+            count_stmt = count_stmt.filter(YandeTag.name.like(f"%{search_keyword}%"))
+
+        if has_local_only:
+            stmt = stmt.join(TagLocalStats, YandeTag.id == TagLocalStats.tag_id)
+            count_stmt = count_stmt.join(
+                TagLocalStats, YandeTag.id == TagLocalStats.tag_id
+            )
+
+        stmt = stmt.order_by(YandeTag.count.desc()).limit(limit)
+        results = self.session.execute(stmt).scalars().all()
+        total = self.session.execute(count_stmt).scalar() or 0
+
+        tag_ids = [t.id for t in results]
+        local_stats_map = {}
+        if tag_ids:
+            stats_stmt = select(TagLocalStats).filter(TagLocalStats.tag_id.in_(tag_ids))
+            local_stats = self.session.execute(stats_stmt).scalars().all()
+            local_stats_map = {s.tag_id: s.local_count for s in local_stats}
+
+        tags = []
+        for t in results:
+            tags.append(
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "count": t.count,
+                    "type": t.type,
+                    "ambiguous": t.ambiguous,
+                    "local_count": local_stats_map.get(t.id, 0),
+                }
+            )
+
+        return tags, total
+
+    def get_tags_by_names(self, names: List[str]) -> dict:
+        """根据名称列表获取标签类型"""
+        stmt = select(YandeTag).filter(YandeTag.name.in_(names))
+        results = self.session.execute(stmt).scalars().all()
+        return {t.name: t.type for t in results}
+
 
 class ArtistRepository:
     """艺术家缓存仓库"""
 
     def __init__(self, session: Session = None):
-        from backend.src.models.database.yande import YandeArtist
+        from src.models.database.yande import YandeArtist
 
         self._session = session
         self._Model = YandeArtist
@@ -424,7 +520,7 @@ class ArtistRepository:
 
     def upsert_artists(self, artists: List[dict]) -> int:
         """批量插入或更新艺术家，返回成功更新的数量"""
-        from backend.src.models.database.yande import YandeArtist
+        from src.models.database.yande import YandeArtist
         from datetime import datetime
         import json
 
@@ -458,7 +554,7 @@ class ArtistRepository:
 
     def get_artist_by_id(self, artist_id: int) -> Optional[dict]:
         """根据ID获取艺术家"""
-        from backend.src.models.database.yande import YandeArtist
+        from src.models.database.yande import YandeArtist
         import json
 
         stmt = select(YandeArtist).filter_by(id=artist_id)
@@ -475,14 +571,14 @@ class ArtistRepository:
 
     def get_artist_count(self) -> int:
         """获取缓存的艺术家总数"""
-        from backend.src.models.database.yande import YandeArtist
+        from src.models.database.yande import YandeArtist
 
         stmt = select(func.count(YandeArtist.id))
         return self.session.execute(stmt).scalar() or 0
 
     def search_artists(self, keyword: str, limit: int = 20) -> List[dict]:
         """搜索艺术家"""
-        from backend.src.models.database.yande import YandeArtist
+        from src.models.database.yande import YandeArtist
         import json
 
         stmt = (

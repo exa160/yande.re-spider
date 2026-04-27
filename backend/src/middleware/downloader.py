@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from backend.src.infrastructure.download_queue import download_queue
+from src.infrastructure.download_queue import download_queue
 
 
 class DownloadMiddleware:

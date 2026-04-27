@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, Enum, JSON
 from sqlalchemy.orm import DeclarativeBase
 
-from backend.src.models.yande import Rating
+from src.models.yande import Rating
 
 
 class Base(DeclarativeBase):
@@ -84,3 +84,13 @@ class YandeArtist(Base):
     group_id = Column(Integer, nullable=True, comment="组ID")
     urls = Column(Text, nullable=True, comment="相关链接 (JSON)")
     updated_at = Column(DateTime, nullable=True, comment="最后更新时间")
+
+
+class TagLocalStats(Base):
+    """本地标签统计表 - 记录每个标签在本地图片中的使用次数"""
+
+    __tablename__ = "tag_local_stats"
+
+    tag_id = Column(Integer, primary_key=True, comment="标签ID")
+    local_count = Column(Integer, default=0, comment="本地使用次数")
+    last_calculated = Column(DateTime, nullable=True, comment="最后计算时间")

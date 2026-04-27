@@ -2,12 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from backend.src.api import APILoader
-from backend.src.common.constant import path_constant
-from backend.src.middleware.downloader import DownloadMiddleware
-from backend.src.middleware.errors import ErrorHandleMiddleware
-from backend.src.middleware.frontend_static import FrontendStaticLoader
-from backend.src.middleware.loggers import LoggerMiddleware
+from src.api import APILoader
+from src.common.constant import path_constant
+from src.middleware.downloader import DownloadMiddleware
+from src.middleware.errors import ErrorHandleMiddleware
+from src.middleware.frontend_static import FrontendStaticLoader
+from src.middleware.loggers import LoggerMiddleware
 
 
 def init_app(app: FastAPI) -> FastAPI:
