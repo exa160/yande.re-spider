@@ -5,28 +5,17 @@ import requests
 from loguru import logger
 
 from src.common import config
-from src.common.constant import (
-    YANDE_RE_BASE_URL,
-    YANDE_RE_POST_API,
-    YANDE_RE_TAG_API,
-)
+from src.common.constant import yande_constant
 from src.models.yande import YandePostData, YandeSearchTags
-
-
-# Yande.re API 端点
-YANDE_POST_JSON_API = f"{YANDE_RE_BASE_URL}/post.json"
-YANDE_POST_XML_API = f"{YANDE_RE_BASE_URL}/post.xml"
-YANDE_TAG_JSON_API = f"{YANDE_RE_BASE_URL}/tag.json"
-YANDE_ARTIST_JSON_API = f"{YANDE_RE_BASE_URL}/artist.json"
 
 
 class YandeApi:
     def __init__(self):
-        self.post_json_api = YANDE_POST_JSON_API
-        self.post_xml_api = YANDE_POST_XML_API
-        self.tag_json_api = YANDE_TAG_JSON_API
-        self.artist_json_api = YANDE_ARTIST_JSON_API
-        config.yande_api.proxies = config.yande_api.proxies
+        self.post_json_api = yande_constant.post_json_api
+        self.post_xml_api = yande_constant.post_xml_api
+        self.tag_json_api = yande_constant.tag_json_api
+        self.artist_json_api = yande_constant.artist_json_api
+        self.proxies = config.yande_api.proxies
         self.headers = config.yande_api.headers
 
     def get_count(self, tags: str = "") -> int:
@@ -43,7 +32,7 @@ class YandeApi:
                 req = requests.get(
                     self.post_xml_api,
                     params=query_params,
-                    proxies=config.yande_api.proxies,
+                    proxies=self.proxies,
                     headers=self.headers,
                     timeout=config.yande_api.timeout,
                 )
@@ -162,7 +151,7 @@ class YandeApi:
                 req = requests.get(
                     self.post_json_api,
                     params=query_params,
-                    proxies=config.yande_api.proxies,
+                    proxies=self.proxies,
                     headers=self.headers,
                 )
                 if req.status_code > 300:
@@ -207,7 +196,7 @@ class YandeApi:
                 req = requests.get(
                     self.tag_json_api,
                     params=query_params,
-                    proxies=config.yande_api.proxies,
+                    proxies=self.proxies,
                     headers=self.headers,
                     timeout=60,
                 )
@@ -239,7 +228,7 @@ class YandeApi:
                 req = requests.get(
                     self.artist_json_api,
                     params=query_params,
-                    proxies=config.yande_api.proxies,
+                    proxies=self.proxies,
                     headers=self.headers,
                     timeout=60,
                 )
@@ -259,9 +248,9 @@ class YandeApi:
                 req = requests.get(
                     self.tag_json_api,
                     params={"page": 1, "limit": 1},
-                    proxies=config.yande_api.proxies,
+                    proxies=self.proxies,
                     headers=self.headers,
-                    timeout=30,
+                    timeout=config.yande_api.timeout,
                 )
                 if req.status_code == 200:
                     data = req.json()
@@ -278,9 +267,9 @@ class YandeApi:
                 req = requests.get(
                     self.artist_json_api,
                     params={"page": 1, "limit": 1},
-                    proxies=config.yande_api.proxies,
+                    proxies=self.proxies,
                     headers=self.headers,
-                    timeout=30,
+                    timeout=config.yande_api.timeout,
                 )
                 if req.status_code == 200:
                     data = req.json()

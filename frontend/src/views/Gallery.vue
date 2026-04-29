@@ -4,7 +4,6 @@
     <div class="top-toolbar">
       <!-- 搜索框 + 模式按钮 -->
       <div class="toolbar-left">
-        <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
         <el-button-group class="mode-buttons">
           <el-button
             :type="querySource === 'yande' ? 'primary' : ''"
@@ -19,7 +18,7 @@
             本地
           </el-button>
         </el-button-group>
-        <el-tooltip content="省流模式">
+        <el-tooltip content="省流模式" :hide-after="0" trigger="click">
           <el-button
             :type="saveDataMode ? 'warning' : ''"
             circle
@@ -28,7 +27,7 @@
             <el-icon><Connection /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="安全模式">
+        <el-tooltip content="安全模式" :hide-after="0" trigger="click">
           <el-button
             :type="safeMode ? 'danger' : ''"
             circle
@@ -41,24 +40,27 @@
       </div>
       <!-- 右侧工具按钮 -->
       <div class="toolbar-right">
-        <el-tooltip content="夜间模式">
+        <el-tooltip content="夜间模式" :hide-after="0" trigger="click">
           <el-button circle @click="toggleDarkMode">
             <el-icon v-if="isDarkMode"><Sunny /></el-icon>
             <el-icon v-else><Moon /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="下载管理">
+        <el-tooltip content="下载管理" :hide-after="0" trigger="click">
           <el-button circle @click="showDownloadDialog = true">
             <el-icon><Download /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="配置">
+        <el-tooltip content="配置" :hide-after="0" trigger="click">
           <el-button circle @click="showConfigDialog = true">
             <el-icon><Setting /></el-icon>
           </el-button>
         </el-tooltip>
       </div>
     </div>
+
+    <!-- 搜索组件（独立于 toolbar） -->
+    <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
 
     <!-- 瀑布流图库组件 -->
     <div class="gallery-content">
@@ -202,6 +204,7 @@
                     :key="tag"
                     size="default"
                     class="detail-tag"
+                    :style="getTagStyle(tag)"
                   >
                     {{ tag }}
                   </el-tag>
@@ -244,6 +247,7 @@ import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
+import { tagCacheApi } from '@/api/tagCache'
 import { updateOnlineCount, updateLocalCount, refreshOnlineCount } from '@/api/favorites'
 
 const images = ref([])
@@ -317,10 +321,10 @@ const analyzeImageColor = (imgUrl) => {
 // 监听 currentImage 变化，分析图片颜色
 watch(currentImage, (img) => {
   if (previewVisible.value && img) {
-    // 使用预览图或原图进行分析
+    // 使用本地预览图进行分析，无本地路径时不尝试加载远程图片（避免CORS）
     const imgUrl = img.local_preview_path 
       ? `/api/v1/gallery/cache/preview/${img.id}.${img.file_ext || 'jpg'}`
-      : img.preview_url || img.sample_url || img.jpeg_url
+      : ''
     analyzeImageColor(imgUrl)
   }
 })
@@ -365,6 +369,17 @@ watch(currentImage, (img) => {
 })
 const tagsExpanded = ref(false)
 const infoPanelExpanded = ref(false)
+
+// Tag 类型颜色映射（背景透明度保持和原来一致 0.1，边框用对应颜色）
+const TAG_TYPE_COLORS = {
+  0: { bg: 'rgba(238, 136, 135, 0.1)', border: '#ee8887' },  // 通用
+  1: { bg: 'rgba(204, 204, 0, 0.1)', border: '#cccc00' },     // 艺术家
+  3: { bg: 'rgba(221, 0, 221, 0.1)', border: '#D0D' },        // 版权
+  4: { bg: 'rgba(0, 170, 0, 0.1)', border: '#0A0' },         // 角色
+}
+
+// 存储 tag 类型信息
+const tagTypesMap = ref({})
 
 // 多选相关
 const selectedImages = ref([])
@@ -514,12 +529,26 @@ const loadMore = async () => {
   isLoadingMore.value = false
 }
 
-const handleImageClick = (image) => {
+const handleImageClick = async (image) => {
   currentImage.value = image
   tagsExpanded.value = false
   infoPanelExpanded.value = false
   previewVisible.value = true
   calculatePreviewSize()
+  
+  // 获取 tag 类型信息
+  if (image.tags && image.tags.length > 0) {
+    try {
+      const response = await tagCacheApi.getTagsByNames(image.tags)
+      tagTypesMap.value = {}
+      // 后端返回的是 {"tag_name": type} 格式的字典
+      if (response && typeof response === 'object') {
+        Object.assign(tagTypesMap.value, response)
+      }
+    } catch (e) {
+      console.warn('获取 tag 类型失败:', e)
+    }
+  }
 }
 
 const toggleInfoPanel = () => {
@@ -632,6 +661,19 @@ const getRatingType = (rating) => {
   return types[rating] || 'info'
 }
 
+// 根据 tag 类型获取样式（只返回背景和边框，不改文字颜色）
+const getTagStyle = (tagName) => {
+  const type = tagTypesMap.value[tagName]
+  if (type !== undefined && TAG_TYPE_COLORS[type]) {
+    const colors = TAG_TYPE_COLORS[type]
+    return {
+      backgroundColor: colors.bg,
+      borderColor: colors.border
+    }
+  }
+  return {}
+}
+
 const formatFileSize = (bytes) => {
   if (!bytes) return '0 B'
   if (bytes < 1024) return `${bytes} B`
@@ -650,11 +692,12 @@ const getDetailUrl = (image) => {
     const filename = `${image.id}.${image.file_ext || 'jpg'}`
     return `/api/v1/gallery/cache/preview/${filename}`
   }
-  // 在线模式：使用缓存的预览图API
+  // 在线模式：使用缓存的预览图API（避免直接访问远程URL导致CORS）
   if (image.preview_url) {
     return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
   }
-  return image.file_url
+  // 无本地路径时返回空字符串，不直接返回远程file_url
+  return ''
 }
 
 // 页面加载时自动查询本地
@@ -685,10 +728,18 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  background: rgba(var(--bg-secondary-rgb, 255, 255, 255), 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 100;
+}
+
+/* 深色模式 */
+html.dark-mode .top-toolbar {
+  background: rgba(var(--bg-secondary-rgb, 45, 45, 45), 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .toolbar-left {
@@ -1111,10 +1162,11 @@ html.dark-mode .selection-count {
 }
 
 .detail-tag {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-  color: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .detail-tag:hover {

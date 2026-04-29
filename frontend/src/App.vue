@@ -41,6 +41,7 @@ html, body {
   --bg-primary: #f5f7fa;
   --bg-secondary: #ffffff;
   --bg-tertiary: #ffffff;
+  --bg-secondary-rgb: 255, 255, 255;
   --text-primary: #303133;
   --text-secondary: #606266;
   --text-muted: #909399;
@@ -55,6 +56,7 @@ html, body {
   --bg-primary: #1a1a1a;
   --bg-secondary: #2d2d2d;
   --bg-tertiary: #3d3d3d;
+  --bg-secondary-rgb: 45, 45, 45;
   --text-primary: #e0e0e0;
   --text-secondary: #a0a0a0;
   --text-muted: #707070;
@@ -126,5 +128,19 @@ html, body {
 
 .dark-mode .el-form-item__label {
   color: var(--text-secondary);
+}
+
+/* Tooltip 深色主题 - 浅色模式适配 */
+.el-tooltip__popper.is-dark {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* Tooltip 深色主题 - 深色模式适配 */
+.dark-mode .el-tooltip__popper.is-dark {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
 }
 </style>
