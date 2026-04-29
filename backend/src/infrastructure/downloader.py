@@ -2,8 +2,12 @@ import os.path
 from contextlib import closing
 from hashlib import md5
 from multiprocessing import Queue
-from threading import Thread
+from threading import Thread, Event, Lock
 from time import sleep
+from typing import Optional
+
+from pydantic import BaseModel
+from filelock import FileLock
 
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,7 +16,17 @@ from loguru import logger
 from pathvalidate import sanitize_filename
 
 from src.common import config
-from src.models.download import FileInfo
+
+
+class FileInfo(BaseModel):
+    """下载文件的信息"""
+
+    id: Optional[int] = None
+    file_path: str
+    file_size: int
+    md5: Optional[str] = None
+    url: str
+
 
 
 class DownloadException(Exception):
@@ -36,8 +50,10 @@ class MultiDown:
     ) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
-        self.close_q: Queue = Queue(1)
+        self.close_event = Event()
+        self.progress_lock = Lock()
         self.progress_callback = _progress_callback
+        self._progress_buffer = []
         if file_size == 0:
             file_size = self.get_file_size(url)
         file_name = sanitize_filename(file_name)
@@ -130,32 +146,57 @@ class MultiDown:
                 data_q.put([s, e, b""])
 
     @staticmethod
-    def file_writer(file_info: FileInfo, data_q: Queue, msg_q: Queue):
+    def file_writer(file_info: FileInfo, data_q: Queue, close_event: Event):
         f_size = file_info.file_size
         f_path = file_info.file_path
 
-        with open(f_path, "wb") as f:
-            f.seek(f_size - 1)
-            f.write(b"\x00")
+        # 使用文件锁确保写入安全
+        lock_path = f_path + ".lock"
+        lock = FileLock(lock_path, timeout=300)
 
-        file = open(f_path, "rb+")
-        while queue_wait(data_q, msg_q):
-            s, e, data = data_q.get()
-            if data:
-                file.seek(s)
-                file.write(data)
+        with lock:
+            # 创建占位文件
+            with open(f_path, "wb") as f:
+                f.seek(f_size - 1)
+                f.write(b"\x00")
 
-        file.close()
+            # 使用上下文管理器确保文件关闭
+            with open(f_path, "rb+") as file:
+                while True:
+                    if data_q.empty():
+                        if close_event.is_set():
+                            break
+                        sleep(0.1)
+                    else:
+                        try:
+                            s, e, data = data_q.get_nowait()
+                        except:
+                            if close_event.is_set():
+                                break
+                            sleep(0.1)
+                            continue
 
-        if file_info.md5:
-            file_md5 = md5(open(f_path, "rb").read()).hexdigest()
-            if file_info.md5 != file_md5:
-                logger.warning(
-                    f"md5 check err: {f_path}, expected {file_info.md5}, got {file_md5}"
-                )
-                raise MD5MismatchException(
-                    f"MD5 mismatch for {f_path}: expected {file_info.md5}, got {file_md5}"
-                )
+                        if data:
+                            file.seek(s)
+                            file.write(data)
+
+            # MD5验证
+            if file_info.md5:
+                with open(f_path, "rb") as f:
+                    file_md5 = md5(f.read()).hexdigest()
+                if file_info.md5 != file_md5:
+                    logger.warning(
+                        f"md5 check err: {f_path}, expected {file_info.md5}, got {file_md5}"
+                    )
+                    raise MD5MismatchException(
+                        f"MD5 mismatch for {f_path}: expected {file_info.md5}, got {file_md5}"
+                    )
+
+        # 清理锁文件
+        try:
+            os.remove(lock_path)
+        except OSError:
+            pass
 
     def down_file_in_range(self, file_size):
         split_size = config.downloader.split_size
@@ -183,6 +224,7 @@ class MultiDown:
                 s_offset,
                 e_offset,
                 self.data_q,
+                self.progress_lock,
                 self.progress_callback,
             )
             t.add_done_callback(
@@ -216,14 +258,30 @@ class MultiDown:
                         if chunk:
                             downloaded_size += len(chunk)
                             content_data.append(chunk)
-                            if self.progress_callback:
-                                self.progress_callback(len(chunk) / 1024 / 1024)
+                            if self.progress_callback and self.progress_lock:
+                                with self.progress_lock:
+                                    self.progress_callback(len(chunk) / 1024 / 1024)
 
                 self.data_q.put([0, file_size - 1, b"".join(content_data)])
                 return
+            except requests.exceptions.Timeout:
+                logger.warning(
+                    f"[{self.file_info.id}] single-thread download timeout {retry}"
+                )
+                sleep(6)
+            except requests.exceptions.RequestException as err:
+                logger.warning(
+                    f"[{self.file_info.id}] single-thread network error {retry}: {err}"
+                )
+                sleep(6)
+            except IOError as err:
+                logger.warning(
+                    f"[{self.file_info.id}] single-thread IO error {retry}: {err}"
+                )
+                sleep(6)
             except Exception as err:
                 logger.warning(
-                    f"[{self.file_info.id}] single-thread download error {retry}: {err}"
+                    f"[{self.file_info.id}] single-thread unexpected error {retry}: {err}"
                 )
                 sleep(6)
 
@@ -237,7 +295,7 @@ class MultiDown:
 
         for attempt in range(max_retries):
             self.data_q = Queue()
-            self.close_q = Queue(1)
+            self.close_event.clear()
 
             file_size = self.file_info.file_size
             writer_exception = None
@@ -246,7 +304,7 @@ class MultiDown:
             def writer_target():
                 nonlocal writer_exception
                 try:
-                    self.file_writer(self.file_info, self.data_q, self.close_q)
+                    self.file_writer(self.file_info, self.data_q, self.close_event)
                 except DownloadException as e:
                     writer_exception = e
                 except Exception as e:
@@ -262,7 +320,7 @@ class MultiDown:
             except Exception as e:
                 download_exception = e
 
-            self.close_q.put("1")
+            self.close_event.set()
             writer_t.join()
 
             exception = writer_exception or download_exception
@@ -280,11 +338,4 @@ class MultiDown:
         raise last_exception
 
 
-def queue_wait(data_q: Queue, close_q: Queue):
-    while True:
-        if data_q.empty():
-            if close_q.full():
-                return False
-            sleep(1)
-        else:
-            return True
+# 已删除 queue_wait 函数，使用 Event 替代轮询

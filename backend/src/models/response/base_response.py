@@ -27,5 +27,16 @@ class BaseResponse(BaseModel, Generic[T]):
         return self
 
 
-class ErrorResponse(BaseResponse):
+class PaginatedResponse(BaseResponse[T]):
+    """
+    分页统一响应
+    e.g.:
+    {"code": "0000","message": "OK.","data":"","total": 100,"page": 1,"page_size": 20}
+    """
+    total: int
+    page: int
+    page_size: int
+
+
+class ErrorResponse(BaseResponse[T]):
     code: str = '9999'

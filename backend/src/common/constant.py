@@ -5,45 +5,6 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 
-# ==================== Yande.re API 相关 ====================
-YANDE_RE_BASE_URL = "https://yande.re"
-YANDE_RE_POST_API = f"{YANDE_RE_BASE_URL}/post.json"
-YANDE_RE_TAG_API = f"{YANDE_RE_BASE_URL}/post.json"
-YANDE_RE_FILES_HOST = "files.yande.re"
-YANDE_RE_REFERER = f"{YANDE_RE_BASE_URL}/"
-
-
-# ==================== API 路由 ====================
-API_V1_PREFIX = "/api/v1"
-CACHE_PREVIEW_PATH = f"{API_V1_PREFIX}/cache/preview"
-CACHE_ORIGINAL_PATH = f"{API_V1_PREFIX}/cache/original"
-
-
-# ==================== 超时配置 ====================
-TIMEOUT_PREVIEW = 10
-TIMEOUT_ORIGINAL = 30
-TIMEOUT_RANGE_DOWNLOAD = 50
-TIMEOUT_API_DEFAULT = 30
-
-
-# ==================== 重试配置 ====================
-RETRY_COUNT = 3
-RETRY_DOWNLOAD = 3
-RETRY_SLEEP_SECONDS = 6
-
-
-# ==================== 下载器配置 ====================
-DEFAULT_THREAD_NUM = 4
-DEFAULT_CHUNK_SIZE = 10 * 1024
-DEFAULT_SPLIT_SIZE = 5 * 1024 * 1024
-
-
-# ==================== 缩略图配置 ====================
-THUMBNAIL_MAX_SIZE = 300
-THUMBNAIL_QUALITY = 85
-THUMBNAIL_RESAMPLING = "LANCZOS"
-
-
 # ==================== Rating 映射 ====================
 RATING_MAP = {
     "Safe": "s",
@@ -63,19 +24,15 @@ RATING_DISPLAY_MAP = {
 }
 
 
-# ==================== 分页配置 ====================
-DEFAULT_PAGE_SIZE = 20
-MAX_PAGE_SIZE = 100
-
-
-# ==================== 文件类型 ====================
-SUPPORTED_IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
-FILE_WRITE_PLACEHOLDER = "\x00"
-
-
 # ==================== Pydantic 模型基类 ====================
 class ConstantModel(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+
+class CommonConstant(ConstantModel):
+    supported_image_exts: list[str] = ["jpg", "jpeg", "png", "gif", "webp"]
+    file_write_placeholder: bytes = b"\x00"
+    
 
 
 # ==================== 路径配置 ====================
@@ -91,6 +48,14 @@ class PathConstant(ConstantModel):
     sqlite_file: Path = data_dir / "yande_data.db"
     log_dir: Path = base_dir / "log"
     frontend_dist: Path = base_dir / "frontend" / "dist"
+
+
+class YandeAPIConstant(ConstantModel):
+    base_url: str = "https://yande.re"
+    post_api: str = f"{base_url}/post.json"
+    tag_api: str = f"{base_url}/post.json"
+    files_host: str = "files.yande.re"
+    referer: str = f"{base_url}/"
 
 
 class DownloadConstant(ConstantModel):
@@ -136,7 +101,7 @@ class BaseMsgEnum(Enum):
 
 class ErrMsg(BaseMsgEnum):
     OK = ("0000", "OK.")
-    CONFIG_UPDATE_SUCCESS = ("0000", "配置更新成功")
+    CONFIG_UPDATE_SUCCESS = ("0000", "Config update successful.")
 
     CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
     CONFIG_RESET_ERROR = ("1002", "Config reset error.", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -145,3 +110,4 @@ class ErrMsg(BaseMsgEnum):
 
 
 path_constant = PathConstant()
+yande_constant = YandeAPIConstant()
