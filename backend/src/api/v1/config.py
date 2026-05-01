@@ -2,93 +2,64 @@
 配置管理相关API路由
 """
 
-from typing import Optional
+from fastapi import APIRouter, Query
 
-import yaml
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
-
-from src import path_constant
-from src.common import config
 from src.common.constant import ErrMsg
 from src.middleware.errors import APIException
-from src.common.settings import DownloaderConfig, DatabaseConfig
-from src.models.request.config import ApiConfig, ResetConfig
+from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig
 from src.models.response.base_response import BaseResponse
 from src.models.response.config import ConfigResponse
+from src.services.config import ConfigService
 
 router = APIRouter()
 
 
-@router.get("")
+@router.get("", response_model=ConfigResponse, summary="获取系统配置")
 async def get_system_config() -> ConfigResponse:
-    return ConfigResponse(data=config)
+    """获取系统配置"""
+    return ConfigResponse(data=ConfigService.get_system_config())
 
 
-@router.put("/api")
+@router.put("/api", response_model=BaseResponse, summary="更新API配置")
 async def update_api_config(api_config: ApiConfig) -> BaseResponse:
-    try:
-        tmp_config = config.yande_api.model_dump(mode="json")
-        tmp_config.update(api_config)
-        config.update_config(ApiConfig.model_validate(tmp_config))
-        return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
-    except Exception as e:
-        raise APIException(ErrMsg.CONFIG_UPDATE_ERROR, e=e)
+    """更新 API 配置"""
+    success = ConfigService.update_api_config(api_config)
+    if not success:
+        raise APIException(ErrMsg.CONFIG_UPDATE_ERROR)
+    return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
 
 
-@router.put("/downloader")
+@router.put("/downloader", response_model=BaseResponse, summary="更新下载器配置")
 async def update_downloader_config(down_config: DownloaderConfig) -> BaseResponse:
-    try:
-        config.update_config(DownloaderConfig.model_validate(down_config))
-        return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
-    except Exception as e:
-        raise APIException(ErrMsg.CONFIG_UPDATE_ERROR, e=e)
+    """更新下载器配置"""
+    success = ConfigService.update_downloader_config(down_config)
+    if not success:
+        raise APIException(ErrMsg.CONFIG_UPDATE_ERROR)
+    return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
 
 
-@router.put("/database")
+@router.put("/database", response_model=BaseResponse, summary="更新数据库配置")
 async def update_database_config(database_config: DatabaseConfig) -> BaseResponse:
-    try:
-        config.update_config(DatabaseConfig.model_validate(database_config))
-        return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
-    except Exception as e:
-        raise APIException(ErrMsg.CONFIG_UPDATE_ERROR, e=e)
+    """更新数据库配置"""
+    success = ConfigService.update_database_config(database_config)
+    if not success:
+        raise APIException(ErrMsg.CONFIG_UPDATE_ERROR)
+    return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
 
 
-@router.post("/test-connection")
+@router.post("/test-connection", response_model=BaseResponse, summary="测试数据库连接")
 async def test_database_connection(database_config: DatabaseConfig) -> BaseResponse:
-    try:
-        if database_config.enable:
-            from sqlalchemy import create_engine
-
-            engine = create_engine(
-                f"mariadb+mariadbconnector://{database_config.user}:{database_config.password}@"
-                f"{database_config.host}:{database_config.port}/{database_config.schema_name}?charset=utf8"
-            )
-            conn = engine.connect()
-            conn.close()
-            return BaseResponse(message="数据库连接成功", data={"success": True})
-        else:
-            db_path = path_constant.sqlite_file
-            if db_path.exists():
-                return {"success": True, "message": "SQLite数据库文件存在"}
-            return {"success": True, "message": "SQLite数据库未配置，使用默认路径"}
-    except Exception as e:
-        return {"success": False, "message": f"连接失败: {str(e)}"}
+    """测试数据库连接"""
+    result = ConfigService.test_database_connection(database_config)
+    return BaseResponse(message=result["message"], data={"success": result["success"]})
 
 
-@router.post("/reset")
-async def reset_config(query: ResetConfig) -> BaseResponse:
-    reset_map = {
-        "api": ApiConfig,
-        "downloader": DownloaderConfig,
-        "database": DatabaseConfig
-    }
-    reset_model = reset_map.get(query.section)
-    if reset_model is None:
-        raise APIException(
-            ErrMsg.CONFIG_RESET_ERROR,
-            data=f"{query.section} not in {list(reset_map.keys())}."
-        )
-    config.update_config(reset_model())
+@router.post("/reset", response_model=BaseResponse, summary="重置配置")
+async def reset_config(
+    section: str = Query(..., description="配置类型: api, downloader, database"),
+) -> BaseResponse:
+    """重置指定段的配置"""
+    success, message = ConfigService.reset_config(section)
+    if not success:
+        raise APIException(ErrMsg.CONFIG_RESET_ERROR, data=message)
     return BaseResponse(message="Reset success.")
-

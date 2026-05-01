@@ -2,338 +2,159 @@
 收藏夹管理 API 路由
 """
 
-from datetime import datetime
-from typing import List
+from fastapi import APIRouter
 
-from fastapi import APIRouter, HTTPException
-
-from src.dao.favorite_dao import favorite_dao
-from src.models.favorite import (
+from src.common.constant import ErrMsg
+from src.middleware.errors import APIException
+from src.models.response.favorites import (
+    FavoriteFolderResponse, FavoriteFoldersResponse,
+    FavoriteFoldersWithPreviewResponse
+    )
+from src.models.request.favorites import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
-    FavoriteFolder,
-    FavoriteFolderWithCount,
     ReorderRequest,
 )
-from src.dao.yande_data import YandeDataRepository
-from src.infrastructure.yande_api import YandeApi
+from src.models.response.base_response import BaseResponse
+from src.services.favorites import FavoritesService
 
 router = APIRouter()
 
 
-@router.get("", response_model=List[FavoriteFolder], summary="获取所有收藏夹")
-async def get_all_folders():
-    """获取所有收藏夹，按排序权重排列"""
-    folders = favorite_dao.get_all()
-    return [
-        FavoriteFolder(
-            id=f.id,
-            name=f.name,
-            tags=f.tags,
-            color=f.color,
-            icon=f.icon,
-            sort_order=f.sort_order,
-            local_count=f.local_count or 0,
-            online_count=f.online_count or 0,
-            last_refresh=f.last_refresh,
-            created_at=f.created_at,
-            updated_at=f.updated_at,
-        )
-        for f in folders
-    ]
+@router.get("", response_model=FavoriteFoldersResponse, summary="获取所有收藏夹")
+async def get_all_folders() -> FavoriteFoldersResponse:
+    """
+    获取所有收藏夹，按排序权重排列
+    """
+    try:
+        folders = FavoritesService.get_all_folders()
+        return FavoriteFoldersResponse(data=folders)
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+
+@router.get("/with-preview", response_model=FavoriteFoldersWithPreviewResponse, summary="获取所有收藏夹")
+async def get_folders_with_preview() -> FavoriteFoldersWithPreviewResponse:
+    """
+    获取所有收藏夹及其图片数量
+    # TODO: 文件夹图片预览
+        - 考虑到性能问题，可能不适合频繁调用
+        - 访问时会刷新本地数量
+        - 可选接口，单纯获取列表建议调用 /api/favorites 接口
+        - 适用于需要同时展示收藏夹列表和图片预览的场景
+        - 可能会增加接口响应时间，视收藏夹数量和图片数量而定
+        - 前端可根据实际需求选择调用哪个接口
+        - 未来可能增加分页支持以优化性能    
+    """
+    try:
+        folders = FavoritesService.get_folders_with_preview()
+        return FavoriteFoldersWithPreviewResponse(message=ErrMsg.OK.msg, data=folders)
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+
+@router.post("", response_model=BaseResponse, summary="创建收藏夹")
+async def create_folder(folder: FavoriteFolderCreate) -> BaseResponse:
+    """创建新收藏夹"""
+    try:
+        new_folder = FavoritesService.create_folder(folder)
+        return FavoriteFolderResponse(message=ErrMsg.OK, data=new_folder)
+    except Exception as e:
+        raise APIException(ErrMsg.CREATE_ERROR, e=e)
+
+
+@router.get("/{folder_id}", response_model=BaseResponse, summary="获取收藏夹详情")
+async def get_folder(folder_id: int) -> BaseResponse:
+    """获取指定收藏夹详情"""
+    # 访问时刷新本地数量
+    folder = FavoritesService._refresh_local_count(folder_id)
+    if not folder:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return FavoriteFolderResponse(data=folder)
+
+
+@router.put("/{folder_id}", response_model=BaseResponse, summary="更新收藏夹")
+async def update_folder(folder_id: int, folder: FavoriteFolderUpdate) -> BaseResponse:
+    """更新收藏夹信息"""
+    updated = FavoritesService.update_folder(folder_id, folder)
+    if not updated:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return BaseResponse(message="更新成功", data=updated)
+
+
+@router.delete("/{folder_id}", response_model=BaseResponse, summary="删除收藏夹")
+async def delete_folder(folder_id: int) -> BaseResponse:
+    """删除收藏夹"""
+    success = FavoritesService.delete_folder(folder_id)
+    if not success:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return BaseResponse(message="删除成功")
+
+
+@router.post("/reorder", response_model=BaseResponse, summary="批量更新排序")
+async def reorder_folders(request: ReorderRequest) -> BaseResponse:
+    """批量更新收藏夹排序"""
+    try:
+        success = FavoritesService.reorder_folders(request.folder_ids)
+        if not success:
+            raise APIException(ErrMsg.UPDATE_ERROR)
+        return BaseResponse(message="排序更新成功")
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(ErrMsg.UPDATE_ERROR, e=e)
 
 
 @router.get(
-    "/with-count",
-    response_model=List[FavoriteFolderWithCount],
-    summary="获取收藏夹及图片数量",
+    "/{folder_id}/preview", response_model=BaseResponse, summary="预览收藏夹查询结果"
 )
-async def get_folders_with_count():
-    """
-    获取所有收藏夹及其图片数量
-    本地模式直接返回 local_count（已缓存）
-    不主动刷新，避免频繁查询数据库
-    """
-    folders = favorite_dao.get_all()
-
-    result = []
-    for f in folders:
-        result.append(
-            FavoriteFolderWithCount(
-                id=f.id,
-                name=f.name,
-                tags=f.tags,
-                color=f.color,
-                icon=f.icon,
-                sort_order=f.sort_order,
-                local_count=f.local_count or 0,
-                online_count=f.online_count or 0,
-                last_refresh=f.last_refresh,
-                created_at=f.created_at,
-                updated_at=f.updated_at,
-                preview_images=[],
-            )
-        )
-
-    return result
+async def preview_folder(folder_id: int, limit: int = 6) -> BaseResponse:
+    """预览收藏夹查询结果，返回前N张图片"""
+    result = FavoritesService.preview_folder(folder_id, limit)
+    if not result:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return BaseResponse(message=ErrMsg.OK.msg, data=result)
 
 
-@router.post("", response_model=FavoriteFolder, summary="创建收藏夹")
-async def create_folder(folder: FavoriteFolderCreate):
-    """创建新收藏夹，并刷新本地图片数量"""
-    count = favorite_dao.count()
-    new_folder = favorite_dao.create(
-        name=folder.name,
-        tags=folder.tags,
-        color=folder.color,
-        icon=folder.icon,
-        sort_order=folder.sort_order if folder.sort_order else count,
-    )
-
-    # 创建时刷新本地数量
-    _refresh_local_count(new_folder.id, folder.tags)
-
-    return FavoriteFolder(
-        id=new_folder.id,
-        name=new_folder.name,
-        tags=new_folder.tags,
-        color=new_folder.color,
-        icon=new_folder.icon,
-        sort_order=new_folder.sort_order,
-        local_count=new_folder.local_count or 0,
-        online_count=new_folder.online_count or 0,
-        last_refresh=new_folder.last_refresh,
-        created_at=new_folder.created_at,
-        updated_at=new_folder.updated_at,
-    )
-
-
-@router.get("/{folder_id}", response_model=FavoriteFolder, summary="获取收藏夹详情")
-async def get_folder(folder_id: int):
-    """
-    获取指定收藏夹详情
-    访问时刷新本地数量
-    """
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    # 访问时刷新本地数量
-    _refresh_local_count(folder_id, folder.tags)
-
-    # 重新获取最新数据
-    folder = favorite_dao.get_by_id(folder_id)
-
-    return FavoriteFolder(
-        id=folder.id,
-        name=folder.name,
-        tags=folder.tags,
-        color=folder.color,
-        icon=folder.icon,
-        sort_order=folder.sort_order,
-        local_count=folder.local_count or 0,
-        online_count=folder.online_count or 0,
-        last_refresh=folder.last_refresh,
-        created_at=folder.created_at,
-        updated_at=folder.updated_at,
-    )
-
-
-@router.put("/{folder_id}", response_model=FavoriteFolder, summary="更新收藏夹")
-async def update_folder(folder_id: int, folder: FavoriteFolderUpdate):
-    """更新收藏夹信息"""
-    update_data = folder.model_dump(exclude_unset=True)
-    updated = favorite_dao.update(folder_id, **update_data)
-    if not updated:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    # 如果 tags 变化，刷新本地数量
-    if "tags" in update_data:
-        _refresh_local_count(folder_id, update_data["tags"])
-
-    # 重新获取最新数据
-    updated = favorite_dao.get_by_id(folder_id)
-
-    return FavoriteFolder(
-        id=updated.id,
-        name=updated.name,
-        tags=updated.tags,
-        color=updated.color,
-        icon=updated.icon,
-        sort_order=updated.sort_order,
-        local_count=updated.local_count or 0,
-        online_count=updated.online_count or 0,
-        last_refresh=updated.last_refresh,
-        created_at=updated.created_at,
-        updated_at=updated.updated_at,
-    )
-
-
-@router.delete("/{folder_id}", summary="删除收藏夹")
-async def delete_folder(folder_id: int):
-    """删除收藏夹"""
-    success = favorite_dao.delete(folder_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-    return {"message": "删除成功"}
-
-
-@router.post("/reorder", summary="批量更新排序")
-async def reorder_folders(request: ReorderRequest):
-    """批量更新收藏夹排序"""
-    success = favorite_dao.reorder(request.folder_ids)
-    if not success:
-        raise HTTPException(status_code=500, detail="排序更新失败")
-    return {"message": "排序更新成功"}
-
-
-@router.get("/{folder_id}/preview", summary="预览收藏夹查询结果")
-async def preview_folder(folder_id: int, limit: int = 6):
-    """
-    预览收藏夹查询结果，返回前N张图片
-    同时刷新本地数量
-    """
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    try:
-        search_params = _parse_tags_to_params(folder.tags)
-        with YandeDataRepository() as repo:
-            images, total = repo.query(
-                page=1, page_size=limit, downloaded_only=True, **search_params
-            )
-
-        _refresh_local_count(folder_id, folder.tags)
-
-        return {
-            "total": total,
-            "preview_images": images[:limit],
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"预览失败: {str(e)}")
-
-
-@router.post("/{folder_id}/refresh", summary="手动刷新收藏夹数量")
-async def refresh_folder_count(folder_id: int):
+@router.post(
+    "/{folder_id}/refresh", response_model=BaseResponse, summary="手动刷新收藏夹数量"
+)
+async def refresh_folder_count(folder_id: int) -> BaseResponse:
     """手动刷新指定收藏夹的本地数量"""
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    _refresh_local_count(folder_id, folder.tags)
-
-    folder = favorite_dao.get_by_id(folder_id)
-    return {
-        "local_count": folder.local_count or 0,
-        "online_count": folder.online_count or 0,
-        "last_refresh": folder.last_refresh,
-    }
+    result = FavoritesService.get_folder(folder_id)
+    if not result:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return BaseResponse(message="刷新成功", data=result)
 
 
-@router.post("/{folder_id}/online-count", summary="更新在线数量")
-async def update_online_count(folder_id: int, count: int):
-    """
-    更新收藏夹的在线图片数量
-    由前端在瀑布流加载完成后调用
-    """
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
-    return {"online_count": count}
+@router.post(
+    "/{folder_id}/online-count", response_model=BaseResponse, summary="更新在线数量"
+)
+async def update_online_count(folder_id: int, count: int) -> BaseResponse:
+    """更新收藏夹的在线图片数量"""
+    success = FavoritesService.update_online_count(folder_id, count)
+    if not success:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return BaseResponse(message="更新成功", data={"online_count": count})
 
 
-@router.post("/{folder_id}/refresh-online", summary="刷新在线数量")
-async def refresh_online_count(folder_id: int):
-    """
-    从 yande.re XML API 刷新收藏夹的在线图片数量
-    """
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    yande_api = YandeApi()
-    count = yande_api.get_count(folder.tags or "")
-
-    if count < 0:
-        raise HTTPException(status_code=500, detail="获取在线数量失败")
-
-    favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
-    return {"online_count": count}
+@router.post(
+    "/{folder_id}/refresh-online", response_model=BaseResponse, summary="刷新在线数量"
+)
+async def refresh_online_count(folder_id: int) -> BaseResponse:
+    """从 yande.re XML API 刷新收藏夹的在线图片数量"""
+    count = FavoritesService.refresh_online_count(folder_id)
+    if count is None:
+        raise APIException(ErrMsg.QUERY_ERROR)
+    return BaseResponse(message="刷新成功", data={"online_count": count})
 
 
-@router.post("/{folder_id}/local-count", summary="更新本地数量")
-async def update_local_count(folder_id: int, count: int):
-    """
-    更新收藏夹的本地图片数量
-    由前端在瀑布流加载完成后调用
-    """
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="收藏夹不存在")
-
-    favorite_dao.update(folder_id, local_count=count, last_refresh=datetime.now())
-    return {"local_count": count}
-
-
-def _refresh_local_count(folder_id: int, tags: str):
-    """刷新收藏夹的本地图片数量"""
-    try:
-        search_params = _parse_tags_to_params(tags)
-        with YandeDataRepository() as repo:
-            _, total = repo.query(
-                page=1, page_size=1, downloaded_only=True, **search_params
-            )
-        favorite_dao.update(folder_id, local_count=total, last_refresh=datetime.now())
-    except Exception:
-        favorite_dao.update(folder_id, local_count=0, last_refresh=datetime.now())
-
-
-def _parse_tags_to_params(tags_str: str) -> dict:
-    """解析标签字符串为查询参数"""
-    params = {}
-
-    if not tags_str:
-        return params
-
-    parts = tags_str.split()
-    for part in parts:
-        if part.startswith("rating:"):
-            rating = part.split(":", 1)[1]
-            params["rating"] = rating
-        elif part.startswith("score:>"):
-            score = part.split(":", 1)[1]
-            params["min_score"] = int(score)
-        elif part.startswith("score:<"):
-            score = part.split(":", 1)[1]
-            params["max_score"] = int(score)
-        elif part.startswith("order:"):
-            order = part.split(":", 1)[1]
-            params["sort_by"] = order
-        elif part.startswith("width:>="):
-            width = part.split(":", 1)[1]
-            params["min_width"] = int(width)
-        elif part.startswith("width:<="):
-            width = part.split(":", 1)[1]
-            params["max_width"] = int(width)
-        elif part.startswith("height:>="):
-            height = part.split(":", 1)[1]
-            params["min_height"] = int(height)
-        elif part.startswith("height:<="):
-            height = part.split(":", 1)[1]
-            params["max_height"] = int(height)
-        elif part.startswith("ext:"):
-            ext = part.split(":", 1)[1]
-            params["file_type"] = ext
-        elif not part.startswith("-"):
-            if "tags" not in params:
-                params["tags"] = []
-            if isinstance(params["tags"], list):
-                params["tags"].append(part)
-
-    if "tags" in params and isinstance(params["tags"], list):
-        params["tags"] = " ".join(params["tags"])
-
-    return params
+@router.post(
+    "/{folder_id}/local-count", response_model=BaseResponse, summary="更新本地数量"
+)
+async def update_local_count(folder_id: int, count: int) -> BaseResponse:
+    """更新收藏夹的本地图片数量"""
+    success = FavoritesService.update_local_count(folder_id, count)
+    if not success:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return BaseResponse(message="更新成功", data={"local_count": count})

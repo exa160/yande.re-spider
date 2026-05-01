@@ -499,19 +499,20 @@ const loadImages = async () => {
       ...queryParams.value,
       page: currentPage.value
     })
+    const data = response.data
     if (currentPage.value === 1) {
-      images.value = response.images
+      images.value = data.images
       if (currentFavorite.value) {
         if (querySource.value === 'local') {
-          updateLocalCount(currentFavorite.value.id, response.total).catch(() => {})
+          updateLocalCount(currentFavorite.value.id, data.total).catch(() => {})
         } else {
           refreshOnlineCount(currentFavorite.value.id).catch(() => {})
         }
       }
     } else {
-      images.value.push(...response.images)
+      images.value.push(...data.images)
     }
-    hasMore.value = response.has_more
+    hasMore.value = data.has_more
   } catch (error) {
     ElMessage.error('加载图片失败')
   } finally {
@@ -541,9 +542,9 @@ const handleImageClick = async (image) => {
     try {
       const response = await tagCacheApi.getTagsByNames(image.tags)
       tagTypesMap.value = {}
-      // 后端返回的是 {"tag_name": type} 格式的字典
-      if (response && typeof response === 'object') {
-        Object.assign(tagTypesMap.value, response)
+      // 重构后 BaseResponse.data 是 {tag_name: type} 格式的字典
+      if (response?.data && typeof response.data === 'object') {
+        Object.assign(tagTypesMap.value, response.data)
       }
     } catch (e) {
       console.warn('获取 tag 类型失败:', e)
@@ -590,35 +591,32 @@ const batchDownload = async () => {
   }
 
   downloading.value = true
-  let successCount = 0
-  let failCount = 0
 
   try {
-    for (const image of selectedImages.value) {
-      try {
-        await api.post('/download/task', {
-          image_id: image.id,
-          file_url: image.file_url,
-          save_path: './downloads',
-          file_name: `${image.id}.${image.file_ext || 'jpg'}`,
-          thread_num: 4,
-          tags: image.tags?.join ? image.tags.join(' ') : image.tags,
-          width: image.width,
-          height: image.height,
-          rating: image.rating,
-          author: image.author,
-          md5: image.md5,
-          total_size: image.file_size
-        })
-        successCount++
-      } catch (e) {
-        failCount++
-      }
-    }
-    ElMessage.success(`成功创建 ${successCount} 个下载任务${failCount > 0 ? `, ${failCount} 个失败` : ''}`)
+    const tasks = selectedImages.value.map(image => ({
+      image_id: image.id,
+      file_url: image.file_url,
+      save_path: './downloads',
+      file_name: `${image.id}.${image.file_ext || 'jpg'}`,
+      thread_num: 4,
+      tags: image.tags?.join ? image.tags.join(' ') : image.tags,
+      width: image.width,
+      height: image.height,
+      rating: image.rating,
+      author: image.author,
+      md5: image.md5,
+      total_size: image.file_size
+    }))
+
+    const response = await api.post('/download/task/batch', tasks)
+    const { data } = response
+
+    ElMessage.success(`成功创建 ${data.task_ids?.length || tasks.length} 个下载任务`)
     selectedImages.value = []
     selectAll.value = false
     isIndeterminate.value = false
+  } catch (error) {
+    ElMessage.error('批量创建下载任务失败')
   } finally {
     downloading.value = false
   }
@@ -689,8 +687,7 @@ const getDetailUrl = (image) => {
     return `/api/v1/gallery/cache/original/${filename}`
   }
   if (image.local_preview_path) {
-    const filename = `${image.id}.${image.file_ext || 'jpg'}`
-    return `/api/v1/gallery/cache/preview/${filename}`
+    return `/api/v1/gallery/cache/preview/${image.local_preview_path}`
   }
   // 在线模式：使用缓存的预览图API（避免直接访问远程URL导致CORS）
   if (image.preview_url) {

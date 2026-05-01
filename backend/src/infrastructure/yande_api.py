@@ -1,22 +1,37 @@
 from typing import Union, Tuple, List
 from xml.etree import ElementTree as ET
 
+from pydantic import BaseModel, model_serializer
 import requests
 from loguru import logger
 
 from src.common import config
 from src.common.constant import yande_constant
+from src.common.utils import get_proxy
 from src.models.yande import YandePostData, YandeSearchTags
 
 
 class YandeApi:
+    class PostRankQueryParams(BaseModel):
+        page: int = 1
+        tags: str = ""
+        search_tags: YandeSearchTags = None
+
+        @model_serializer(mode="wrap")
+        def serialize(self, handler):
+            if self.search_tags:
+                search_str = YandeApi().search_trans(self.search_tags)
+                self.tags = f"{self.tags} {search_str}" if self.tags else search_str
+            return handler(self)
+
+
     def __init__(self):
         self.post_json_api = yande_constant.post_json_api
         self.post_xml_api = yande_constant.post_xml_api
         self.tag_json_api = yande_constant.tag_json_api
         self.artist_json_api = yande_constant.artist_json_api
-        self.proxies = config.yande_api.proxies
-        self.headers = config.yande_api.headers
+        self.proxies = get_proxy()
+        self.headers = config.yande_api.headers.model_dump(by_alias=True)
 
     def get_count(self, tags: str = "") -> int:
         """
@@ -53,6 +68,7 @@ class YandeApi:
 
     def search_trans(self, search_tags: YandeSearchTags) -> str:
         """将 YandeSearchTags 转换为 yande.re API 识别的搜索标签字符串"""
+        # TODO 优化：使用配置驱动的方式替代硬编码，提升可维护性和扩展性，可见advanced_search.py
         parts = []
 
         # 简单字段映射: {模型字段名: 格式字符串}
@@ -139,8 +155,7 @@ class YandeApi:
         combined_tags = tags
         if search_tags:
             search_str = self.search_trans(search_tags)
-            if search_str:
-                combined_tags = f"{tags} {search_str}" if tags else search_str
+            combined_tags = f"{tags} {search_str}" if tags else search_str
 
         if combined_tags:
             query_params.update(dict(tags=combined_tags))

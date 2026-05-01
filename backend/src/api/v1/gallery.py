@@ -1,468 +1,130 @@
 """
 图库展示相关API路由
 """
-import requests
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from fastapi.responses import FileResponse
+from typing import List
 
-from src.common.settings import config
-from src.common.constant import (path_constant,
-    TIMEOUT_PREVIEW,
-    THUMBNAIL_MAX_SIZE,
-    THUMBNAIL_QUALITY,
-    RATING_DISPLAY_MAP,
+from src.common.constant import ErrMsg
+from src.middleware.errors import APIException
+from src.models.request.gallery import GalleryLoadRequest
+from src.models.response.base_response import BaseResponse
+from src.models.response.gallery import (
+    ImageDetail,
+    GalleryData,
+    GalleryLoadResponse,
+    ImageDetailResponse,
 )
-from src.infrastructure.yande_api import YandeApi
+from src.services.gallery import GalleryService
 
 router = APIRouter()
 
 
-class ImageDetail(BaseModel):
-    id: int
-    tags: List[str]
-    width: int
-    height: int
-    rating: str
-    file_url: str
-    preview_url: str
-    sample_url: Optional[str]
-    file_size: int
-    file_ext: str
-    author: str
-    created_at: str
-    md5: str
-    score: Optional[int]
-    is_downloaded: bool = Field(description="是否已下载")
-    local_preview_path: Optional[str] = Field(None, description="本地预览图路径")
-    local_file_path: Optional[str] = Field(None, description="本地原图路径")
-
-
-class GalleryLoadRequest(BaseModel):
-    page: int = Field(1, ge=1, description="页码")
-    page_size: int = Field(20, ge=1, le=100, description="每页数量")
-    tags: Optional[str] = Field(None, description="标签过滤 (支持 AND/OR/NOT 语法)")
-    user: Optional[str] = Field(None, description="用户过滤: user:bob")
-    vote: Optional[int] = Field(None, description="投票数过滤: vote:3")
-    md5: Optional[str] = Field(None, description="MD5哈希过滤")
-    source: Optional[str] = Field(None, description="来源过滤: source:http://site.com")
-    ratings: List[str] = Field(default_factory=list, description="评分过滤列表")
-    author: Optional[str] = Field(None, description="作者过滤")
-    min_id: Optional[int] = Field(None, description="最小ID: id:>=100")
-    max_id: Optional[int] = Field(None, description="最大ID: id:<=100")
-    min_width: Optional[int] = Field(None, description="最小宽度")
-    max_width: Optional[int] = Field(None, description="最大宽度")
-    min_height: Optional[int] = Field(None, description="最小高度")
-    max_height: Optional[int] = Field(None, description="最大高度")
-    min_mpixels: Optional[float] = Field(
-        None, description="最小像素(百万): mpixels:>=2.5"
-    )
-    max_mpixels: Optional[float] = Field(None, description="最大像素(百万)")
-    ratio: Optional[str] = Field(None, description="宽高比: ratio:16:9")
-    min_date: Optional[str] = Field(None, description="最早日期: date:>=2007-01-01")
-    max_date: Optional[str] = Field(None, description="最晚日期: date:<=2007-01-01")
-    min_file_size: Optional[int] = Field(None, description="最小文件大小(KB)")
-    max_file_size: Optional[int] = Field(None, description="最大文件大小(KB)")
-    file_types: List[str] = Field(default_factory=list, description="文件类型列表")
-    min_score: Optional[int] = Field(None, description="最小评分")
-    max_score: Optional[int] = Field(None, description="最大评分")
-    order: Optional[str] = Field(
-        "id",
-        description="排序: id, id_desc, score, score_asc, mpixels, mpixels_asc, landscape, portrait, vote",
-    )
-    parent_id: Optional[int] = Field(None, description="父贴ID: parent:1234")
-    parent_none: bool = Field(False, description="无父贴: parent:none")
-    source: Optional[str] = Field(
-        "local", description="数据源: yande=在线, local=本地数据库"
-    )
-
-
-class GalleryLoadResponse(BaseModel):
-    total: int
-    page: int
-    page_size: int
-    has_more: bool
-    images: List[ImageDetail]
-
-
-def get_rating_value(rating_str: str) -> str:
-    mapping = {
-        "Safe": "s",
-        "Questionable": "q",
-        "Explicit": "e",
-        "s": "s",
-        "q": "q",
-        "e": "e",
-        "S": "s",
-        "Q": "q",
-        "E": "e",
-    }
-    return mapping.get(rating_str, rating_str)
-
-
-def query_local_database(params: dict) -> tuple[List[dict], int]:
-    from src.dao.yande_data import YandeDataRepository
-
-    with YandeDataRepository() as repo:
-        images, total = repo.query(
-            page=params.get("page", 1),
-            page_size=params.get("page_size", 20),
-            tags=params.get("tags"),
-            rating=params.get("rating"),
-            author=params.get("author"),
-            min_width=params.get("min_width"),
-            max_width=params.get("max_width"),
-            min_height=params.get("min_height"),
-            max_height=params.get("max_height"),
-            min_file_size=params.get("min_file_size"),
-            max_file_size=params.get("max_file_size"),
-            file_type=params.get("file_type"),
-            sort_by=params.get("sort_by", "created_at"),
-            sort_order=params.get("sort_order", "desc"),
-            downloaded_only=True,
-        )
-    return images, total
-
-
-def query_yande_api(params: dict) -> tuple[List[dict], int]:
-    from src.dao.yande_data import YandeDataRepository, _check_local_file
-    from src.dao.database import MariaDBClient
-    from src.models.yande import Rating, YandeSearchTags
-    from datetime import datetime as dt
-
-    yande_api = YandeApi()
-    page = params.get("page", 1)
-
-    search_tags = YandeSearchTags(
-        tags=params.get("tags"),
-        user=params.get("user"),
-        vote=params.get("vote"),
-        md5=params.get("md5"),
-        source=params.get("source"),
-        min_id=params.get("min_id"),
-        max_id=params.get("max_id"),
-        min_width=params.get("min_width"),
-        max_width=params.get("max_width"),
-        min_height=params.get("min_height"),
-        max_height=params.get("max_height"),
-        min_mpixels=params.get("min_mpixels"),
-        max_mpixels=params.get("max_mpixels"),
-        ratio=params.get("ratio"),
-        min_date=params.get("min_date"),
-        max_date=params.get("max_date"),
-        min_score=params.get("min_score"),
-        max_score=params.get("max_score"),
-        min_filesize=params.get("min_file_size"),
-        max_filesize=params.get("max_file_size"),
-        ratings=params.get("ratings", []),
-        file_exts=params.get("file_types", []),
-        order=params.get("order", "id"),
-        parent_id=params.get("parent_id"),
-        parent_none=params.get("parent_none", False),
-    )
-
-    author_tags = params.get("author", "")
-    success, yande_data = yande_api.get_ranking(
-        page, tags=author_tags, search_tags=search_tags
-    )
-
-    if not success:
-        return [], 0
-
-    with YandeDataRepository() as repo:
-        client = MariaDBClient()
-        images = []
-
-        for item in yande_data.root:
-            file_ext = item.file_ext or "jpg"
-            record_exists = repo.check_exists(item.id)
-            is_downloaded = repo.check_downloaded(item.id)
-
-            if not record_exists:
-                rating_val = item.rating.value if item.rating else "s"
-                if rating_val == "s":
-                    rating = Rating.S
-                elif rating_val == "q":
-                    rating = Rating.R15
-                else:
-                    rating = Rating.R18
-
-                new_record = client.YandeData(
-                    id=item.id,
-                    tags=item.tags or "",
-                    created_at=item.created_at or dt.now(),
-                    updated_at=item.updated_at or dt.now(),
-                    creator_id=item.creator_id,
-                    author=item.author or "",
-                    change=item.change or 0,
-                    source=item.source or "",
-                    score=item.score or 0,
-                    md5=item.md5 or "",
-                    file_size=item.file_size or 0,
-                    file_ext=file_ext,
-                    file_url=item.file_url or "",
-                    is_shown_in_index=item.is_shown_in_index
-                    if hasattr(item, "is_shown_in_index")
-                    else True,
-                    preview_url=item.preview_url or "",
-                    preview_width=item.preview_width or 0,
-                    preview_height=item.preview_height or 0,
-                    actual_preview_width=item.actual_preview_width or 0,
-                    actual_preview_height=item.actual_preview_height or 0,
-                    sample_url=item.sample_url or "",
-                    sample_width=item.sample_width or 0,
-                    sample_height=item.sample_height or 0,
-                    sample_file_size=item.sample_file_size or 0,
-                    jpeg_url=item.jpeg_url or "",
-                    jpeg_width=item.jpeg_width or 0,
-                    jpeg_height=item.jpeg_height or 0,
-                    jpeg_file_size=item.jpeg_file_size or 0,
-                    rating=rating,
-                    is_rating_locked=item.is_rating_locked
-                    if hasattr(item, "is_rating_locked")
-                    else False,
-                    has_children=item.has_children
-                    if hasattr(item, "has_children")
-                    else False,
-                    parent_id=item.parent_id,
-                    status=item.status or "active",
-                    is_pending=item.is_pending
-                    if hasattr(item, "is_pending")
-                    else False,
-                    width=item.width or 0,
-                    height=item.height or 0,
-                    is_held=item.is_held if hasattr(item, "is_held") else False,
-                    down_flag=False,
-                )
-                try:
-                    client.insert_data(new_record)
-                except Exception as e:
-                    pass
-
-            local_preview = (
-                _check_local_file(item.id, file_ext, "preview")
-                if is_downloaded
-                else None
-            )
-            local_original = (
-                _check_local_file(item.id, file_ext, "original")
-                if is_downloaded
-                else None
-            )
-
-            images.append(
-                {
-                    "id": item.id,
-                    "tags": item.tags.split() if item.tags else [],
-                    "width": item.width,
-                    "height": item.height,
-                    "rating": RATING_DISPLAY_MAP.get(
-                        item.rating.value, item.rating.value
-                    )
-                    if item.rating
-                    else "Safe",
-                    "file_url": item.file_url,
-                    "preview_url": item.preview_url,
-                    "sample_url": item.sample_url,
-                    "file_size": item.file_size,
-                    "file_ext": file_ext,
-                    "author": item.author,
-                    "created_at": str(item.created_at),
-                    "md5": item.md5,
-                    "score": item.score,
-                    "is_downloaded": is_downloaded,
-                    "local_preview_path": local_preview,
-                    "local_file_path": local_original,
-                }
-            )
-
-        client.close()
-    return images, len(images)
-
-
 @router.post("/load", response_model=GalleryLoadResponse, summary="加载图库")
-async def load_gallery(request: GalleryLoadRequest):
+async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
+    """加载图库数据（支持本地/在线模式）"""
     try:
         params = request.model_dump()
         source = params.pop("source", "local")
 
         if source == "local":
-            images, total = query_local_database(params)
-            has_more = len(images) >= params.get("page_size", 20)
+            images, total = GalleryService.query_local_database(params)
         else:
-            images, total = query_yande_api(params)
-            has_more = len(images) >= params.get("page_size", 20)
+            images, total = GalleryService.query_yande_api(params)
+
+        has_more = len(images) >= params.get("page_size")
 
         return GalleryLoadResponse(
-            total=total,
-            page=request.page,
-            page_size=request.page_size,
-            has_more=has_more,
-            images=images,
+            message=ErrMsg.OK.msg,
+            data=GalleryData(
+                total=total,
+                page=request.page,
+                page_size=request.page_size,
+                has_more=has_more,
+                images=images,
+            ),
         )
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"加载失败: {str(e)}")
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
-@router.get("/image/{image_id}", response_model=ImageDetail, summary="获取图片详情")
+@router.get(
+    "/image/{image_id}", response_model=ImageDetailResponse, summary="获取图片详情"
+)
 async def get_image_detail(
     image_id: int, source: str = Query("local", description="数据源")
-):
-    try:
-        if source == "local":
-            images, _ = query_local_database({"page": 1, "page_size": 1})
-            for img in images:
-                if img["id"] == image_id:
-                    return ImageDetail(**img)
-        else:
-            images, _ = query_yande_api({"page": 1, "page_size": 100})
-            for img in images:
-                if img["id"] == image_id:
-                    return ImageDetail(**img)
-
+) -> ImageDetailResponse:
+    """获取单张图片详情"""
+    image = GalleryService.get_image_by_id(image_id, source)
+    if not image:
         raise HTTPException(status_code=404, detail="图片不存在")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+    return ImageDetailResponse(message=ErrMsg.OK.msg, data=ImageDetail(**image))
 
 
-@router.get("/preview/{image_id}", summary="获取图片预览")
-async def get_image_preview(image_id: int):
-    return {"preview_url": "", "sample_url": "", "file_url": ""}
+@router.post(
+    "/convert-to-download", response_model=BaseResponse, summary="转换为下载任务"
+)
+async def convert_to_download_task(
+    image_ids: List[int], save_path: str
+) -> BaseResponse:
+    """将图片转换为下载任务"""
+    return BaseResponse(
+        message=f"成功创建 {len(image_ids)} 个下载任务"
+    )
 
 
-@router.post("/convert-to-download", summary="转换为下载任务")
-async def convert_to_download_task(image_ids: List[int], save_path: str):
-    return {"message": f"成功创建 {len(image_ids)} 个下载任务", "task_ids": []}
-
-
-@router.get("/statistics", summary="获取图库统计")
-async def get_gallery_statistics(source: str = Query("local", description="数据源")):
+@router.get("/statistics", response_model=BaseResponse, summary="获取图库统计")
+async def get_gallery_statistics(
+    source: str = Query("local", description="数据源"),
+) -> BaseResponse:
+    """获取图库统计信息"""
     try:
-        if source == "local":
-            images, total = query_local_database({"page": 1, "page_size": 10000})
-            downloaded = total
-        else:
-            total = 0
-            downloaded = 0
-
-        rating_distribution = {"Safe": 0, "Questionable": 0, "Explicit": 0}
-        for img in images:
-            rating = img.get("rating", "Safe")
-            if rating in rating_distribution:
-                rating_distribution[rating] += 1
-
-        return {
-            "total_images": total,
-            "downloaded_images": downloaded,
-            "rating_distribution": rating_distribution,
-            "file_type_distribution": {},
-        }
+        stats = GalleryService.get_statistics(source)
+        return BaseResponse(message=ErrMsg.OK.msg, data=stats)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"统计失败: {str(e)}")
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
-@router.get("/cache/preview/{filename}")
+@router.get("/cache/preview/{filename}", summary="获取预览图文件")
 async def get_preview_image(filename: str):
-    from fastapi.responses import FileResponse
-
-    preview_path = path_constant.previews_dir / filename
+    """获取预览图文件"""
+    preview_path = GalleryService.get_preview_path(filename)
     if preview_path.exists():
         return FileResponse(str(preview_path))
-    return {"error": "Preview not found"}
+    raise HTTPException(status_code=404, detail="预览图不存在")
 
 
-@router.get("/cache/preview/generate/{image_id}")
+@router.get("/cache/preview/generate/{image_id}", summary="生成预览图")
 async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
-    from fastapi.responses import FileResponse, JSONResponse
+    """从原图生成预览图"""
     import asyncio
-    from src.infrastructure.image_cache import ImageCache
 
-    cache = ImageCache()
-    preview_path = cache.get_preview_path(image_id, file_ext)
-
-    if preview_path.exists():
+    preview_path = await asyncio.get_event_loop().run_in_executor(
+        None, GalleryService.generate_preview, image_id, file_ext
+    )
+    if preview_path and preview_path.exists():
         return FileResponse(str(preview_path))
-
-    original_path = cache.get_original_path(image_id, file_ext)
-    if not original_path.exists():
-        return JSONResponse({"error": "Original not found"}, status_code=404)
-
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None, generate_thumbnail, str(original_path), str(preview_path)
-        )
-        if preview_path.exists():
-            return FileResponse(str(preview_path))
-        return JSONResponse({"error": "Failed to generate preview"}, status_code=500)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    raise HTTPException(status_code=404, detail="原图不存在或生成失败")
 
 
-@router.get("/cache/preview/fetch/{image_id}")
+@router.get("/cache/preview/fetch/{image_id}", summary="获取并缓存预览图")
 async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
-    from fastapi.responses import FileResponse, JSONResponse
+    """从远程获取并缓存预览图"""
     import asyncio
-    from src.infrastructure.image_cache import ImageCache
-    from src.dao.yande_data import YandeDataRepository
 
-    cache = ImageCache()
-    preview_path = cache.get_preview_path(image_id, file_ext)
-
-    if preview_path.exists():
+    preview_path = await asyncio.get_event_loop().run_in_executor(
+        None, GalleryService.fetch_and_cache_preview, image_id, file_ext
+    )
+    if preview_path and preview_path.exists():
         return FileResponse(str(preview_path))
-
-    with YandeDataRepository() as repo:
-        image_data = repo.get_by_id(image_id)
-    preview_url = image_data.get("preview_url") if image_data else None
-    if not image_data or not preview_url:
-        return JSONResponse(
-            {"error": "Image not found or no preview_url"}, status_code=404
-        )
-
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None, download_preview_image, preview_url, str(preview_path)
-        )
-        if preview_path.exists():
-            return FileResponse(str(preview_path))
-        return JSONResponse({"error": "Failed to download preview"}, status_code=500)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    raise HTTPException(status_code=404, detail="获取预览图失败")
 
 
-def generate_thumbnail(
-    original_path: str, preview_path: str, max_size: int = THUMBNAIL_MAX_SIZE
-):
-    from PIL import Image
-
-    img = Image.open(original_path)
-    img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-    if img.mode == "RGBA":
-        img = img.convert("RGB")
-    img.save(preview_path, "JPEG", quality=THUMBNAIL_QUALITY)
-
-
-def download_preview_image(preview_url: str, preview_path: str):
-    proxies = config.yande_api.proxies if config.yande_api.proxies else None
-    resp = requests.get(preview_url, proxies=proxies, timeout=TIMEOUT_PREVIEW)
-    if resp.status_code == 200:
-        with open(preview_path, "wb") as f:
-            f.write(resp.content)
-
-
-@router.get("/cache/original/{filename}")
+@router.get("/cache/original/{filename}", summary="获取原图文件")
 async def get_original_image(filename: str):
-    from fastapi.responses import FileResponse
-
-    original_path = path_constant.originals_dir / filename
+    """获取原图文件"""
+    original_path = GalleryService.get_original_path(filename)
     if original_path.exists():
         return FileResponse(str(original_path))
-    return {"error": "Original not found"}
+    raise HTTPException(status_code=404, detail="原图不存在")

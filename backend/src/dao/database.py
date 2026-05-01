@@ -1,22 +1,26 @@
-from sqlalchemy import (
-    create_engine,
-)
-from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.common import config
-from src.models.database.yande import YandeData
+from src.models.database.yande import Base
 import os
 
 
-class Base(DeclarativeBase):
-    pass
+_cached_engine = None
+_cached_session_factory = None
 
 
 def get_db_engine():
+    global _cached_engine
+
+    if _cached_engine is not None:
+        return _cached_engine
+
     use_mariadb = config.database.enable and config.database.host
 
     if use_mariadb:
-        engine = create_engine(
+        _cached_engine = create_engine(
             f"mariadb+mariadbconnector://{config.database.user}:{config.database.password.get_secret_value()}@"
             f"{config.database.host}:{config.database.port}/{config.database.schema_name}"
         )
@@ -27,44 +31,51 @@ def get_db_engine():
             "yande_data.db",
         )
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(bind=engine)
+        _cached_engine = create_engine(
+            f"sqlite:///{db_path}",
+            connect_args={"timeout": 30, "check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=_cached_engine)
 
-    return engine
+    return _cached_engine
 
 
-class MariaDBClient:
-    def __init__(self):
-        self.engine = get_db_engine()
-        self.session = Session(bind=self.engine)
-        self.YandeData = YandeData
+def _get_session_factory():
+    global _cached_session_factory
 
-    def insert_data(self, sql_data: YandeData):
-        self.session.add(sql_data)
-        self.session.commit()
+    if _cached_session_factory is not None:
+        return _cached_session_factory
 
-    def insert_check_by_id(self, _id):
-        q = self.session.query(self.YandeData).filter_by(id=_id).one_or_none()
-        if q is None:
-            return True
+    engine = get_db_engine()
+    _cached_session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    return _cached_session_factory
+
+
+class BaseDAO:
+    def __init__(self, session: Session = None):
+        self._session = session
+
+    def __enter__(self):
+        if self._session is None:
+            self._session = _get_session_factory()()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._session:
+            if exc_type is None:
+                self._session.commit()
+            else:
+                self._session.rollback()
+            self._session.close()
         return False
 
-    def insert_by_id(self, _id, sql_data: YandeData):
-        if self.insert_check_by_id(_id):
-            self.insert_data(sql_data)
-
-    def update_down_flag(self, _id: int, down_flag: bool = True):
-        try:
-            record = self.session.query(self.YandeData).filter_by(id=_id).first()
-            if record:
-                record.down_flag = down_flag
-                self.session.commit()
-                return True
-            return False
-        except Exception as e:
-            self.session.rollback()
-            print(f"Update down_flag failed: {e}")
-            return False
-
-    def close(self):
-        self.session.close()
+    @property
+    def session(self) -> Session:
+        if self._session is None:
+            try:
+                from src.middleware.session import RequestSessionMiddleware
+                self._session = RequestSessionMiddleware.get_session()
+            except Exception:
+                self._session = _get_session_factory()()
+        return self._session

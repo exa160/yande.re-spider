@@ -4,12 +4,14 @@ import time
 from datetime import datetime
 from typing import Optional, List, Dict
 
+import requests
 from loguru import logger
 
-from src.common import config
+from src.common import config, path_constant
 from src.common.constant import TaskStatus
-from src.models.database import yande as yande_db
-
+from src.common.utils import get_proxy
+from src.infrastructure.downloader import MultiDown
+    
 
 class TaskStore:
     # 任务字段映射配置: 外部字段名 -> 内部字段名 (None 表示同名)
@@ -87,6 +89,7 @@ class TaskStore:
         with self._lock:
             if task_id in self._tasks:
                 self._tasks[task_id].update(updates)
+            # TODO 更新数据库：目前只更新内存中的任务状态，后续需要增加数据库更新逻辑 --- IGNORE ---
 
     def delete_task(self, task_id: str) -> bool:
         with self._lock:
@@ -105,6 +108,7 @@ class DownloadQueue:
         self._workers: List[asyncio.Task] = []
         self._running = False
         self._max_concurrent = 3
+        self._semaphore = asyncio.Semaphore(config.downloader.max_concurrent_tasks)
 
     async def _worker(self, worker_id: int):
         while self._running:
@@ -117,8 +121,7 @@ class DownloadQueue:
                 self._queue.put_nowait(task_id)
                 break
 
-            semaphore = asyncio.Semaphore(config.downloader.max_concurrent_tasks)
-            async with semaphore:
+            async with self._semaphore:
                 await run_download_async(task_id)
             self._queue.task_done()
 
@@ -150,13 +153,7 @@ class DownloadQueue:
         return sum(1 for w in self._workers if not w.done())
 
 
-download_queue = DownloadQueue()
-
-
 async def run_download_async(task_id: str):
-    from src.infrastructure.downloader import MultiDown
-    from src.common import path_constant
-
     task = task_store.get_task(task_id)
     if not task:
         return
@@ -170,9 +167,7 @@ async def run_download_async(task_id: str):
     )
 
     try:
-        import os
         import hashlib
-        from pathlib import Path
 
         originals_dir = path_constant.originals_dir
         previews_dir = path_constant.previews_dir
@@ -239,7 +234,7 @@ async def run_download_async(task_id: str):
 
             try:
                 # 在线程池中执行同步下载代码，避免阻塞事件循环
-                await asyncio.to_thread(
+                multi_down = await asyncio.to_thread(
                     MultiDown,
                     url=task["file_url"],
                     file_path=str(originals_dir),
@@ -249,6 +244,7 @@ async def run_download_async(task_id: str):
                     _id=task["image_id"],
                     _progress_callback=progress_callback,
                 )
+                await asyncio.to_thread(multi_down.start)
             except Exception as download_err:
                 download_failed = True
                 error_message = f"下载失败: {str(download_err)}"
@@ -259,14 +255,9 @@ async def run_download_async(task_id: str):
             preview_path = previews_dir / f"{task['image_id']}.{file_ext}"
             if not preview_path.exists():
                 try:
-                    import requests
-
-                    proxies = (
-                        config.yande_api.proxies if config.yande_api.proxies else None
-                    )
                     # 在线程池中执行同步下载代码
                     resp = await asyncio.to_thread(
-                        requests.get, preview_url, proxies=proxies, timeout=10
+                        requests.get, preview_url, proxies= get_proxy(), timeout=10
                     )
                     if resp.status_code == 200:
                         with open(preview_path, "wb") as f:
@@ -275,58 +266,7 @@ async def run_download_async(task_id: str):
                 except Exception as e:
                     logger.warning(f"Failed to download preview: {e}")
 
-        try:
-            from src.dao import MariaDBClient
-            from src.models.yande import Rating
-            from datetime import datetime as dt
-
-            client = MariaDBClient()
-            if not client.update_down_flag(task["image_id"], True):
-                rating_str = task.get("rating", "s")
-                if rating_str in ["Safe", "s", "S"]:
-                    rating = Rating.S
-                elif rating_str in ["Questionable", "q", "Q"]:
-                    rating = Rating.R15
-                else:
-                    rating = Rating.R18
-
-                file_ext = (
-                    task.get("file_name", "jpg").rsplit(".", 1)[-1]
-                    if "." in task.get("file_name", "jpg")
-                    else "jpg"
-                )
-
-                new_record = yande_db.YandeData(
-                    id=task["image_id"],
-                    tags=task.get("tags", ""),
-                    created_at=dt.now(),
-                    updated_at=dt.now(),
-                    creator_id=None,
-                    author=task.get("author", ""),
-                    change=0,
-                    source=task["file_url"],
-                    score=0,
-                    md5=task.get("md5", ""),
-                    file_size=task.get("total_size", 0),
-                    file_ext=file_ext,
-                    file_url=task["file_url"],
-                    is_shown_in_index=True,
-                    preview_url=task["file_url"].replace("images", "previews"),
-                    width=task.get("width", 0),
-                    height=task.get("height", 0),
-                    rating=rating,
-                    is_rating_locked=False,
-                    has_children=False,
-                    parent_id=None,
-                    status="active",
-                    is_pending=False,
-                    is_held=False,
-                    down_flag=True,
-                )
-                client.insert_data(new_record)
-            client.close()
-        except Exception as db_err:
-            logger.error(f"Failed to update database: {db_err}")
+        
 
         if download_failed:
             task_store.update_task(
@@ -337,7 +277,10 @@ async def run_download_async(task_id: str):
                     "completed_at": datetime.now().isoformat(),
                 },
             )
+            # 更新数据库：尝试更新 down_flag，如果记录不存在则插入新记录
+            db_updated = await _update_image_database(task, True)
         else:
+            db_updated = await _update_image_database(task, False)
             task_store.update_task(
                 task_id,
                 {
@@ -346,7 +289,102 @@ async def run_download_async(task_id: str):
                     "completed_at": datetime.now().isoformat(),
                 },
             )
+        if not db_updated:
+            logger.warning(f"Database update skipped for image {task['image_id']}")
     except Exception as e:
         task_store.update_task(
             task_id, {"status": TaskStatus.FAILED, "error_message": str(e)}
         )
+
+
+async def _update_image_database(task: dict, down_flag: bool) -> bool:
+    """
+    更新图片数据库（down_flag 和记录）
+
+    Args:
+        task: 下载任务数据
+        down_flag: 下载标志
+
+    Returns:
+        是否更新成功
+    """
+    try:
+        from src.dao.yande_data import YandeDataRepository
+        from src.models.yande import Rating
+
+        # 构建入库数据（从 task 数据）
+        rating_str = task.get("rating", "s")
+        if rating_str in ["Safe", "s", "S"]:
+            rating = Rating.S
+        elif rating_str in ["Questionable", "q", "Q"]:
+            rating = Rating.R15
+        else:
+            rating = Rating.R18
+
+        # 创建模拟的 YandePostItem 数据结构用于 upsert
+        class TaskAsYandeItem:
+            """将 task 数据转换为 YandePostItem 格式"""
+
+            def __init__(self, task_data: dict, rating_val: Rating):
+                self.id = task_data.get("image_id", 0)
+                self.tags = task_data.get("tags", "")
+                self.created_at = datetime.now()
+                self.updated_at = datetime.now()
+                self.creator_id = None
+                self.author = task_data.get("author", "")
+                self.change = 0
+                self.source = task_data.get("file_url", "")
+                self.score = 0
+                self.md5 = task_data.get("md5", "")
+                self.file_size = task_data.get("total_size", 0)
+                self.file_ext = ''
+                self.file_url = task_data.get("file_url", "")
+                self.is_shown_in_index = True
+                # 尝试从 task 获取 preview_url，否则从 file_url 推导
+                preview_url = task_data.get("preview_url")
+                if not preview_url and task_data.get("file_url"):
+                    preview_url = task_data["file_url"].replace("images", "previews")
+                self.preview_url = preview_url or ""
+                self.preview_width = 0
+                self.preview_height = 0
+                self.actual_preview_width = 0
+                self.actual_preview_height = 0
+                self.sample_url = ""
+                self.sample_width = 0
+                self.sample_height = 0
+                self.sample_file_size = 0
+                self.jpeg_url = ""
+                self.jpeg_width = 0
+                self.jpeg_height = 0
+                self.jpeg_file_size = 0
+                self.rating = rating_val
+                self.is_rating_locked = False
+                self.has_children = False
+                self.parent_id = None
+                self.status = "active"
+                self.is_pending = False
+                self.width = task_data.get("width", 0)
+                self.height = task_data.get("height", 0)
+                self.is_held = False
+
+        # TODO: 任务信息不使用无效字段，图片入库信息以post.json接口传入数据为准，不用以下数据
+        yande_item = TaskAsYandeItem(task, rating)
+
+        with YandeDataRepository() as repo:
+            # 尝试更新 down_flag
+            updated = repo.update_down_flag(task["image_id"], down_flag)
+
+            if not updated:
+                # 记录不存在，使用 upsert 插入（与 query_yande_api 流程相似）
+                repo.upsert(yande_item)
+                logger.info(f"Image {task['image_id']} inserted via task data")
+            else:
+                logger.info(f"Image {task['image_id']} down_flag updated")
+
+        return True
+    except Exception as db_err:
+        logger.error(f"Failed to update database: {db_err}")
+        return False
+
+
+download_queue = DownloadQueue()

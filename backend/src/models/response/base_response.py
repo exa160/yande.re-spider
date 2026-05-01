@@ -14,7 +14,7 @@ class BaseResponse(BaseModel, Generic[T]):
     e.g.:
     {"code": "0000","message": "OK.","data":""}
     """
-    code: str = '0000'
+    code: str = ErrMsg.OK.code
     message: Optional[str | ErrMsg] = ErrMsg.OK.msg
     data: Optional[T] = None
 
@@ -39,4 +39,4 @@ class PaginatedResponse(BaseResponse[T]):
 
 
 class ErrorResponse(BaseResponse[T]):
-    code: str = '9999'
+    code: str = ErrMsg.INTERNAL_ERROR.code

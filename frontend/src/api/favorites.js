@@ -9,9 +9,9 @@ export function getAllFolders() {
   return api.get('/favorites')
 }
 
-// 获取收藏夹及图片数量
-export function getFoldersWithCount() {
-  return api.get('/favorites/with-count')
+// 获取收藏夹及图片预览，TODO: 文件夹图标带预览图
+export function getFoldersWithPreview() {
+  return api.get('/favorites/with-preview')
 }
 
 // 获取单个收藏夹详情
@@ -61,7 +61,6 @@ export function refreshOnlineCount(folderId) {
 
 export default {
   getAllFolders,
-  getFoldersWithCount,
   getFolder,
   createFolder,
   updateFolder,
