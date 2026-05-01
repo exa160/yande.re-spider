@@ -1,10 +1,8 @@
 import inspect
-import os
 import importlib.util
 import traceback
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
 
 from fastapi import FastAPI, APIRouter
 from loguru import logger

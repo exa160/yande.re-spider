@@ -9,11 +9,18 @@
     <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }">
       <!-- 一级搜索栏 -->
       <div class="search-bar">
-        <div class="search-input-wrapper" :class="{ 'has-input-tags': selectedTags.length > 0 }">
+        <div class="search-input-wrapper" :class="{ 'has-input-tags': selectedTags.length > 0 || selectedFavorite }">
           <el-icon class="search-icon"><Search /></el-icon>
           <!-- 输入框前缀：选中的标签 -->
-          <div class="input-tags-container" v-if="selectedTags.length > 0">
+          <div class="input-tags-container" v-if="selectedTags.length > 0 || selectedFavorite">
             <div class="input-tags-wrapper">
+              <span
+                v-if="selectedFavorite"
+                class="input-tag favorite-tag"
+              >
+                ★ {{ selectedFavorite.name }}
+                <el-icon class="input-tag-close" @click.stop="clearSelectedFavorite"><Close /></el-icon>
+              </span>
               <span
                 v-for="tag in selectedTags"
                 :key="tag"
@@ -55,9 +62,12 @@
                   :key="folder.id"
                   class="favorite-item"
                   @click="selectFavorite(folder)"
-                  @touchstart.passive="handleTouchStart(folder, $event)"
-                  @touchend="handleTouchEnd(folder)"
-                  @touchmove.passive="handleTouchMove"
+                  @mousedown.prevent="handlePressStart(folder, $event)"
+                  @mouseup="handlePressEnd(folder)"
+                  @mousemove="handlePressMove"
+                  @touchstart.passive="handlePressStart(folder, $event)"
+                  @touchend="handlePressEnd(folder)"
+                  @touchmove.passive="handlePressMove"
                 >
                   <div class="favorite-icon" :style="{ backgroundColor: folder.color }">
                     <el-icon><Star v-if="folder.icon === 'star'" /><Folder v-else /></el-icon>
@@ -383,7 +393,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getFoldersWithCount, createFolder, deleteFolder } from '@/api/favorites'
+import { getAllFolders, createFolder, deleteFolder } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
 
 const props = defineProps({
@@ -482,7 +492,7 @@ const loadTags = async () => {
       params.has_local_only = true
     }
     const res = await tagCacheApi.getTagsWithStats(params)
-    tagList.value = res.tags || []
+    tagList.value = res.data?.tags || []
   } catch (error) {
     console.error('加载标签失败:', error)
     tagList.value = []
@@ -561,7 +571,8 @@ const favoriteTag = async (tag) => {
 
 const loadFavoriteFolders = async () => {
   try {
-    favoriteFolders.value = await getFoldersWithCount()
+    const res = await getAllFolders()
+    favoriteFolders.value = res.data || []
   } catch (error) {
     console.error('加载收藏夹失败:', error)
   }
@@ -571,12 +582,16 @@ const loadFavoriteFolders = async () => {
 let pressTimer = null
 let pressTarget = null
 let isLongPress = false
+let pressMoved = false
+let longPressDialogOpen = false // 标记长按弹窗是否打开中
 
-const handleTouchStart = (folder, event) => {
+const handlePressStart = (folder, event) => {
   isLongPress = false
+  pressMoved = false
   pressTarget = folder
   pressTimer = setTimeout(() => {
     isLongPress = true
+    longPressDialogOpen = true
     ElMessageBox.confirm(`确定删除收藏夹「${folder.name}」？`, '提示', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
@@ -589,27 +604,31 @@ const handleTouchStart = (folder, event) => {
       } catch (error) {
         ElMessage.error('删除失败')
       }
-    }).catch(() => {})
+    }).catch(() => {}).finally(() => {
+      longPressDialogOpen = false
+    })
   }, 500)
 }
 
-const handleTouchEnd = (folder) => {
-  if (pressTimer) {
-    clearTimeout(pressTimer)
-    pressTimer = null
-  }
-  if (!isLongPress && pressTarget && pressTarget.id === folder.id) {
-    selectFavorite(folder)
-  }
-  pressTarget = null
-}
-
-const handleTouchMove = () => {
+const handlePressMove = () => {
+  pressMoved = true
   if (pressTimer) {
     clearTimeout(pressTimer)
     pressTimer = null
     pressTarget = null
   }
+}
+
+const handlePressEnd = (folder) => {
+  if (pressTimer) {
+    clearTimeout(pressTimer)
+    pressTimer = null
+  }
+  if (!isLongPress && !pressMoved && pressTarget && pressTarget.id === folder.id) {
+    selectFavorite(folder)
+  }
+  pressTarget = null
+  pressMoved = false
 }
 
 const toggleFavoritePanel = () => {
@@ -623,6 +642,7 @@ const toggleFavoritePanel = () => {
 }
 
 const handleClickOutside = (e) => {
+  if (longPressDialogOpen) return
   const container = document.querySelector('.advanced-query-container')
   if (container && !container.contains(e.target)) {
     showFavoritePanel.value = false
@@ -669,6 +689,12 @@ const confirmSubscribe = async () => {
 // 构建当前搜索的 tags 字符串
 const buildCurrentTagsString = () => {
   const parts = []
+
+  // 收藏夹标签
+  if (selectedFavorite.value?.tags) {
+    const favTags = parseFavoriteTagsToParts(selectedFavorite.value.tags)
+    parts.push(...favTags)
+  }
 
   // 基础标签 - 使用 selectedTags
   if (selectedTags.value.length > 0) {
@@ -745,9 +771,14 @@ const buildCurrentTagsString = () => {
 
 // 选择收藏夹
 const selectFavorite = (folder) => {
-  const params = parseFavoriteTagsToParams(folder.tags)
-  emit('search', { mode: props.sourceMode, params, favorite: folder })
+  selectedFavorite.value = folder
   showFavoritePanel.value = false
+  handleSearch()
+}
+
+const clearSelectedFavorite = () => {
+  selectedFavorite.value = null
+  handleSearch()
 }
 
 // 解析收藏夹的 tags 字符串为查询参数
@@ -800,6 +831,29 @@ const parseFavoriteTagsToParams = (tagsStr) => {
   return params
 }
 
+// 解析收藏夹的 tags 字符串为标签数组（用于显示）
+const parseFavoriteTagsToParts = (tagsStr) => {
+  if (!tagsStr) return []
+  return tagsStr.split(/\s+/).filter(part => {
+    return !part.startsWith('rating:') &&
+           !part.startsWith('score:>=') &&
+           !part.startsWith('score:<=') &&
+           !part.startsWith('order:') &&
+           !part.startsWith('width:>=') &&
+           !part.startsWith('width:<=') &&
+           !part.startsWith('height:>=') &&
+           !part.startsWith('height:<=') &&
+           !part.startsWith('ext:') &&
+           !part.startsWith('id:>=') &&
+           !part.startsWith('id:<=') &&
+           !part.startsWith('mpixels:>=') &&
+           !part.startsWith('mpixels:<=') &&
+           !part.startsWith('ratio:') &&
+           !part.startsWith('date:>=') &&
+           !part.startsWith('date:<=')
+  })
+}
+
 // 颜色选项
 const colorOptions = [
   '#409EFF', // 蓝色
@@ -819,6 +873,9 @@ const searchText = ref('')
 
 // 选中的标签列表（多标签搜索）
 const selectedTags = ref([])
+
+// 选中的收藏夹
+const selectedFavorite = ref(null)
 
 // 选项配置
 const ratingOptions = [
@@ -1049,8 +1106,12 @@ const parseTags = (text) => {
 // 构建搜索参数字符串（用于本地模式）
 // 构建本地模式搜索参数
 const buildLocalParams = () => {
-  // 使用 selectedTags 构建标签字符串
-  const tags = selectedTags.value.join(' ')
+  // 合并收藏夹标签和用户选择的标签
+  const favTags = selectedFavorite.value?.tags
+    ? parseFavoriteTagsToParts(selectedFavorite.value.tags)
+    : []
+  const allTags = [...favTags, ...selectedTags.value]
+  const tags = allTags.join(' ')
 
   return {
     tags: tags || undefined,
@@ -1072,8 +1133,12 @@ const buildLocalParams = () => {
 
 // 构建在线模式搜索参数（后端 search_trans 转换）
 const buildOnlineParams = () => {
-  // 使用 selectedTags 构建标签字符串
-  const tags = selectedTags.value.join(' ')
+  // 合并收藏夹标签和用户选择的标签
+  const favTags = selectedFavorite.value?.tags
+    ? parseFavoriteTagsToParts(selectedFavorite.value.tags)
+    : []
+  const allTags = [...favTags, ...selectedTags.value]
+  const tags = allTags.join(' ')
 
   return {
     tags: tags || undefined,
@@ -1107,7 +1172,7 @@ const buildOnlineParams = () => {
 const handleSearch = () => {
   const mode = props.sourceMode || 'local'
   const params = mode === 'local' ? buildLocalParams() : buildOnlineParams()
-  emit('search', { mode, params })
+  emit('search', { mode, params, favorite: selectedFavorite.value })
 }
 
 // 应用并搜索
@@ -1121,6 +1186,7 @@ defineExpose({
   reset: () => {
     searchText.value = ''
     selectedTags.value = []
+    selectedFavorite.value = null
     resetParams()
     showAdvanced.value = false
   }
@@ -1296,6 +1362,11 @@ html.dark-mode .search-panel {
   font-size: 13px;
   color: var(--el-color-primary);
   cursor: default;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .input-tag-close {

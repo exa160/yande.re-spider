@@ -8,10 +8,10 @@ from src.middleware.downloader import DownloadMiddleware
 from src.middleware.errors import ErrorHandleMiddleware
 from src.middleware.frontend_static import FrontendStaticLoader
 from src.middleware.loggers import LoggerMiddleware
+from src.middleware.session import RequestSessionMiddleware
 
 
 def init_app(app: FastAPI) -> FastAPI:
-    # 配置CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -19,13 +19,13 @@ def init_app(app: FastAPI) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    # 初始化中间件
+    RequestSessionMiddleware.init_app(app)
     DownloadMiddleware.init_app(app)
     APILoader.init_app(app)
     LoggerMiddleware.init_app(app, path_constant.log_dir)
     ErrorHandleMiddleware.init_app(app)
     FrontendStaticLoader.init_app(app)
 
-    logger.info("Flask application initialized successfully")
+    logger.info("FastAPI application initialized successfully")
 
     return app

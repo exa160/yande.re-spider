@@ -7,16 +7,19 @@ database:
   schema_name: Pictures
   datatable: YandeRE
 yande_api:
-  retry: 3
+  proxy_enable: true
   proxies:
-    http: ''
-    https: ''
+    http: http://192.168.100.222:20171
+    https: http://192.168.100.222:20171
+  timeout: 30
+  retry: 5
   headers:
-    user_agent: ''
-    accept: ''
-    accept_language: ''
+    user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0'
+    accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
+    accept_language: 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6'
 downloader:
   thread_num: 4
-  max_concurrent_tasks: 3
+  max_concurrent_tasks: 5
   chunk_size: 10240
   split_size: 52428800
+  retry_times: 3

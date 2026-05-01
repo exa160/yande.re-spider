@@ -1,19 +1,18 @@
 import os
+from loguru import logger
 import requests
 from pathlib import Path
 from typing import Optional, Tuple
 
 from src.common import config, path_constant
-
+from src.common.utils import get_proxy
 
 class ImageCache:
     def __init__(self):
-        self.DOWNLOADS_DIR = path_constant.download_dir
         self.PREVIEWS_DIR = path_constant.previews_dir
         self.ORIGINALS_DIR = path_constant.originals_dir
 
     def _ensure_dirs(self):
-        self.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
         self.PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
         self.ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -44,14 +43,14 @@ class ImageCache:
             return str(preview_path)
 
         try:
-            resp = requests.get(preview_url, proxies=self._get_proxy(), timeout=10)
+            resp = requests.get(preview_url, proxies=get_proxy(), timeout=10)
             if resp.status_code == 200:
                 self._ensure_dirs()
                 with open(preview_path, "wb") as f:
                     f.write(resp.content)
                 return str(preview_path)
         except Exception as e:
-            print(f"Failed to download preview {preview_url}: {e}")
+            logger.error(f"Failed to download preview {preview_url}: {e}")
 
         return None
 
@@ -64,14 +63,14 @@ class ImageCache:
             return str(original_path)
 
         try:
-            resp = requests.get(file_url, proxies=self._get_proxy(), timeout=30)
+            resp = requests.get(file_url, proxies=get_proxy(), timeout=30)
             if resp.status_code == 200:
                 self._ensure_dirs()
                 with open(original_path, "wb") as f:
                     f.write(resp.content)
                 return str(original_path)
         except Exception as e:
-            print(f"Failed to download original {file_url}: {e}")
+            logger.error(f"Failed to download original {file_url}: {e}")
 
         return None
 
@@ -81,11 +80,6 @@ class ImageCache:
         preview_exists = self.get_preview_path(image_id, file_ext).exists()
         original_exists = self.get_original_path(image_id, file_ext).exists()
         return preview_exists, original_exists
-
-    def _get_proxy(self) -> Optional[dict]:
-        if config.yande_api.proxies:
-            return config.yande_api.proxies
-        return None
 
 
 cache = ImageCache()

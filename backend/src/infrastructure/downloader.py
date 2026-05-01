@@ -7,6 +7,7 @@ from time import sleep
 from typing import Optional
 
 from pydantic import BaseModel
+from src.common.utils import get_proxy
 from filelock import FileLock
 
 import requests
@@ -54,17 +55,29 @@ class MultiDown:
         self.progress_lock = Lock()
         self.progress_callback = _progress_callback
         self._progress_buffer = []
+        self._file_info = None  # 延迟初始化
         if file_size == 0:
             file_size = self.get_file_size(url)
         file_name = sanitize_filename(file_name)
-        self.file_info = FileInfo(
+        self._file_info = FileInfo(
             url=url,
             id=_id,
             file_path=os.path.join(file_path, file_name),
             file_size=file_size,
             md5=_md5,
         )
-        self.start()
+        # 不再这里调用 start()，改为显式调用
+
+    @property
+    def file_info(self):
+        return self._file_info
+
+    def __del__(self):
+        if hasattr(self, 'data_q') and self.data_q:
+            try:
+                self.close_event.set()
+            except Exception:
+                pass
 
     @staticmethod
     def get_file_size(_url):
@@ -72,8 +85,8 @@ class MultiDown:
             requests.get(
                 _url,
                 stream=True,
-                proxies=config.yande_api.proxies,
-                headers=config.yande_api.headers,
+                proxies=get_proxy(),
+                headers=config.yande_api.headers.model_dump(by_alias=True),
             )
         ) as res:
             file_size = int(res.headers.get("Content-Length", "0"))
@@ -105,14 +118,13 @@ class MultiDown:
                     else:
                         headers.update({"Range": f"bytes={current_start}-{e}"})
                 headers.update(config.yande_api.headers)
-
                 with closing(
                     requests.get(
                         url,
                         stream=True,
-                        proxies=config.yande_api.proxies,
+                        proxies=get_proxy(),
                         headers=headers,
-                        timeout=50,
+                        timeout=config.yande_api.timeout,
                     )
                 ) as res:
                     for chunk in res.iter_content(
@@ -205,95 +217,36 @@ class MultiDown:
         if num_chunks < 1:
             num_chunks = 1
 
-        if num_chunks == 1:
-            self._download_single_threaded(file_size)
-            return
+        with  ThreadPoolExecutor(max_workers=self.thread_num) as executor:
+            executor_pool = []
 
-        executor = ThreadPoolExecutor(max_workers=self.thread_num)
-        executor_pool = []
+            for s_offset in range(0, file_size, split_size):
+                e_offset = s_offset + split_size - 1
+                if e_offset >= file_size - 1:
+                    e_offset = file_size - 1
 
-        for s_offset in range(0, file_size, split_size):
-            e_offset = s_offset + split_size - 1
-            if e_offset >= file_size - 1:
-                e_offset = file_size - 1
-
-            t = executor.submit(
-                self.get_content,
-                self.file_info.url,
-                self.file_info.id,
-                s_offset,
-                e_offset,
-                self.data_q,
-                self.progress_lock,
-                self.progress_callback,
-            )
-            t.add_done_callback(
-                lambda x: logger.warning(x.exception()) if x.exception() else ""
-            )
-            executor_pool.append(t)
-
-        for t in as_completed(executor_pool):
-            t.result()
-
-    def _download_single_threaded(self, file_size):
-        downloaded_size = 0
-        content_data = []
-        headers = {"authority": "files.yande.re", "Referer": "https://yande.re/"}
-        headers.update(config.yande_api.headers)
-
-        for retry in range(config.downloader.retry_times):
-            try:
-                with closing(
-                    requests.get(
-                        self.file_info.url,
-                        stream=True,
-                        proxies=config.yande_api.proxies,
-                        headers=headers,
-                        timeout=50,
-                    )
-                ) as res:
-                    for chunk in res.iter_content(
-                        chunk_size=config.downloader.chunk_size
-                    ):
-                        if chunk:
-                            downloaded_size += len(chunk)
-                            content_data.append(chunk)
-                            if self.progress_callback and self.progress_lock:
-                                with self.progress_lock:
-                                    self.progress_callback(len(chunk) / 1024 / 1024)
-
-                self.data_q.put([0, file_size - 1, b"".join(content_data)])
-                return
-            except requests.exceptions.Timeout:
-                logger.warning(
-                    f"[{self.file_info.id}] single-thread download timeout {retry}"
+                t = executor.submit(
+                    self.get_content,
+                    self.file_info.url,
+                    self.file_info.id,
+                    s_offset,
+                    e_offset,
+                    self.data_q,
+                    self.progress_callback,
                 )
-                sleep(6)
-            except requests.exceptions.RequestException as err:
-                logger.warning(
-                    f"[{self.file_info.id}] single-thread network error {retry}: {err}"
+                t.add_done_callback(
+                    lambda x: logger.warning(x.exception()) if x.exception() else ""
                 )
-                sleep(6)
-            except IOError as err:
-                logger.warning(
-                    f"[{self.file_info.id}] single-thread IO error {retry}: {err}"
-                )
-                sleep(6)
-            except Exception as err:
-                logger.warning(
-                    f"[{self.file_info.id}] single-thread unexpected error {retry}: {err}"
-                )
-                sleep(6)
+                executor_pool.append(t)
 
-        raise DownloadException(
-            f"Single-thread download failed after {config.downloader.retry_times} retries"
-        )
+            for t in as_completed(executor_pool):
+                t.result()
 
     def start(self):
         max_retries = config.downloader.retry_times
         last_exception = None
 
-        for attempt in range(max_retries):
+        for _ in range(max_retries):
             self.data_q = Queue()
             self.close_event.clear()
 

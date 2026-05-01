@@ -566,7 +566,7 @@ const getPreviewUrl = (image) => {
   
   if (props.sourceMode === 'local') {
     if (image.local_preview_path) {
-      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}${tsSuffix}`
+      return `/api/v1/gallery/cache/preview/${image.local_preview_path}${tsSuffix}`
     }
     if (image.local_file_path) {
       return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`

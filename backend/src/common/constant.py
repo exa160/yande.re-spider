@@ -32,7 +32,6 @@ class ConstantModel(BaseModel):
 class CommonConstant(ConstantModel):
     supported_image_exts: list[str] = ["jpg", "jpeg", "png", "gif", "webp"]
     file_write_placeholder: bytes = b"\x00"
-    
 
 
 # ==================== 路径配置 ====================
@@ -52,14 +51,15 @@ class PathConstant(ConstantModel):
 
 class YandeAPIConstant(ConstantModel):
     base_url: str = "https://yande.re"
-    post_api: str = f"{base_url}/post.json"
-    tag_api: str = f"{base_url}/post.json"
+    post_json_api: str = f"{base_url}/post.json"
+    post_xml_api: str = f"{base_url}/post.xml"
+    tag_json_api: str = f"{base_url}/tag.json"
+    artist_json_api: str = f"{base_url}/artist.json"
     files_host: str = "files.yande.re"
     referer: str = f"{base_url}/"
 
 
-class DownloadConstant(ConstantModel):
-    ...
+class DownloadConstant(ConstantModel): ...
 
 
 # ==================== 任务状态 ====================
@@ -100,13 +100,39 @@ class BaseMsgEnum(Enum):
 
 
 class ErrMsg(BaseMsgEnum):
+    # 无异常
     OK = ("0000", "OK.")
     CONFIG_UPDATE_SUCCESS = ("0000", "Config update successful.")
 
+    # 通用错误
+    QUERY_ERROR = ("0001", "Query error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    CREATE_ERROR = ("0002", "Create error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    UPDATE_ERROR = ("0003", "Update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    DELETE_ERROR = ("0004", "Delete error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    NOT_FOUND = ("0005", "Resource not found.", HTTPStatus.NOT_FOUND)
+    PARAM_ERROR = ("0006", "Invalid parameter.", HTTPStatus.BAD_REQUEST)
+    LOAD_YANDE_DATA_ERROR = ("0007", "Failed to load yande data.", HTTPStatus.INTERNAL_SERVER_ERROR)
+        
+
+    # 配置相关
     CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
     CONFIG_RESET_ERROR = ("1002", "Config reset error.", HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    NOT_FOUND_ERROR = ("1404", "Frontend not found.", HTTPStatus.NOT_FOUND)
+    # 收藏夹
+    REFRESH_LOCAL_COUNT_FAILED = ("2001", "Failed to refresh local count.", HTTPStatus.OK)   #  刷新本地数量失败，但不影响主流程，返回 200 并在消息中说明
+    FAVORITE_FOLDER_NOT_FOUND = ("2404", "Favorite folder not found.", HTTPStatus.NOT_FOUND)
+
+    # 下载任务
+    TASK_START_ERROR = ("3001", "Failed to start task.", HTTPStatus.BAD_REQUEST)
+    TASK_PAUSE_ERROR = ("3002", "Failed to pause task.", HTTPStatus.BAD_REQUEST)
+    TASK_RESUME_ERROR = ("3003", "Failed to resume task.", HTTPStatus.BAD_REQUEST)
+    TASK_CANCEL_ERROR = ("3004", "Failed to cancel task.", HTTPStatus.BAD_REQUEST)
+    TASK_NOT_FOUND = ("3404", "Download task not found.", HTTPStatus.NOT_FOUND)
+
+    NOT_FOUND_ERROR = ("x404", "Frontend not found.", HTTPStatus.NOT_FOUND)
+
+    INTERNAL_ERROR = ("9999", "Internal server error.", HTTPStatus.INTERNAL_SERVER_ERROR)
+
 
 
 path_constant = PathConstant()

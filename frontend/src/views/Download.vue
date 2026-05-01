@@ -211,7 +211,8 @@ const loadTasks = async (showLoading = true) => {
         page_size: pageSize.value
       }
     })
-    tasks.value = response.tasks || []
+    const data = response.data
+    tasks.value = Array.isArray(data) ? data : []
     total.value = response.total || 0
     
     if (hasActiveTasks.value) {

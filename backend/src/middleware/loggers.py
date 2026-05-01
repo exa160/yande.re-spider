@@ -8,6 +8,7 @@ from loguru import logger
 
 class InterceptHandler(logging.Handler):
     """将标准 logging 日志重定向到 loguru"""
+
     def emit(self, record):
         # 获取对应的 loguru 级别
         try:
@@ -28,7 +29,7 @@ class InterceptHandler(logging.Handler):
 
 class LoggerMiddleware:
     @staticmethod
-    def init_app(_: FastAPI, log_dir: str = "logs", log_level: str = "INFO"):
+    def init_app(_: FastAPI, log_dir: Path | str = "logs", log_level: str = "INFO"):
         """
         初始化 loguru 日志系统，支持应用日志和 uvicorn 日志分离
 
@@ -48,11 +49,11 @@ class LoggerMiddleware:
         logger.add(
             sys.stderr,
             format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-                   "<level>{level: <8}</level> | "
-                   "<cyan>{name}</cyan>:"
-                   "<cyan>{function}</cyan>:"
-                   "<cyan>{line}</cyan> - "
-                   "<level>{message}</level>",
+            "<level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:"
+            "<cyan>{function}</cyan>:"
+            "<cyan>{line}</cyan> - "
+            "<level>{message}</level>",
             level=log_level,
             colorize=True,
         )
@@ -64,10 +65,10 @@ class LoggerMiddleware:
             retention="10 days",
             compression="zip",
             format="{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                   "{level: <8} | {name}:{function}:{line} - {message}",
+            "{level: <8} | {name}:{function}:{line} - {message}",
             level=log_level,
             enqueue=True,
-            filter=lambda record: not record["name"].startswith("uvicorn")
+            filter=lambda record: not record["name"].startswith("uvicorn"),
         )
 
         # uvicorn 日志单独存放
@@ -77,14 +78,16 @@ class LoggerMiddleware:
             retention="10 days",
             compression="zip",
             format="{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                   "{level: <8} | {name}:{function}:{line} - {message}",
+            "{level: <8} | {name}:{function}:{line} - {message}",
             level=log_level,
             enqueue=True,
-            filter=lambda record: record["name"].startswith("uvicorn")
+            filter=lambda record: record["name"].startswith("uvicorn"),
         )
 
         # 拦截标准 logging 日志
-        logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
+        logging.basicConfig(
+            handlers=[InterceptHandler()], level=logging.INFO, force=True
+        )
 
         # 设置 uvicorn 相关 logger 的处理器（确保被拦截）
         # for name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"]:

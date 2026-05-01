@@ -1,7 +1,7 @@
 # Yande.re Spider Next
 
-基于 Python 3.12 + FastAPI + Vue.js 3 的 yande.re **图片下载管理系统** 
-~~ next分支的代码基于旧项目代码大量使用了Minimax M2.7 + vibe coding创作，含人量极低，架构不合理部分需最后整理优化。 ~~
+基于 Python 3.12 + FastAPI + Vue.js 3 的 yande.re **图片下载管理系统**
+
 ## 特点介绍
 
 你是否经常在 yande.re 下载图片？
@@ -12,10 +12,10 @@
 
 - ✅ 支持文件下载并支持网页查询
 - ✅ 支持高级搜索（标签、评分、格式、分辨率等多维度过滤）
-- ✅ 支持 tag 收藏夹（规划中）
-- ✅ 支持以搜索条件启动定时任务（规划中）
-- ✅ 支持本地空间压缩，heif格式压缩占用空间是原来的1/10并且画质损失极低（规划中，目前存在偏色问题）
+- ✅ 支持 tag 收藏夹
 - ✅ 完美解决 tag 重复图片反复下载问题
+- 🚧 支持以搜索条件启动定时任务（规划中）
+- 🚧 支持本地空间压缩，heif格式压缩占用空间是原来的1/10并且画质损失极低（规划中，目前存在偏色问题）
 
 **使用前请注意**：需要靠谱机场或外网 VPC。低质机场 IP 由于使用过多会被 yande API 限速，容易失败。可适当增加重试次数（100次）并降低并发数（1并发）来解决。
 
@@ -67,6 +67,7 @@
 - MariaDB / SQLite
 - Loguru
 - Pydantic v2
+- uv（依赖管理）
 
 ### 前端
 - Vue.js 3
@@ -79,27 +80,49 @@
 ## 项目结构
 
 ```
-yande.re-spider-next/
+yande.re-spider-next-dev/
 ├── backend/                    # 后端代码
-│   ├── api/
-│   │   └── routers/           # API 路由
-│   │       ├── config.py      # 配置管理
-│   │       ├── download.py   # 下载管理
-│   │       ├── gallery.py     # 图库展示
-│   │       └── query.py       # 查询接口
-│   ├── config/
-│   │   └── settings.py       # Pydantic 配置模型
-│   ├── dao/                   # 数据访问层
-│   │   ├── database.py        # MariaDBClient ORM
-│   │   └── yande_data.py     # YandeDataRepository
-│   ├── infrastructure/       # 基础设施层
-│   │   ├── downloader.py    # MultiDown 分段下载器
-│   │   ├── image_cache.py    # 图片缓存
-│   │   └── yande_api.py      # Yande API 客户端
-│   ├── models/               # 数据模型
-│   │   ├── yande.py           # YandePostData, Rating
-│   │   └── download.py        # FileInfo, IterStatus
-│   └── main.py               # FastAPI 入口（待移动）
+│   ├── src/                   # 核心源码（重构后）
+│   │   ├── __init__.py       # init_app() 初始化函数
+│   │   ├── api/              # API 路由层
+│   │   │   ├── __init__.py   # APILoader 自动路由注册
+│   │   │   └── v1/           # API 版本控制
+│   │   │       ├── config.py      # 配置管理
+│   │   │       ├── download.py    # 下载管理
+│   │   │       ├── favorites.py   # 收藏夹管理
+│   │   │       ├── gallery.py     # 图库展示
+│   │   │       ├── query.py       # 查询接口
+│   │   │       └── tag_cache.py   # 标签缓存
+│   │   ├── common/           # 公共常量/配置
+│   │   │   ├── constant.py   # ErrMsg枚举、PathConstant、RouterMap
+│   │   │   └── settings.py   # Pydantic 配置模型
+│   │   ├── dao/              # 数据访问层
+│   │   │   ├── database.py   # MariaDBClient ORM
+│   │   │   ├── favorite_dao.py # 收藏夹数据访问
+│   │   │   └── yande_data.py # YandeDataRepository
+│   │   ├── infrastructure/  # 基础设施层
+│   │   │   ├── advanced_search.py # 高级搜索
+│   │   │   ├── download_queue.py  # 下载队列
+│   │   │   ├── downloader.py      # MultiDown 分段下载器
+│   │   │   ├── image_cache.py     # 图片缓存
+│   │   │   └── yande_api.py       # Yande API 客户端
+│   │   ├── middleware/       # 中间件层
+│   │   │   ├── downloader.py     # 下载中间件
+│   │   │   ├── errors.py         # APIException、ErrorHandleMiddleware
+│   │   │   ├── frontend_static.py # 前端静态资源
+│   │   │   └── loggers.py        # LoggerMiddleware
+│   │   ├── models/           # 数据模型层
+│   │   │   ├── database/     # 数据库模型
+│   │   │   ├── request/      # 请求模型（Request DTO）
+│   │   │   ├── response/     # 响应模型（Response DTO）
+│   │   │   ├── download.py   # FileInfo, IterStatus
+│   │   │   ├── favorite.py   # 收藏夹模型
+│   │   │   └── yande.py      # YandePostData, Rating
+│   │   └── services/         # 业务逻辑层
+│   ├── config/               # 配置文件目录
+│   │   └── config.yaml       # 运行时配置
+│   └── data/                 # 数据目录
+│       └── yande_data.db     # SQLite 数据库
 ├── frontend/                   # Vue.js 前端
 │   ├── src/
 │   │   ├── components/       # 组件
@@ -109,7 +132,8 @@ yande.re-spider-next/
 │   └── package.json
 ├── docs/                      # 文档
 ├── config/                    # 配置文件
-└── requirements.txt           # Python 依赖
+├── pyproject.toml             # Python 项目配置
+└── uv.lock                   # uv 依赖锁定文件
 ```
 
 ## 快速开始
@@ -118,7 +142,11 @@ yande.re-spider-next/
 
 #### 后端依赖
 ```bash
-pip install -r requirements.txt
+# 使用 uv 管理依赖（推荐）
+uv sync
+
+# 或使用 pip
+pip install -e .
 ```
 
 #### 前端依赖
@@ -130,8 +158,12 @@ npm install
 ### 2. 启动服务
 
 ```bash
-# 启动后端API服务
-python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+# 启动后端API服务（在 backend 目录下）
+cd backend
+uvicorn service:main_app --reload --host 0.0.0.0 --port 8000
+
+# 正式环境部署（去除 --reload）
+uvicorn service:main_app --host 0.0.0.0 --port 8000
 
 # 启动前端开发服务器
 cd frontend
@@ -217,6 +249,10 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 
 详见 [docs/design.md](docs/design.md)
 
+## 重构记录
+
+详见 [docs/refactor-2026-04-28.md](docs/refactor-2026-04-28.md)
+
 ## 开发计划
 
 ### 近期功能
@@ -230,14 +266,28 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 - [ ] 下载历史在数据库中记录
 
 ### 部署优化
+- [x] 改为 uv 管理项目依赖
 - [ ] Docker 部署构建
-- [ ] 改为 uv 管理项目依赖
 
-### 架构重构
-- [ ] 移动 api/main.py 到 backend/main.py
+### 架构重构（next_dev 分支）
+- [x] 目录结构重组（backend/src/）
+- [x] 自动路由注册（APILoader）
+- [x] 统一响应格式（BaseResponse）
+- [x] 统一错误处理（APIException + ErrMsg）
+- [x] 中间件层拆分（middleware/）
+- [x] 常量管理统一（PathConstant）
+- [x] 导入路径标准化（src.xxx）
+- [x] DAO 层重构
+- [x] API 路由系统重构
+- [x] 数据库模型模块化
 - [ ] 后端托管前端静态资源
 - [ ] 增加异步定时任务功能（根据 tag 定时启动下载器）
-- [ ] 删除原项目未使用的应用（gui/, spider/, utils/）
+
+### 代码规范化（待完成）
+- [x] 删除根目录 main.py（旧脚本）
+- [x] 业务逻辑从 API 路由层分离到 services 层
+- [ ] 修复 __init__.py 日志消息（"Flask" → "FastAPI"）
+- [ ] 补全 ErrMsg 枚举（添加通用错误码）
 
 ### 图片存储优化
 - [ ] 本地图片空间压缩（HEIF/AVIF 格式自动转换）

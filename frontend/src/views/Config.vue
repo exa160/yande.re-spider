@@ -284,7 +284,7 @@ const startLongPress = () => {
     refreshingTags.value = true
     try {
       const result = await tagCacheApi.refreshTags({ full_refresh: true, limit: 0 })
-      ElMessage.success(`全量刷新已启动，预计获取 ${result.total_updated || '大量'} 标签`)
+      ElMessage.success(`全量刷新已启动，预计获取 ${result.data.total_updated || '大量'} 标签`)
       await loadCacheStats()
     } catch (error) {
       ElMessage.error('全量更新失败')
@@ -307,8 +307,8 @@ const loadCacheStats = async () => {
       tagCacheApi.getTagsStats(),
       tagCacheApi.getArtistsStats()
     ])
-    tagStats.value = tagsRes
-    artistStats.value = artistsRes
+    tagStats.value = tagsRes.data || {}
+    artistStats.value = artistsRes.data || {}
   } catch (error) {
     console.error('Load cache stats error:', error)
   }
@@ -324,7 +324,7 @@ const handleRefreshTags = async () => {
   refreshingTags.value = true
   try {
     const result = await tagCacheApi.refreshTags({ after_id: tagStats.value.max_id || 0 })
-    ElMessage.success(`标签增量更新完成: 更新了 ${result.total_updated} 条 (最新ID: ${result.last_id})`)
+    ElMessage.success(`标签增量更新完成: 更新了 ${result.data.total_updated} 条 (最新ID: ${result.data.last_id})`)
     await loadCacheStats()
   } catch (error) {
     ElMessage.error('标签更新失败')
@@ -337,7 +337,7 @@ const handleRefreshArtists = async () => {
   refreshingArtists.value = true
   try {
     const result = await tagCacheApi.refreshArtists(refreshArtistsParams.value)
-    ElMessage.success(`艺术家更新完成: 更新了 ${result.total_updated} 条 (共 ${result.pages_done} 页)`)
+    ElMessage.success(`艺术家更新完成: 更新了 ${result.data.total_updated} 条 (共 ${result.data.pages_done} 页)`)
     await loadCacheStats()
   } catch (error) {
     ElMessage.error('艺术家更新失败')
@@ -470,15 +470,22 @@ const handleKeyDown = (e) => {
 
 const loadConfig = async () => {
   try {
-    const response = await api.get('/config/')
+    const response = await api.get('/config')
+    const config = response.data
     apiConfig.value = {
-      retry_times: response.api.retry_times,
-      timeout: response.api.timeout,
-      proxy_enable: response.api.proxy_enable,
-      proxy: response.api.proxy || ''
+      retry_times: config.yande_api.retry,
+      timeout: config.yande_api.timeout,
+      proxy_enable: config.yande_api.proxy_enable,
+      proxy: config.yande_api.proxies?.http || ''
     }
-    downloaderConfig.value = response.downloader
-    databaseConfig.value = response.database
+    downloaderConfig.value = {
+      thread_num: config.downloader.thread_num,
+      max_concurrent_tasks: config.downloader.max_concurrent_tasks,
+      chunk_size: Math.round(config.downloader.chunk_size / 1024),  // 字节 -> KB
+      split_size: Math.round(config.downloader.split_size / (1024 * 1024)),  // 字节 -> MB
+      retry_times: config.downloader.retry_times
+    }
+    databaseConfig.value = config.database
   } catch (error) {
     ElMessage.error('加载配置失败')
   }
@@ -487,7 +494,16 @@ const loadConfig = async () => {
 const saveApiConfig = async () => {
   saving.value = true
   try {
-    await api.put('/config/api', apiConfig.value)
+    const payload = {
+      retry: apiConfig.value.retry_times,
+      timeout: apiConfig.value.timeout,
+      proxy_enable: apiConfig.value.proxy_enable,
+      proxies: {
+        http: apiConfig.value.proxy,
+        https: apiConfig.value.proxy
+      }
+    }
+    await api.put('/config/api', payload)
     ElMessage.success('API配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败')
@@ -499,7 +515,14 @@ const saveApiConfig = async () => {
 const saveDownloaderConfig = async () => {
   saving.value = true
   try {
-    await api.put('/config/downloader', downloaderConfig.value)
+    const payload = {
+      thread_num: downloaderConfig.value.thread_num,
+      max_concurrent_tasks: downloaderConfig.value.max_concurrent_tasks,
+      chunk_size: downloaderConfig.value.chunk_size * 1024,  // KB -> 字节
+      split_size: downloaderConfig.value.split_size * 1024 * 1024,  // MB -> 字节
+      retry_times: downloaderConfig.value.retry_times
+    }
+    await api.put('/config/downloader', payload)
     ElMessage.success('下载器配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败')
@@ -524,7 +547,7 @@ const testConnection = async () => {
   testing.value = true
   try {
     const response = await api.post('/config/test-connection', databaseConfig.value)
-    if (response.success) {
+    if (response.data.success) {
       ElMessage.success('数据库连接成功')
     } else {
       ElMessage.error(response.message)

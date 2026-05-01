@@ -71,8 +71,10 @@ class Config(ConfigModel):
     @ConfigModel.set_frozen_data_
     def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig):
         for config_name, config_data in self.__dict__.items():
+            logger.info(f"{isinstance(config_model, type(config_data))}， Checking config: {config_name}, type: {type(config_data)}, new type: {type(config_model)}")
             if isinstance(config_model, type(config_data)):
                 self.__setattr__(config_name, config_model)
+                logger.info(f"Updated config: {config_name}, new value: {config_model}")
                 break
         save_config(self, path_constant.config_file)
 
@@ -98,7 +100,8 @@ def save_config(_config: Config, config_path: Path = path_constant.config_file) 
             default_flow_style=False,
             allow_unicode=True,
             sort_keys=False,
-        )
+        ),
+        encoding="utf-8"
     )
 
 

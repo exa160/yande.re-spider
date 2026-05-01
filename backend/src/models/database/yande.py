@@ -1,5 +1,8 @@
-from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, Enum, JSON
+from datetime import datetime
+
+from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, JSON
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.types import Enum
 
 from src.models.yande import Rating
 
@@ -19,6 +22,7 @@ class YandeData(Base):
     updated_at = Column(DateTime, comment="yande picture update time")
     creator_id = Column(Integer, comment="yande picture update author ID")
     author = Column(String(32), nullable=True, comment="yande picture update author name")
+    change = Column(Integer, nullable=True, comment='yande picture update author ID')
     score = Column(Integer, nullable=True, comment="yande picture score")
     md5 = Column(String(32), comment="yande picture md5")
     file_size = Column(Integer, comment="yande picture file size")
@@ -38,7 +42,7 @@ class YandeData(Base):
     jpeg_width = Column(Integer)
     jpeg_height = Column(Integer)
     jpeg_file_size = Column(Integer)
-    rating = Column(Enum(Rating), index=True, comment="图片评级")
+    rating = Column(Enum(Rating, values_callable=lambda x: [e.value for e in x]), index=True, comment="图片评级")
     is_rating_locked = Column(Boolean)
     has_children = Column(Boolean)
     parent_id = Column(Integer, nullable=True)
@@ -67,9 +71,9 @@ class YandeTag(Base):
     type = Column(
         Integer,
         default=0,
-        comment="类型: 0=general, 1=artist, 2=character, 3=copyright, 4=meta",
+        comment="类型: 0=general, 1=artist, 3=copyright, 4=character",
     )
-    ambiguous = Column(Boolean, default=False, comment="是否模糊")
+    ambiguous = Column(Boolean, default=False, comment="有争议")
     updated_at = Column(DateTime, nullable=True, comment="最后更新时间")
 
 
@@ -94,3 +98,23 @@ class TagLocalStats(Base):
     tag_id = Column(Integer, primary_key=True, comment="标签ID")
     local_count = Column(Integer, default=0, comment="本地使用次数")
     last_calculated = Column(DateTime, nullable=True, comment="最后计算时间")
+
+
+class FavoriteFolder(Base):
+    """收藏夹数据库模型"""
+
+    __tablename__ = "favorite_folders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, comment="收藏夹名称")
+    tags = Column(Text, default="", comment="查询标签字符串")
+    color = Column(String(10), default="#409EFF", comment="展示颜色")
+    icon = Column(String(32), default="folder", comment="图标标识")
+    sort_order = Column(Integer, default=0, comment="排序权重")
+    local_count = Column(Integer, default=0, comment="本地图片数量")
+    online_count = Column(Integer, default=0, comment="在线图片数量(缓存)")
+    last_refresh = Column(DateTime, nullable=True, comment="最后刷新时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(
+        DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间"
+    )

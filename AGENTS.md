@@ -29,9 +29,13 @@ backend/src/
 │   ├── __init__.py
 │   ├── errors.py            # APIException、ErrorHandleMiddleware
 │   ├── loggers.py           # LoggerMiddleware
-│   └── downloader.py
+│   ├── downloader.py        # DownloadMiddleware
+│   ├── frontend_static.py   # FrontendStaticLoader
+│   └── session.py           # RequestSessionMiddleware（请求级 Session 管理）
 ├── models/                  # 数据模型层
 │   ├── __init__.py
+│   ├── database/            # 数据库模型
+│   │   └── yande.py         # YandeData、YandeTag、YandeArtist 等
 │   ├── download.py
 │   ├── favorite.py
 │   ├── yande.py
@@ -43,6 +47,12 @@ backend/src/
 │       ├── base_response.py # BaseResponse、ErrorResponse
 │       └── config.py
 ├── dao/                    # 数据访问层
+│   ├── __init__.py
+│   ├── database.py         # BaseDAO、Session 管理
+│   ├── favorite_dao.py     # 收藏夹数据访问
+│   ├── yande_data_dao.py   # 图片数据访问
+│   ├── tag_dao.py           # 标签缓存访问
+│   └── artist_dao.py        # 艺术家缓存访问
 ├── infrastructure/          # 基础设施层
 └── services/               # 业务逻辑层
 ```
@@ -331,6 +341,213 @@ class ErrorHandleMiddleware:
 
 ---
 
+## 四、DAO 层规范
+
+### 4.1 目录结构
+
+```
+backend/src/dao/
+├── __init__.py              # 重新导出所有 DAO
+├── database.py              # 数据库连接、BaseDAO 基类、Session 管理
+├── favorite_dao.py           # 收藏夹数据访问
+├── yande_data_dao.py         # 图片数据访问
+├── tag_dao.py                # 标签缓存访问
+└── artist_dao.py             # 艺术家缓存访问
+```
+
+### 4.2 BaseDAO 基类（统一 Session 管理）
+
+```python
+# backend/src/dao/database.py
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+_cached_engine = None
+_cached_session_factory = None
+
+
+def get_db_engine():
+    global _cached_engine
+    if _cached_engine is not None:
+        return _cached_engine
+    # ... SQLite/MariaDB 配置
+
+
+def _get_session_factory():
+    global _cached_session_factory
+    if _cached_session_factory is not None:
+        return _cached_session_factory
+    engine = get_db_engine()
+    _cached_session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    return _cached_session_factory
+
+
+class BaseDAO:
+    """DAO 基类 - 统一 Session 管理"""
+
+    def __init__(self, session: Session = None):
+        self._session = session
+
+    def __enter__(self):
+        if self._session is None:
+            self._session = _get_session_factory()()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._session:
+            if exc_type is None:
+                self._session.commit()
+            else:
+                self._session.rollback()
+            self._session.close()
+        return False
+
+    @property
+    def session(self) -> Session:
+        if self._session is None:
+            try:
+                from src.middleware.session import RequestSessionMiddleware
+                self._session = RequestSessionMiddleware.get_session()
+            except Exception:
+                self._session = _get_session_factory()()
+        return self._session
+```
+
+### 4.3 Session 管理架构
+
+```
+请求进入
+    ↓
+RequestSessionMiddleware 创建 session → ContextVar 存储
+    ↓
+DAO.session 属性自动获取请求级 session
+    ↓
+业务逻辑执行（add/query/flush 等）
+    ↓
+请求结束
+    ↓
+Middleware 自动 commit + close
+```
+
+**关键特性**：
+- 每个 HTTP 请求绑定一个 session
+- 同一请求内的所有 DAO 操作共享同一个 session
+- 请求结束时自动 commit，异常时自动 rollback
+
+### 4.4 DAO 使用方式
+
+#### 方式一：FastAPI 请求内直接使用（推荐）
+
+```python
+# Service 层 - 不需要 with，直接调用
+class FavoritesService:
+    @staticmethod
+    def get_all_folders():
+        return favorite_dao.get_all()  # 自动使用请求级 session
+
+    @staticmethod
+    def create_folder(folder: FavoriteFolderCreate):
+        count = favorite_dao.count()
+        new_folder = favorite_dao.create(name=folder.name, ...)
+        return new_folder
+```
+
+#### 方式二：with DAO() 上下文管理器
+
+**用于需要明确事务边界、确保 commit 的场景**：
+
+```python
+with YandeDataRepository() as repo:
+    repo.upsert_batch(items)
+    # 退出时自动 commit（或 rollback）
+```
+
+**适用场景**：
+- 批量写入需要明确成功/失败
+- 需要跨 DAO 方法共享 session
+- 独立脚本/非 FastAPI 环境
+
+#### 方式三：独立 session（极少使用）
+
+```python
+dao = SomeDao()  # 不推荐，session 由中间件管理时无需手动创建
+```
+
+### 4.5 DAO 编写规范
+
+```python
+# backend/src/dao/favorite_dao.py
+from datetime import datetime
+from typing import List, Optional, Type
+
+from src.models.database.yande import FavoriteFolder
+from src.dao.database import BaseDAO
+
+
+class FavoriteDao(BaseDAO):
+    def create(self, name: str, tags: str = "", ...) -> FavoriteFolder:
+        folder = FavoriteFolder(name=name, tags=tags, ...)
+        self.session.add(folder)
+        self.session.flush()  # 获取自动生成的 ID
+        return folder
+
+    def get_by_id(self, folder_id: int) -> Optional[FavoriteFolder]:
+        return self.session.query(FavoriteFolder).filter_by(id=folder_id).first()
+
+    def update(self, folder_id: int, **kwargs) -> Optional[FavoriteFolder]:
+        folder = self.session.query(FavoriteFolder).filter_by(id=folder_id).first()
+        if not folder:
+            return None
+        for key, value in kwargs.items():
+            if value is not None and hasattr(folder, key):
+                setattr(folder, key, value)
+        folder.updated_at = datetime.now()
+        self.session.flush()  # 刷新内存中的对象状态
+        return folder
+
+
+favorite_dao = FavoriteDao()  # 全局实例
+```
+
+### 4.6 注意事项
+
+| 操作 | 是否需要手动 commit | 说明 |
+|------|---------------------|------|
+| `session.add()` | 否 | 中间件请求结束时自动 commit |
+| `session.flush()` | 否 | 用于刷新自增 ID 或获取最新状态 |
+| `session.execute()` | 否 | 查询语句无需 commit |
+| `session.delete()` | 否 | 删除操作由中间件统一提交 |
+| `with DAO() as dao:` | 自动 | 退出时根据异常状态 commit/rollback |
+| `dao.session` 属性 | 共享 | 同一请求内所有 DAO 共享同一 session |
+
+### 4.7 SQLite 特殊配置
+
+```python
+# SQLite 使用 StaticPool + 长超时避免锁竞争
+_cached_engine = create_engine(
+    f"sqlite:///{db_path}",
+    connect_args={"timeout": 30, "check_same_thread": False},
+    poolclass=StaticPool,
+)
+```
+
+### 4.8 禁用 autoflush 场景
+
+对于大量循环写入操作，使用 `no_autoflush` 避免频繁 flush：
+
+```python
+def calculate_local_stats(self) -> int:
+    with self.session.no_autoflush:
+        # 所有变更在块内暂存，不触发数据库写入
+        for tag in tags:
+            self.session.add(...)
+    # 退出 with 时才真正写入
+    return count
+```
+
+---
+
 ## 五、中间件规范
 
 ### 5.1 中间件注册顺序
@@ -377,9 +594,97 @@ class MyCustomMiddleware(BaseHTTPMiddleware):
         app.add_middleware(cls)
 ```
 
+## 六、中间件规范
+
+### 6.1 中间件注册顺序
+
+在 `backend/src/__init__.py` 的 `init_app()` 中按顺序注册：
+
+```python
+def init_app(app: FastAPI) -> FastAPI:
+    # 1. CORS（FastAPI 内置）
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # 2. 自定义中间件（按依赖顺序）
+    app.add_middleware(RequestSessionMiddleware)  # Session 管理
+    DownloadMiddleware.init_app(app)             # 下载相关
+    APILoader.init_app(app)                       # 路由加载
+    LoggerMiddleware.init_app(app, path_constant.log_dir)
+    ErrorHandleMiddleware.init_app(app)          # 错误处理（最后注册）
+    
+    # ...
+```
+
+### 6.2 自定义中间件模板
+
+```python
+from fastapi import FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class MyCustomMiddleware(BaseHTTPMiddleware):
+    @staticmethod
+    async def dispatch(request: Request, call_next):
+        # 前置处理
+        response = await call_next(request)
+        # 后置处理
+        return response
+    
+    @classmethod
+    def init_app(cls, app: FastAPI):
+        app.add_middleware(cls)
+```
+
+### 6.3 RequestSessionMiddleware（Session 管理）
+
+```python
+# src/middleware/session.py
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from contextvars import ContextVar
+from sqlalchemy.orm import Session
+from typing import Optional
+
+from src.dao.database import get_db_engine, _get_session_factory
+
+_request_session: ContextVar[Optional[Session]] = ContextVar("request_session", default=None)
+
+
+class RequestSessionMiddleware(BaseHTTPMiddleware):
+    @staticmethod
+    def get_session() -> Session:
+        session = _request_session.get()
+        if session is None:
+            session = _get_session_factory()()
+            _request_session.set(session)
+        return session
+
+    async def dispatch(self, request: Request, call_next):
+        session = _get_session_factory()()
+        _request_session.set(session)
+
+        try:
+            response = await call_next(request)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+            _request_session.set(None)
+
+        return response
+```
+
 ---
 
-## 六、自动路由注册规范
+## 七、自动路由注册规范
 
 ### 6.1 APILoader（自动路由发现）
 
@@ -579,4 +884,44 @@ app.include_router(download.router, prefix="/api/v1/download", tags=["下载"])
 
 ---
 
-*最后更新：基于 next_dev 分支 738beef/d4a01e4/1489e01 提交记录总结*
+## 十一、重构状态追踪
+
+### 11.1 已完成的重构（next_dev 分支）
+
+| 重构项 | 状态 | 提交记录 |
+|--------|------|----------|
+| 目录结构重组（backend/src/） | ✅ 完成 | 738beef, d4a01e4 |
+| 自动路由注册（APILoader） | ✅ 完成 | b8afae8 |
+| 统一响应格式（BaseResponse） | ✅ 完成 | 1489e01 |
+| 统一错误处理（APIException + ErrMsg） | ✅ 完成 | 1489e01 |
+| 中间件层拆分（middleware/） | ✅ 完成 | 6ef8596 |
+| 常量管理统一（PathConstant） | ✅ 完成 | 8a05889 |
+| 导入路径标准化（src.xxx） | ✅ 完成 | 8a05889 |
+| DAO 层重构 | ✅ 完成 | bea5017 |
+| API 路由系统重构 | ✅ 完成 | 3331539 |
+| 数据库模型模块化 | ✅ 完成 | 8ce9224 |
+
+### 11.2 待完成的重构
+
+| 重构项 | 优先级 | 说明 |
+|--------|--------|------|
+| 修复 __init__.py 日志消息 | 中 | "Flask" 应改为 "FastAPI" |
+| 补全 ErrMsg 枚举 | 中 | 缺少 QUERY_ERROR, CREATE_ERROR 等通用错误码 |
+
+### 11.3 代码规范检查清单
+
+**API 路由文件检查**：
+- [ ] 是否使用 `APIException(ErrMsg.XXX, e=e)` 模式
+- [ ] 是否返回 `BaseResponse` 或继承类
+- [ ] 是否声明返回类型注解
+- [ ] 是否添加 docstring
+- [ ] Request Model 是否使用 `Field()` 校验
+
+**响应格式检查**：
+- [ ] 成功响应：`BaseResponse(message=ErrMsg.OK.msg, data={...})`
+- [ ] 错误响应：`raise APIException(ErrMsg.XXX, e=e)`
+- [ ] 避免返回原始字典
+
+---
+
+*最后更新：基于 next_dev 分支 fd42787 提交记录总结*

@@ -2,198 +2,171 @@
 下载管理相关API路由
 """
 
-import uuid
 from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
 
-from src.infrastructure.download_queue import (
-    task_store,
-    download_queue,
+from src.common.constant import TaskStatus, ErrMsg
+from src.middleware.errors import APIException
+from src.models.request.download import DownloadTaskCreate
+from src.models.response.base_response import BaseResponse
+from src.models.response.common import (
+    TaskCreatedResponse,
+    TaskCreatedData,
+    BatchTaskCreatedResponse,
+    BatchTaskCreatedData,
 )
-from src.common.constant import TaskStatus
+from src.models.response.download import (
+    ProgressData,
+    ProgressResponse,
+    TaskListResponse,
+    DownloadTaskResponse,
+)
+from src.services.download import DownloadService
 
 router = APIRouter()
 
 
-class DownloadTaskCreate(BaseModel):
-    image_id: int
-    file_url: str
-    save_path: str
-    file_name: str
-    thread_num: int = 4
-    tags: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    rating: Optional[str] = None
-    author: Optional[str] = None
-    md5: Optional[str] = None
-    total_size: Optional[int] = None
+@router.post("/task", response_model=TaskCreatedResponse, summary="创建下载任务")
+async def create_download_task(task: DownloadTaskCreate) -> TaskCreatedResponse:
+    """创建单个下载任务"""
+    try:
+        task_id = await DownloadService.create_task(task.model_dump())
+        return TaskCreatedResponse(
+            message="下载任务创建成功", data=TaskCreatedData(task_id=task_id)
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.CREATE_ERROR, e=e)
 
 
-class DownloadTaskInfo(BaseModel):
-    task_id: str
-    image_id: int
-    file_url: str
-    save_path: str
-    file_name: str
-    status: TaskStatus
-    progress: float
-    downloaded_size: int
-    total_size: Optional[int]
-    speed: Optional[float] = None
-    thread_num: int
-    error_message: Optional[str]
-    created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
+@router.post(
+    "/task/batch", response_model=BatchTaskCreatedResponse, summary="批量创建下载任务"
+)
+async def create_batch_download_tasks(
+    tasks: List[DownloadTaskCreate],
+) -> BatchTaskCreatedResponse:
+    """批量创建下载任务"""
+    try:
+        task_ids = await DownloadService.create_batch_tasks(
+            [task.model_dump() for task in tasks]
+        )
+        return BatchTaskCreatedResponse(
+            message=f"成功创建 {len(task_ids)} 个下载任务",
+            data=BatchTaskCreatedData(task_ids=task_ids),
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.CREATE_ERROR, e=e)
 
 
-class ProgressResponse(BaseModel):
-    task_id: str
-    status: TaskStatus
-    progress: float
-    downloaded_size: int
-    total_size: Optional[int]
-    speed: Optional[float] = None
-
-
-@router.post("/task", response_model=dict)
-async def create_download_task(task: DownloadTaskCreate):
-    task_id = str(uuid.uuid4())
-    task_store.create_task(task_id, task.model_dump())
-    await download_queue.add_task(task_id)
-    return {"message": "下载任务创建成功", "task_id": task_id}
-
-
-@router.post("/task/batch", response_model=dict)
-async def create_batch_download_tasks(tasks: List[DownloadTaskCreate]):
-    task_ids = []
-    for task in tasks:
-        task_id = str(uuid.uuid4())
-        task_store.create_task(task_id, task.model_dump())
-        await download_queue.add_task(task_id)
-        task_ids.append(task_id)
-    return {"message": f"成功创建 {len(task_ids)} 个下载任务", "task_ids": task_ids}
-
-
-@router.get("/tasks", response_model=dict)
+@router.get("/tasks", response_model=TaskListResponse, summary="获取任务列表")
 async def get_download_tasks(
     status: Optional[TaskStatus] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-):
-    tasks, total = task_store.get_tasks(status, page, page_size)
-    return {
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "tasks": [DownloadTaskInfo(**t) for t in tasks],
-    }
+) -> TaskListResponse:
+    """获取下载任务列表（支持状态过滤和分页）"""
+    try:
+        tasks, total = DownloadService.get_tasks(status, page, page_size)
+        return TaskListResponse(
+            total=total,
+            page=page,
+            page_size=page_size,
+            data=tasks
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
-@router.get("/task/{task_id}", response_model=DownloadTaskInfo)
-async def get_download_task(task_id: str):
-    task = task_store.get_task(task_id)
+@router.get(
+    "/task/{task_id}", response_model=DownloadTaskResponse, summary="获取任务详情"
+)
+async def get_download_task(task_id: str) -> DownloadTaskResponse:
+    """获取单个任务详情"""
+    task = DownloadService.get_task(task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return DownloadTaskInfo(**task)
+        raise APIException(ErrMsg.TASK_NOT_FOUND)
+    return DownloadTaskResponse(message=ErrMsg.OK.msg, data=task)
 
 
-@router.get("/task/{task_id}/progress", response_model=ProgressResponse)
-async def get_task_progress(task_id: str):
-    task = task_store.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return ProgressResponse(
-        task_id=task["task_id"],
-        status=task["status"],
-        progress=task["progress"],
-        downloaded_size=task["downloaded_size"],
-        total_size=task["total_size"],
-        speed=task.get("speed"),
-    )
+@router.get(
+    "/task/{task_id}/progress", response_model=ProgressResponse, summary="获取任务进度"
+)
+async def get_task_progress(task_id: str) -> ProgressResponse:
+    """获取任务进度"""
+    progress = DownloadService.get_task_progress(task_id)
+    if not progress:
+        raise APIException(ErrMsg.TASK_NOT_FOUND)
+    return ProgressResponse(message=ErrMsg.OK.msg, data=ProgressData(**progress))
 
 
-@router.post("/task/{task_id}/start")
-async def start_download_task(task_id: str):
-    task = task_store.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    if task["status"] not in [TaskStatus.PENDING, TaskStatus.PAUSED, TaskStatus.FAILED]:
-        raise HTTPException(status_code=400, detail="任务无法启动")
-    task_store.update_task(task_id, {"status": TaskStatus.PENDING})
-    await download_queue.add_task(task_id)
-    return {"message": "任务已启动"}
+@router.post("/task/{task_id}/start", response_model=BaseResponse, summary="启动任务")
+async def start_download_task(task_id: str) -> BaseResponse:
+    """启动下载任务"""
+    success, message = await DownloadService.start_task(task_id)
+    if not success:
+        raise APIException(ErrMsg.TASK_START_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
+    return BaseResponse(message=message)
 
 
-@router.post("/task/{task_id}/pause")
-async def pause_download_task(task_id: str):
-    task = task_store.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    if task["status"] != TaskStatus.DOWNLOADING:
-        raise HTTPException(status_code=400, detail="任务无法暂停")
-    task_store.update_task(task_id, {"status": TaskStatus.PAUSED})
-    return {"message": "任务已暂停"}
+@router.post("/task/{task_id}/pause", response_model=BaseResponse, summary="暂停任务")
+async def pause_download_task(task_id: str) -> BaseResponse:
+    """暂停下载任务"""
+    success, message = DownloadService.pause_task(task_id)
+    if not success:
+        raise APIException(ErrMsg.TASK_PAUSE_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
+    return BaseResponse(message=message)
 
 
-@router.post("/task/{task_id}/resume")
-async def resume_download_task(task_id: str):
-    task = task_store.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    if task["status"] != TaskStatus.PAUSED:
-        raise HTTPException(status_code=400, detail="任务无法恢复")
-    task_store.update_task(task_id, {"status": TaskStatus.PENDING})
-    await download_queue.add_task(task_id)
-    return {"message": "任务已恢复"}
+@router.post("/task/{task_id}/resume", response_model=BaseResponse, summary="恢复任务")
+async def resume_download_task(task_id: str) -> BaseResponse:
+    """恢复下载任务"""
+    success, message = await DownloadService.resume_task(task_id)
+    if not success:
+        raise APIException(ErrMsg.TASK_RESUME_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
+    return BaseResponse(message=message)
 
 
-@router.post("/task/{task_id}/cancel")
-async def cancel_download_task(task_id: str):
-    task = task_store.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    if task["status"] in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]:
-        raise HTTPException(status_code=400, detail="任务无法取消")
-    task_store.update_task(
-        task_id,
-        {"status": TaskStatus.CANCELLED, "completed_at": task["completed_at"]},
-    )
-    return {"message": "任务已取消"}
+@router.post("/task/{task_id}/cancel", response_model=BaseResponse, summary="取消任务")
+async def cancel_download_task(task_id: str) -> BaseResponse:
+    """取消下载任务"""
+    success, message = DownloadService.cancel_task(task_id)
+    if not success:
+        raise APIException(ErrMsg.TASK_CANCEL_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
+    return BaseResponse(message=message)
 
 
-@router.delete("/task/{task_id}")
-async def delete_download_task(task_id: str):
-    if not task_store.delete_task(task_id):
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return {"message": "任务已删除"}
+@router.delete("/task/{task_id}", response_model=BaseResponse, summary="删除任务")
+async def delete_download_task(task_id: str) -> BaseResponse:
+    """删除下载任务"""
+    if not DownloadService.delete_task(task_id):
+        raise APIException(ErrMsg.TASK_NOT_FOUND)
+    return BaseResponse(message="任务已删除")
 
 
-@router.get("/history", response_model=dict)
+@router.get("/history", response_model=TaskListResponse, summary="获取下载历史")
 async def get_download_history(
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
-):
-    tasks, total = task_store.get_tasks(page=page, page_size=page_size)
-    completed_tasks = [
-        t
-        for t in tasks
-        if t["status"]
-        in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
-    ]
-    return {
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "records": [DownloadTaskInfo(**t) for t in completed_tasks],
-    }
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> TaskListResponse:
+    """获取下载历史记录"""
+    try:
+        completed_tasks, total = DownloadService.get_download_history(page, page_size)
+        return TaskListResponse(
+            total=total,
+            page=page,
+            page_size=page_size,
+            data=completed_tasks
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
-@router.get("/queue/status")
-async def get_queue_status():
-    return {
-        "queue_size": download_queue.get_queue_size(),
-        "max_concurrent": download_queue._get_max_concurrent(),
-    }
+@router.get("/queue/status", response_model=BaseResponse, summary="获取队列状态")
+async def get_queue_status() -> BaseResponse:
+    """获取下载队列状态"""
+    try:
+        return BaseResponse(
+            message=ErrMsg.OK.msg, data=DownloadService.get_queue_status()
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
