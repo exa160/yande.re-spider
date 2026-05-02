@@ -148,9 +148,10 @@ class YandeApi:
         return " ".join(parts)
 
     def get_ranking(
-        self, page: int, tags: str = "", search_tags: YandeSearchTags = None
+        self, page: int, limit: int = 25,
+          tags: str = "", search_tags: YandeSearchTags = None
     ) -> Union[Tuple[bool, bytes], Tuple[bool, YandePostData]]:
-        query_params = dict(page=page)
+        query_params = dict(page=page, limit=limit)
 
         combined_tags = tags
         if search_tags:
@@ -168,6 +169,7 @@ class YandeApi:
                     params=query_params,
                     proxies=self.proxies,
                     headers=self.headers,
+                    timeout=config.yande_api.timeout,
                 )
                 if req.status_code > 300:
                     logger.info(
@@ -225,16 +227,15 @@ class YandeApi:
         return False, []
 
     def get_artists(
-        self, page: int = 1, limit: int = 100, name_pattern: str = None
+        self, page: int = 1, name_pattern: str = None
     ) -> Tuple[bool, List[dict]]:
         """
         获取艺术家列表
         :param page: 页码
-        :param limit: 每页数量 (最大 1000)
         :param name_pattern: 艺术家名匹配模式 (可选)
         :return: (成功标志, 艺术家列表)
         """
-        query_params = {"page": page, "limit": min(limit, 1000)}
+        query_params = {"page": page}
         if name_pattern:
             query_params["name"] = name_pattern
 

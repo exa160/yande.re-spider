@@ -2,6 +2,8 @@
 标签缓存 API 路由
 """
 
+import asyncio
+
 from fastapi import APIRouter
 from typing import Optional
 
@@ -9,7 +11,6 @@ from src.common.constant import ErrMsg
 from src.middleware.errors import APIException
 from src.models.request.tag_cache import RefreshTagsRequest, RefreshArtistsRequest
 from src.models.response.base_response import BaseResponse
-from src.models.response.tag_cache import TagInfo, ArtistInfo
 from src.services.tag_cache import TagCacheService
 
 router = APIRouter()
@@ -37,10 +38,11 @@ async def refresh_tags(request: RefreshTagsRequest) -> BaseResponse:
 async def refresh_artists(request: RefreshArtistsRequest) -> BaseResponse:
     """从 yande.re API 批量获取艺术家并入库缓存"""
     try:
-        result = TagCacheService.refresh_artists(
-            limit=request.limit, page=request.page, max_pages=request.max_pages
-        )
-        return BaseResponse(message="刷新成功", data=result)
+        future =asyncio.get_running_loop().run_in_executor(
+            None, TagCacheService.refresh_artists, request.page, request.max_pages
+            )
+        asyncio.ensure_future(future)
+        return BaseResponse(message="Run in background.")
     except Exception as e:
         raise APIException(ErrMsg.UPDATE_ERROR, e=e)
 

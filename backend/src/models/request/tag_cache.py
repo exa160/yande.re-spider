@@ -8,5 +8,4 @@ class RefreshTagsRequest(BaseModel):
 
 class RefreshArtistsRequest(BaseModel):
     page: int = Field(1, ge=1, description="起始页码")
-    limit: int = Field(100, ge=1, le=1000, description="每页数量")
     max_pages: int = Field(10, ge=1, description="最大页数")

@@ -6,17 +6,6 @@ from pydantic import BaseModel, ConfigDict
 
 
 # ==================== Rating 映射 ====================
-RATING_MAP = {
-    "Safe": "s",
-    "Questionable": "q",
-    "Explicit": "e",
-    "s": "s",
-    "q": "q",
-    "e": "e",
-    "S": "s",
-    "Q": "q",
-    "E": "e",
-}
 RATING_DISPLAY_MAP = {
     "s": "Safe",
     "q": "Questionable",
@@ -54,6 +43,7 @@ class YandeAPIConstant(ConstantModel):
     post_json_api: str = f"{base_url}/post.json"
     post_xml_api: str = f"{base_url}/post.xml"
     tag_json_api: str = f"{base_url}/tag.json"
+    tag_related_api: str = f"{base_url}/tag/related.json" # TODO tag关联查询
     artist_json_api: str = f"{base_url}/artist.json"
     files_host: str = "files.yande.re"
     referer: str = f"{base_url}/"
@@ -87,6 +77,25 @@ class RouterMap(Enum):
         return member.value if member else None
 
 
+# ==================== 其他常量 ====================
+class Rating(str, Enum):
+    S = "s"
+    R15 = "q"
+    R18 = "e"
+
+    @property
+    def code(self) -> str:
+        return self.value  # 's', 'q', 'e'
+
+    @property
+    def display(self) -> str:
+        return {
+            "s": "Safe",
+            "q": "Questionable",
+            "e": "Explicit"
+        }[self.value]
+
+
 # ==================== 错误码枚举 ====================
 class BaseMsgEnum(Enum):
     def __new__(cls, code: str, msg: str, http_status: HTTPStatus = None):
@@ -111,8 +120,11 @@ class ErrMsg(BaseMsgEnum):
     DELETE_ERROR = ("0004", "Delete error.", HTTPStatus.INTERNAL_SERVER_ERROR)
     NOT_FOUND = ("0005", "Resource not found.", HTTPStatus.NOT_FOUND)
     PARAM_ERROR = ("0006", "Invalid parameter.", HTTPStatus.BAD_REQUEST)
-    LOAD_YANDE_DATA_ERROR = ("0007", "Failed to load yande data.", HTTPStatus.INTERNAL_SERVER_ERROR)
-        
+
+    # 图库界面
+    LOAD_YANDE_DATA_ERROR = ("0010", "Failed to load yande data.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    LOAD_PREVIEW_DATA_ERROR = ("0010", "Failed to load preview data.", HTTPStatus.NOT_FOUND)
+    SAVE_PREVIEW_DATA_ERROR = ("0010", "Failed to save preview data.", HTTPStatus.NOT_FOUND)
 
     # 配置相关
     CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)

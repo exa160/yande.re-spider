@@ -1,8 +1,9 @@
 """
 图库展示相关API路由
 """
+import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 from typing import List
 
@@ -12,7 +13,6 @@ from src.models.request.gallery import GalleryLoadRequest
 from src.models.response.base_response import BaseResponse
 from src.models.response.gallery import (
     ImageDetail,
-    GalleryData,
     GalleryLoadResponse,
     ImageDetailResponse,
 )
@@ -37,13 +37,11 @@ async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
 
         return GalleryLoadResponse(
             message=ErrMsg.OK.msg,
-            data=GalleryData(
-                total=total,
-                page=request.page,
-                page_size=request.page_size,
-                has_more=has_more,
-                images=images,
-            ),
+            data=images,
+            total=total,
+            page=request.page,
+            page_size=request.page_size,
+            has_more=has_more
         )
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
@@ -58,7 +56,7 @@ async def get_image_detail(
     """获取单张图片详情"""
     image = GalleryService.get_image_by_id(image_id, source)
     if not image:
-        raise HTTPException(status_code=404, detail="图片不存在")
+        raise APIException(ErrMsg.NOT_FOUND)
     return ImageDetailResponse(message=ErrMsg.OK.msg, data=ImageDetail(**image))
 
 
@@ -92,33 +90,29 @@ async def get_preview_image(filename: str):
     preview_path = GalleryService.get_preview_path(filename)
     if preview_path.exists():
         return FileResponse(str(preview_path))
-    raise HTTPException(status_code=404, detail="预览图不存在")
+    raise APIException(ErrMsg.NOT_FOUND)
 
 
 @router.get("/cache/preview/generate/{image_id}", summary="生成预览图")
 async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
     """从原图生成预览图"""
-    import asyncio
-
     preview_path = await asyncio.get_event_loop().run_in_executor(
         None, GalleryService.generate_preview, image_id, file_ext
     )
     if preview_path and preview_path.exists():
         return FileResponse(str(preview_path))
-    raise HTTPException(status_code=404, detail="原图不存在或生成失败")
+    raise APIException(ErrMsg.NOT_FOUND)
 
 
 @router.get("/cache/preview/fetch/{image_id}", summary="获取并缓存预览图")
 async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
     """从远程获取并缓存预览图"""
-    import asyncio
-
     preview_path = await asyncio.get_event_loop().run_in_executor(
         None, GalleryService.fetch_and_cache_preview, image_id, file_ext
     )
     if preview_path and preview_path.exists():
         return FileResponse(str(preview_path))
-    raise HTTPException(status_code=404, detail="获取预览图失败")
+    raise APIException(ErrMsg.NOT_FOUND)
 
 
 @router.get("/cache/original/{filename}", summary="获取原图文件")
@@ -127,4 +121,4 @@ async def get_original_image(filename: str):
     original_path = GalleryService.get_original_path(filename)
     if original_path.exists():
         return FileResponse(str(original_path))
-    raise HTTPException(status_code=404, detail="原图不存在")
+    raise APIException(ErrMsg.NOT_FOUND)

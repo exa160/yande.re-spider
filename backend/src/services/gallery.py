@@ -9,10 +9,9 @@ from typing import List, Optional
 
 from src.middleware.errors import APIException
 from src.common.constant import ErrMsg
-from src.common.settings import config
 from src.common.constant import path_constant, RATING_DISPLAY_MAP
+from src.common.utils import check_local_file
 from src.dao.yande_data import YandeDataRepository
-from src.dao.yande_data_dao import _check_local_file
 from src.infrastructure.yande_api import YandeApi
 from src.infrastructure.image_cache import ImageCache
 from src.models.yande import YandeSearchTags
@@ -65,12 +64,12 @@ class GalleryService:
         """
         yande_api = YandeApi()
         page = params.get("page", 1)
-
+        page_size = params.get("page_size", 25)
         search_tags = YandeSearchTags.model_validate(params)
 
         author_tags = params.get("author", "")
         success, yande_data = yande_api.get_ranking(
-            page, tags=author_tags, search_tags=search_tags
+            page, limit=page_size, tags=author_tags, search_tags=search_tags
         )
 
         if not success:
@@ -81,48 +80,36 @@ class GalleryService:
             return [], 0
 
         with YandeDataRepository() as repo:
-            # 批量 upsert（一次数据库操作）
-            upserted = repo.upsert_batch(yande_items)
-            if upserted == 0:
-                logger.warning(f"Upsert batch returned 0, data may not be saved")
-
-            # 批量查询现有记录的 down_flag
-            item_ids = [item.id for item in yande_items]
-            from src.models.database.yande import YandeData
-            from sqlalchemy import select
-
-            down_flags = {}
-            if item_ids:
-                stmt = select(YandeData.id, YandeData.down_flag).where(
-                    YandeData.id.in_(item_ids)
-                )
-                rows = repo.session.execute(stmt).fetchall()
-                down_flags = {row[0]: row[1] for row in rows}
-
+            # 批量 upsert（一次数据库操作），并返回当前记录的 down_flag
+            down_flags = repo.upsert_batch_with_down_flags(yande_data.model_dump())
+            if not down_flags:
+                logger.warning(f"Upsert batch returned no down_flag data, data may not be saved")
+            # TODO 直接利用pytantic格式化数据
             # 构建图片信息
-            images = []
-            for item in yande_items:
-                file_ext = item.file_ext or "jpg"
-                is_downloaded = down_flags.get(item.id, False)
+        return down_flags, len(down_flags)
+        #     images = []
+        #     for item in yande_items:
+        #         file_ext = item.file_ext or "jpg"
+        #         is_downloaded = down_flags.get(item.id, False)
 
-                local_preview = (
-                    _check_local_file(item.id, file_ext, "preview")
-                    if is_downloaded
-                    else None
-                )
-                local_original = (
-                    _check_local_file(item.id, file_ext, "original")
-                    if is_downloaded
-                    else None
-                )
+        #         local_preview = (
+        #             check_local_file(item.id, file_ext, "preview")
+        #             if is_downloaded
+        #             else None
+        #         )
+        #         local_original = (
+        #             check_local_file(item.id, file_ext, "original")
+        #             if is_downloaded
+        #             else None
+        #         )
 
-                images.append(
-                    GalleryService._build_image_info(
-                        item, file_ext, is_downloaded, local_preview, local_original
-                    )
-                )
+        #         images.append(
+        #             GalleryService._build_image_info(
+        #                 item, file_ext, is_downloaded, local_preview, local_original
+        #             )
+        #         )
 
-        return images, len(images)
+        # return images, len(images)
 
     @staticmethod
     def _build_image_info(
@@ -139,20 +126,16 @@ class GalleryService:
             "width": item.width,
             "height": item.height,
             "rating": RATING_DISPLAY_MAP.get(item.rating.value, item.rating.value)
-            if item.rating
-            else "Safe",
-            "file_url": item.file_url,
-            "preview_url": item.preview_url,
-            "sample_url": item.sample_url,
+            if item.rating else "Safe",
+            "file_url": local_original,
+            "preview_url": local_preview or local_original,
             "file_size": item.file_size,
             "file_ext": file_ext,
             "author": item.author,
             "created_at": str(item.created_at),
             "md5": item.md5,
             "score": item.score,
-            "is_downloaded": is_downloaded,
-            "local_preview_path": local_preview,
-            "local_file_path": local_original,
+            "down_flag": is_downloaded,
         }
 
     @staticmethod
@@ -260,7 +243,7 @@ class GalleryService:
     @staticmethod
     def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
         """
-        从远程获取并缓存预览图
+        从远程获取并缓存预览图,如果本地已存在则直接返回(默认jpg格式，有修改需适配preview_url)
 
         Args:
             image_id: 图片 ID
@@ -289,35 +272,16 @@ class GalleryService:
         preview_url = image_data.get("preview_url")
         if not preview_url:
             logger.warning(f"Image {image_id} has no preview_url")
-            raise APIException(ErrMsg.NOT_FOUND, data={"image_id": image_id, "reason": "no preview_url"})
-
+            raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=Exception(f"ID: {image_id} has no preview URL available"))
+        
         try:
-            proxies = config.yande_api.proxies.model_dump() if config.yande_api.proxies else None
-            resp = requests.get(
-                preview_url, proxies=proxies, timeout=config.yande_api.timeout
-            )
-            if resp.status_code == 200:
-                preview_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(preview_path, "wb") as f:
-                    f.write(resp.content)
-                if preview_path.exists():
-                    return preview_path
-                else:
-                    raise APIException(ErrMsg.CREATE_ERROR, data={"image_id": image_id})
-            else:
-                logger.warning(
-                    f"Failed to fetch preview {image_id}: HTTP {resp.status_code}"
-                )
-                raise APIException(
-                    ErrMsg.QUERY_ERROR,
-                    data={"image_id": image_id, "status_code": resp.status_code}
-                )
+            return cache.download_preview(preview_url, image_id, file_ext)
         except requests.RequestException as e:
             logger.error(f"Request error for image {image_id}: {e}")
-            raise APIException(ErrMsg.QUERY_ERROR, e=e)
+            raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=e)
         except IOError as e:
             logger.error(f"IO error saving preview {image_id}: {e}")
-            raise APIException(ErrMsg.CREATE_ERROR, e=e)
+            raise APIException(ErrMsg.SAVE_PREVIEW_DATA_ERROR, e=e)
         except Exception as e:
             logger.error(f"Unexpected error fetching preview {image_id}: {e}")
-            raise APIException(ErrMsg.QUERY_ERROR, e=e)
+            raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=e)

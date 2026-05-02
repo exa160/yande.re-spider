@@ -34,25 +34,29 @@ class ImageCache:
             return f"/api/v1/cache/original/{image_id}.{file_ext}"
         return None
 
-    def download_preview(
-        self, preview_url: str, image_id: int, file_ext: str = "jpg"
-    ) -> Optional[str]:
+    def download_preview(self, preview_url: str, image_id: int, file_ext: str = "jpg") -> Optional[Path]:
         preview_path = self.get_preview_path(image_id, file_ext)
-
         if preview_path.exists():
-            return str(preview_path)
+            return preview_path
 
-        try:
-            resp = requests.get(preview_url, proxies=get_proxy(), timeout=10)
-            if resp.status_code == 200:
+        last_exception = None
+        for i in range(config.yande_api.retry):
+            try:
+                resp = requests.get(preview_url, proxies=get_proxy(), timeout=config.yande_api.timeout)
+                resp.raise_for_status()
                 self._ensure_dirs()
-                with open(preview_path, "wb") as f:
-                    f.write(resp.content)
-                return str(preview_path)
-        except Exception as e:
-            logger.error(f"Failed to download preview {preview_url}: {e}")
+                preview_path.write_bytes(resp.content)
+                return preview_path
+            except requests.HTTPError as e:
+                last_exception = e
+                logger.warning(
+                    f"[{i + 1}] HTTP error for preview {image_id}: {e.response.status_code}"
+                 )
+            except Exception as e:
+                last_exception = e
+                logger.warning(f"[{i + 1}] Failed to download preview {preview_url}: {e}")
 
-        return None
+        raise last_exception
 
     def save_original(
         self, file_url: str, image_id: int, file_ext: str = "jpg"
@@ -62,16 +66,25 @@ class ImageCache:
         if original_path.exists():
             return str(original_path)
 
-        try:
-            resp = requests.get(file_url, proxies=get_proxy(), timeout=30)
-            if resp.status_code == 200:
+        for i in range(config.yande_api.retry):
+            last_exception = None
+            try:
+                resp = requests.get(file_url, proxies=get_proxy(), timeout=config.yande_api.timeout)
+                resp.raise_for_status()
                 self._ensure_dirs()
-                with open(original_path, "wb") as f:
-                    f.write(resp.content)
+                original_path.write_bytes(resp.content)
                 return str(original_path)
-        except Exception as e:
-            logger.error(f"Failed to download original {file_url}: {e}")
+            except requests.HTTPError as e:
+                last_exception = e
+                logger.warning(
+                    f"[{i + 1}] HTTP error for preview {image_id}: {e.response.status_code}"
+                 )     
+            except Exception as e:
+                last_exception = e
+                logger.warning(f"[{i + 1}] Failed to download original {file_url}: {e}")
 
+        if last_exception:
+            raise last_exception
         return None
 
     def check_local_files(

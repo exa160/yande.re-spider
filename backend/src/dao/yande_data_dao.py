@@ -1,27 +1,13 @@
-from datetime import datetime as dt
 from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from typing import List, Optional, Tuple
 
+from src.common.utils import check_local_file
 from src.common import config
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
-from src import path_constant
 from loguru import logger
-import os
-
-
-def _check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[str]:
-    base = path_constant.previews_dir if file_type == "preview" else path_constant.originals_dir
-    extensions = (
-        ["jpg", "jpeg", "png", "gif", "webp"] if file_type == "preview" else [file_ext]
-    )
-    for ext in extensions:
-        file_path = os.path.join(base, f"{image_id}.{ext}")
-        if os.path.exists(file_path):
-            return f"{image_id}.{ext}"
-    return None
 
 
 class YandeDataRepository(BaseDAO):
@@ -130,39 +116,39 @@ class YandeDataRepository(BaseDAO):
         results = self.session.execute(query_stmt).scalars().all()
         total = self.session.execute(count_stmt).scalar() or 0
 
-        rating_display_map = {"s": "Safe", "q": "Questionable", "e": "Explicit"}
-        images = []
-        for row in results:
-            tags_list = row.tags.split() if row.tags else []
-            rating_val = row.rating.value if hasattr(row.rating, "value") else row.rating
-            rating_display = rating_display_map.get(rating_val, rating_val) if rating_val else "Safe"
-            file_ext = row.file_ext or "jpg"
+        # rating_display_map = {"s": "Safe", "q": "Questionable", "e": "Explicit"}
+        # images = []
+        # for row in results:
+        #     tags_list = row.tags.split() if row.tags else []
+        #     rating_val = row.rating.value if hasattr(row.rating, "value") else row.rating
+        #     rating_display = rating_display_map.get(rating_val, rating_val) if rating_val else "Safe"
+        #     file_ext = row.file_ext or "jpg"
 
-            local_preview = _check_local_file(row.id, file_ext, "preview")
-            local_original = _check_local_file(row.id, file_ext, "original")
-            is_downloaded = row.down_flag if hasattr(row, "down_flag") else True
+        #     local_preview = check_local_file(row.id, file_ext, "preview")
+        #     local_original = check_local_file(row.id, file_ext, "original")
+        #     is_downloaded = row.down_flag if hasattr(row, "down_flag") else True
 
-            images.append({
-                "id": row.id,
-                "tags": tags_list,
-                "width": row.width or 0,
-                "height": row.height or 0,
-                "rating": rating_display,
-                "file_url": row.file_url or "",
-                "preview_url": row.preview_url or "",
-                "sample_url": None,
-                "file_size": row.file_size or 0,
-                "file_ext": file_ext,
-                "author": row.author or "",
-                "created_at": str(row.created_at) if row.created_at else "",
-                "md5": row.md5 or "",
-                "score": row.score,
-                "is_downloaded": is_downloaded,
-                "local_preview_path": local_preview,
-                "local_file_path": local_original,
-            })
+        #     images.append({
+        #         "id": row.id,
+        #         "tags": tags_list,
+        #         "width": row.width or 0,
+        #         "height": row.height or 0,
+        #         "rating": rating_display,
+        #         "file_url": row.file_url or "",
+        #         "preview_url": row.preview_url or "",
+        #         "sample_url": None,
+        #         "file_size": row.file_size or 0,
+        #         "file_ext": file_ext,
+        #         "author": row.author or "",
+        #         "created_at": str(row.created_at) if row.created_at else "",
+        #         "md5": row.md5 or "",
+        #         "score": row.score,
+        #         "is_downloaded": is_downloaded,
+        #         "local_preview_path": local_preview,
+        #         "local_file_path": local_original,
+        #     })
 
-        return images, total
+        return results, total
 
     def get_by_id(self, image_id: int) -> Optional[dict]:
         stmt = select(YandeData).filter_by(id=image_id)
@@ -175,8 +161,8 @@ class YandeDataRepository(BaseDAO):
         rating_display = rating_display_map.get(row.rating, row.rating) if row.rating else "Safe"
         file_ext = row.file_ext or "jpg"
 
-        local_preview = _check_local_file(row.id, file_ext, "preview")
-        local_original = _check_local_file(row.id, file_ext, "original")
+        local_preview = check_local_file(row.id, file_ext, "preview")
+        local_original = check_local_file(row.id, file_ext, "original")
 
         return {
             "id": row.id,
@@ -227,63 +213,73 @@ class YandeDataRepository(BaseDAO):
             logger.warning(f"Update down_flag error: {e}")
             return False
 
-    def upsert_batch(self, yande_items: list) -> int:
+    def _build_upsert_stmt(self, yande_items: list, returning: bool = False):
         use_mariadb = config.database.enable and config.database.host
 
+        if use_mariadb:
+            stmt = mysql_insert(YandeData).values(yande_items)
+            update_cols = {
+                k: stmt.excluded[k]
+                for k in yande_items[0].keys()
+                if k not in ("id", "down_flag")
+            }
+            update_cols["down_flag"] = YandeData.down_flag
+            stmt = stmt.on_duplicate_key_update(**update_cols)
+        else:
+            stmt = sqlite_insert(YandeData).values(yande_items)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[YandeData.id],
+                set_={
+                    k: stmt.excluded[k]
+                    for k in yande_items[0].keys()
+                    if k != "id"
+                },
+            )
+
+        if returning:
+            stmt = stmt.returning(YandeData)
+
+        return stmt
+
+    def upsert_batch(self, yande_items: list) -> int:
         if not yande_items:
             return 0
 
-        def build_record_data(yande_item) -> dict:
-            record = yande_item.model_dump()
-            if not record.get("created_at"):
-                record["created_at"] = dt.now()
-            if not record.get("updated_at"):
-                record["updated_at"] = dt.now()
-            return record
-
-        records_data = [build_record_data(item) for item in yande_items]
-
         try:
-            if use_mariadb:
-                stmt = mysql_insert(YandeData).values(records_data)
-                update_cols = {
-                    k: stmt.excluded[k]
-                    for k in records_data[0].keys()
-                    if k not in ("id", "down_flag")
-                }
-                update_cols["down_flag"] = YandeData.down_flag
-                stmt = stmt.on_duplicate_key_update(**update_cols)
-                self.session.execute(stmt)
-            else:
-                existing_ids = [r["id"] for r in records_data]
-                existing_stmt = select(YandeData.id, YandeData.down_flag).where(
-                    YandeData.id.in_(existing_ids)
-                )
-                existing_rows = self.session.execute(existing_stmt).fetchall()
-                existing_flags = {row[0]: row[1] for row in existing_rows}
-
-                for record in records_data:
-                    if record["id"] in existing_flags:
-                        record["down_flag"] = existing_flags[record["id"]]
-                    else:
-                        record["down_flag"] = False
-
-                stmt = sqlite_insert(YandeData).values(records_data)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=[YandeData.id],
-                    set_={
-                        k: stmt.excluded[k]
-                        for k in records_data[0].keys()
-                        if k != "id"
-                    },
-                )
-                self.session.execute(stmt)
-
-            return len(records_data)
+            stmt = self._build_upsert_stmt(yande_items)
+            self.session.execute(stmt)
+            return len(yande_items)
         except Exception as e:
             logger.warning(f"Upsert batch error: {e}")
             self.session.rollback()
             return 0
+
+    def upsert_batch_with_down_flags(self, yande_items: list) -> dict:
+        if not yande_items:
+            return {}
+
+        try:
+            stmt = self._build_upsert_stmt(yande_items, returning=True)
+            result = self.session.execute(stmt)
+            rows = result.scalars().all()
+            return rows
+        except Exception as e:
+            logger.warning(f"Upsert batch with returning failed: {e}")
+            self.session.rollback()
+
+        try:
+            stmt = self._build_upsert_stmt(yande_items)
+            self.session.execute(stmt)
+            existing_ids = [r["id"] for r in yande_items]
+            existing_stmt = select(YandeData).where(
+                YandeData.id.in_(existing_ids)
+            )
+            rows = self.session.execute(existing_stmt).scalars().all()
+            return rows
+        except Exception as e:
+            logger.warning(f"Fallback down_flag query failed: {e}")
+            self.session.rollback()
+            return {}
 
     def upsert(self, yande_item) -> bool:
         result = self.upsert_batch([yande_item])

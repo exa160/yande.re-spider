@@ -337,7 +337,12 @@ const handleRefreshArtists = async () => {
   refreshingArtists.value = true
   try {
     const result = await tagCacheApi.refreshArtists(refreshArtistsParams.value)
-    ElMessage.success(`艺术家更新完成: 更新了 ${result.data.total_updated} 条 (共 ${result.data.pages_done} 页)`)
+    // 后端异步处理时 data 为 null，显示 message 即可
+    if (result.data) {
+      ElMessage.success(`艺术家更新完成: 更新了 ${result.data.total_updated} 条 (共 ${result.data.pages_done} 页)`)
+    } else {
+      ElMessage.success(result.message || '艺术家刷新任务已启动')
+    }
     await loadCacheStats()
   } catch (error) {
     ElMessage.error('艺术家更新失败')

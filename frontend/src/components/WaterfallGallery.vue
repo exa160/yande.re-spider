@@ -25,7 +25,7 @@
         class="waterfall-item"
         :class="{ 
           'selected': isSelected(image),
-          'image-loaded': pendingImages.has(image.id) || image.local_preview_path,
+          'image-loaded': pendingImages.has(image.id) || !image.preview_url?.startsWith('http'),
           'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
         }"
         @click="handleImageClick(image)"
@@ -51,7 +51,7 @@
           class="waterfall-image"
           :style="{ height: getPlaceholderHeight(image) + 'px' }"
           :class="{ 
-            'fade-in': pendingImages.has(image.id) || image.local_preview_path,
+            'fade-in': pendingImages.has(image.id),
             'safe-blur': safeMode && image.rating !== 'Safe'
           }"
           @error="handleImageError(image)"
@@ -81,7 +81,7 @@
             <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
               {{ image.rating }}
             </el-tag>
-            <div v-if="image.local_file_path || image.local_preview_path" class="downloaded-dot"></div>
+            <div v-if="image.down_flag" class="downloaded-dot"></div>
           </div>
         </div>
 
@@ -95,8 +95,8 @@
 
     <!-- 加载更多 -->
     <div v-if="hasMore && !loading" ref="loadMoreRef" class="load-more">
-      <el-button 
-        @click="loadMore" 
+      <el-button
+        @click="handleLoadMoreClick"
         :disabled="loadingMore"
         class="load-more-btn"
       >
@@ -104,6 +104,7 @@
           <el-icon class="is-loading"><Loading /></el-icon>
           加载中...
         </span>
+        <span v-else-if="loadError">重新加载</span>
         <span v-else>加载更多</span>
       </el-button>
     </div>
@@ -149,13 +150,17 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  loadError: {
+    type: Boolean,
+    default: false
+  },
   safeMode: {
     type: Boolean,
     default: false
   }
 })
 
-const emit = defineEmits(['image-click', 'image-select', 'load-more', 'multi-select-start'])
+const emit = defineEmits(['image-click', 'image-select', 'load-more', 'load-error', 'multi-select-start'])
 
 // 监听 isLoadingMore prop，当父组件重置时同步状态
 watch(() => props.isLoadingMore, (newVal) => {
@@ -546,9 +551,15 @@ const handleSelect = (image, checked) => {
 }
 
 const loadMore = () => {
-  if (loadingMore.value) return
+  if (loadingMore.value || props.loadError) return
   loadingMore.value = true
   emit('load-more')
+}
+
+const handleLoadMoreClick = () => {
+  if (loadingMore.value) return
+  loadingMore.value = true
+  emit('load-error')
 }
 
 const getRatingType = (rating) => {
@@ -563,24 +574,12 @@ const getRatingType = (rating) => {
 const getPreviewUrl = (image) => {
   const retryTs = retrySuccessImages.value.get(image.id)
   const tsSuffix = retryTs ? `&ts=${retryTs}` : ''
-  
+
   if (props.sourceMode === 'local') {
-    if (image.local_preview_path) {
-      return `/api/v1/gallery/cache/preview/${image.local_preview_path}${tsSuffix}`
+    if (image.preview_url) {
+      return `/api/v1/gallery/cache/preview/${image.preview_url}${tsSuffix}`
     }
-    if (image.local_file_path) {
-      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
-    }
-    return ''
-  }
-  if (props.sourceMode === 'yande' && !visibleImages.value.has(image.id)) {
-    return ''
-  }
-  if (pendingImages.value.has(image.id)) {
     return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
-  }
-  if (props.saveDataMode) {
-    return ''
   }
   return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
 }
@@ -637,14 +636,12 @@ const handleImageRetry = async (image, event) => {
   clearImageTimeout(image.id)
   
   let apiSuccess = false
-  if (props.sourceMode === 'local') {
-    if (image.local_file_path) {
-      try {
-        await api.get(`/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`)
-        apiSuccess = true
-      } catch (e) {
-        ElMessage.error('生成缩略图失败')
-      }
+  if (props.sourceMode === 'local' && image.preview_url && !image.preview_url.startsWith('http')) {
+    try {
+      await api.get(`/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`)
+      apiSuccess = true
+    } catch (e) {
+      ElMessage.error('生成缩略图失败')
     }
   } else {
     try {
@@ -674,7 +671,7 @@ const setupLoadMoreObserver = () => {
   loadMoreObserver = new IntersectionObserver(
     (entries) => {
       const entry = entries[0]
-      if (entry.isIntersecting && props.hasMore && !props.loading && !loadingMore.value) {
+      if (entry.isIntersecting && props.hasMore && !props.loading && !loadingMore.value && !props.loadError) {
         loadMore()
       }
     },

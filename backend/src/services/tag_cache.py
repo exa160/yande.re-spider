@@ -25,11 +25,10 @@ class TagCacheService:
             {"success": bool, "total_updated": int, "last_id": int}
         """
         yande_api = YandeApi()
-        total_updated = 0
 
         try:
             if full_refresh:
-                return TagCacheService._full_refresh_tags(yande_api, limit)
+                return TagCacheService._full_refresh_tags(yande_api)
             else:
                 return TagCacheService._incremental_refresh_tags(yande_api, limit)
         except Exception as e:
@@ -37,7 +36,7 @@ class TagCacheService:
             raise
 
     @staticmethod
-    def _full_refresh_tags(yande_api: YandeApi, limit: int) -> dict:
+    def _full_refresh_tags(yande_api: YandeApi) -> dict:
         """全量刷新标签"""
         with TagRepository() as repo:
             repo.clear_all_tags()
@@ -60,7 +59,12 @@ class TagCacheService:
 
         with TagRepository() as repo:
             current_after_id = repo.get_max_id()
-            logger.info(f"增量更新，从最大ID {current_after_id} 开始")
+
+        if not current_after_id or current_after_id == 0:
+            logger.info("Tag cache is empty, switching to full refresh")
+            return TagCacheService._full_refresh_tags(yande_api)
+
+        logger.info(f"增量更新，从最大ID {current_after_id} 开始")
 
         while has_more:
             success, tags = yande_api.get_tags(limit=limit, after_id=current_after_id)
@@ -88,12 +92,11 @@ class TagCacheService:
         }
 
     @staticmethod
-    def refresh_artists(limit: int = 100, page: int = 1, max_pages: int = 10) -> dict:
+    def refresh_artists(page: int = 1, max_pages: int = 10) -> dict:
         """
         从 yande.re API 刷新艺术家缓存
 
         Args:
-            limit: 每次请求的数量
             page: 起始页码
             max_pages: 最大页数
 
@@ -107,7 +110,7 @@ class TagCacheService:
 
         try:
             while pages_done < max_pages:
-                success, artists = yande_api.get_artists(page=current_page, limit=limit)
+                success, artists = yande_api.get_artists(page=current_page)
                 if not success or not artists:
                     logger.warning(f"Failed to fetch artists at page {current_page}")
                     break
@@ -120,7 +123,7 @@ class TagCacheService:
                 pages_done += 1
                 current_page += 1
 
-                if len(artists) < limit:
+                if len(artists) < 25:
                     break
 
             return {

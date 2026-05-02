@@ -10,6 +10,7 @@ from loguru import logger
 from src.common import config, path_constant
 from src.common.constant import TaskStatus
 from src.common.utils import get_proxy
+from src.dao.yande_data import YandeDataRepository
 from src.infrastructure.downloader import MultiDown
     
 
@@ -277,10 +278,12 @@ async def run_download_async(task_id: str):
                     "completed_at": datetime.now().isoformat(),
                 },
             )
-            # 更新数据库：尝试更新 down_flag，如果记录不存在则插入新记录
-            db_updated = await _update_image_database(task, True)
+            # 更新数据库：下载失败时不更新 down_flag，只记录错误日志
+            logger.warning(f"Download failed for image {task['image_id']}: {error_message}")
+            db_updated = False
         else:
-            db_updated = await _update_image_database(task, False)
+            # 更新数据库：下载成功，设置 down_flag=True
+            db_updated = await _update_image_database(task, True)
             task_store.update_task(
                 task_id,
                 {
@@ -309,74 +312,15 @@ async def _update_image_database(task: dict, down_flag: bool) -> bool:
         是否更新成功
     """
     try:
-        from src.dao.yande_data import YandeDataRepository
-        from src.models.yande import Rating
-
-        # 构建入库数据（从 task 数据）
-        rating_str = task.get("rating", "s")
-        if rating_str in ["Safe", "s", "S"]:
-            rating = Rating.S
-        elif rating_str in ["Questionable", "q", "Q"]:
-            rating = Rating.R15
-        else:
-            rating = Rating.R18
-
-        # 创建模拟的 YandePostItem 数据结构用于 upsert
-        class TaskAsYandeItem:
-            """将 task 数据转换为 YandePostItem 格式"""
-
-            def __init__(self, task_data: dict, rating_val: Rating):
-                self.id = task_data.get("image_id", 0)
-                self.tags = task_data.get("tags", "")
-                self.created_at = datetime.now()
-                self.updated_at = datetime.now()
-                self.creator_id = None
-                self.author = task_data.get("author", "")
-                self.change = 0
-                self.source = task_data.get("file_url", "")
-                self.score = 0
-                self.md5 = task_data.get("md5", "")
-                self.file_size = task_data.get("total_size", 0)
-                self.file_ext = ''
-                self.file_url = task_data.get("file_url", "")
-                self.is_shown_in_index = True
-                # 尝试从 task 获取 preview_url，否则从 file_url 推导
-                preview_url = task_data.get("preview_url")
-                if not preview_url and task_data.get("file_url"):
-                    preview_url = task_data["file_url"].replace("images", "previews")
-                self.preview_url = preview_url or ""
-                self.preview_width = 0
-                self.preview_height = 0
-                self.actual_preview_width = 0
-                self.actual_preview_height = 0
-                self.sample_url = ""
-                self.sample_width = 0
-                self.sample_height = 0
-                self.sample_file_size = 0
-                self.jpeg_url = ""
-                self.jpeg_width = 0
-                self.jpeg_height = 0
-                self.jpeg_file_size = 0
-                self.rating = rating_val
-                self.is_rating_locked = False
-                self.has_children = False
-                self.parent_id = None
-                self.status = "active"
-                self.is_pending = False
-                self.width = task_data.get("width", 0)
-                self.height = task_data.get("height", 0)
-                self.is_held = False
-
-        # TODO: 任务信息不使用无效字段，图片入库信息以post.json接口传入数据为准，不用以下数据
-        yande_item = TaskAsYandeItem(task, rating)
-
         with YandeDataRepository() as repo:
             # 尝试更新 down_flag
             updated = repo.update_down_flag(task["image_id"], down_flag)
 
             if not updated:
                 # 记录不存在，使用 upsert 插入（与 query_yande_api 流程相似）
-                repo.upsert(yande_item)
+                # TODO: 任务信息不使用无效字段，图片入库信息以post.json接口传入数据为准，不用以下数据
+
+                repo.upsert(task)
                 logger.info(f"Image {task['image_id']} inserted via task data")
             else:
                 logger.info(f"Image {task['image_id']} down_flag updated")

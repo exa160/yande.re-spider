@@ -4,17 +4,13 @@ from typing import Optional, List
 
 from pydantic import BaseModel, RootModel
 
+from src.common.constant import Rating
+
 
 class SearchRating(Enum):
     S = "safe"
     R15 = "questionable"
     R18 = "explicit"
-
-
-class Rating(Enum):
-    S = "s"
-    R15 = "q"
-    R18 = "e"
 
 
 class YandePostData(RootModel):
