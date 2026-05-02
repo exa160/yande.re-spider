@@ -4,7 +4,7 @@ from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, JSON
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import Enum
 
-from src.models.yande import Rating
+from src.common.constant import Rating
 
 
 class Base(DeclarativeBase):

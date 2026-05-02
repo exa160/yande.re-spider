@@ -21,14 +21,6 @@ class BatchTaskCreatedData(BaseModel):
     task_ids: List[str]
 
 
-class PreviewUrlData(BaseModel):
-    """预览URL数据"""
-
-    preview_url: str = ""
-    sample_url: str = ""
-    file_url: str = ""
-
-
 class CountData(BaseModel):
     """数量数据"""
 
@@ -49,12 +41,6 @@ class TaskCreatedResponse(BaseResponse[TaskCreatedData]):
 
 class BatchTaskCreatedResponse(BaseResponse[BatchTaskCreatedData]):
     """批量任务创建响应"""
-
-    ...
-
-
-class PreviewUrlResponse(BaseResponse[PreviewUrlData]):
-    """预览URL响应"""
 
     ...
 

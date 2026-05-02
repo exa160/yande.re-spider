@@ -69,6 +69,7 @@
         :loading="loading"
         :has-more="hasMore"
         :is-loading-more="isLoadingMore"
+        :load-error="loadError"
         :selected-images="selectedImages"
         :selectable="querySource === 'yande'"
         :source-mode="querySource"
@@ -77,6 +78,7 @@
         @image-click="handleImageClick"
         @image-select="handleImageSelect"
         @load-more="loadMore"
+        @load-error="handleLoadError"
         @multi-select-start="handleMultiSelectStart"
       />
     </div>
@@ -133,7 +135,7 @@
 
           <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
             <div class="float-footer-left">
-              <template v-if="!currentImage.is_downloaded">
+              <template v-if="!currentImage.down_flag">
                 <el-button 
                   type="primary" 
                   @click.stop="handleDownload" 
@@ -254,6 +256,7 @@ const images = ref([])
 const loading = ref(false)
 const hasMore = ref(false)
 const isLoadingMore = ref(false)
+const loadError = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
 const currentFavorite = ref(null)
@@ -322,8 +325,10 @@ const analyzeImageColor = (imgUrl) => {
 watch(currentImage, (img) => {
   if (previewVisible.value && img) {
     // 使用本地预览图进行分析，无本地路径时不尝试加载远程图片（避免CORS）
-    const imgUrl = img.local_preview_path 
-      ? `/api/v1/gallery/cache/preview/${img.id}.${img.file_ext || 'jpg'}`
+    // preview_url 不以 http 开头则是本地路径
+    const isLocalPreview = img.preview_url && !img.preview_url.startsWith('http')
+    const imgUrl = isLocalPreview
+      ? `/api/v1/gallery/cache/preview/${img.preview_url}`
       : ''
     analyzeImageColor(imgUrl)
   }
@@ -500,21 +505,25 @@ const loadImages = async () => {
       page: currentPage.value
     })
     const data = response.data
+    // 重构后 data 直接是图片数组
+    const imageList = Array.isArray(data) ? data : []
     if (currentPage.value === 1) {
-      images.value = data.images
+      images.value = imageList
       if (currentFavorite.value) {
         if (querySource.value === 'local') {
-          updateLocalCount(currentFavorite.value.id, data.total).catch(() => {})
+          updateLocalCount(currentFavorite.value.id, response.total).catch(() => {})
         } else {
           refreshOnlineCount(currentFavorite.value.id).catch(() => {})
         }
       }
     } else {
-      images.value.push(...data.images)
+      images.value.push(...imageList)
     }
-    hasMore.value = data.has_more
+    hasMore.value = response.has_more
+    loadError.value = false
   } catch (error) {
     ElMessage.error('加载图片失败')
+    loadError.value = true
   } finally {
     if (isFirstPage) {
       loading.value = false
@@ -528,6 +537,12 @@ const loadMore = async () => {
   currentPage.value++
   await loadImages()
   isLoadingMore.value = false
+}
+
+const handleLoadError = async () => {
+  // 重新加载当前页
+  loadError.value = false
+  await loadImages()
 }
 
 const handleImageClick = async (image) => {
@@ -642,7 +657,7 @@ const handleDownload = async () => {
       total_size: currentImage.value.file_size
     })
     ElMessage.success('下载任务已创建')
-    currentImage.value.is_downloaded = true
+    currentImage.value.down_flag = true
   } catch (error) {
     ElMessage.error('创建下载任务失败')
   } finally {
@@ -682,19 +697,13 @@ const formatFileSize = (bytes) => {
 
 const getDetailUrl = (image) => {
   if (!image) return ''
-  if (image.local_file_path) {
-    const filename = `${image.id}.${image.file_ext || 'jpg'}`
-    return `/api/v1/gallery/cache/original/${filename}`
+  // file_url 是本地原图路径，preview_url 是本地预览图路径
+  // file_url 不以 http 开头则是本地原图
+  if (image.file_url && !image.file_url.startsWith('http')) {
+    return `/api/v1/gallery/cache/original/${image.file_url}`
   }
-  if (image.local_preview_path) {
-    return `/api/v1/gallery/cache/preview/${image.local_preview_path}`
-  }
-  // 在线模式：使用缓存的预览图API（避免直接访问远程URL导致CORS）
-  if (image.preview_url) {
-    return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
-  }
-  // 无本地路径时返回空字符串，不直接返回远程file_url
-  return ''
+  // 在线模式：使用 fetch 缓存原图（避免直接访问远程URL导致CORS）
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
 }
 
 // 页面加载时自动查询本地
