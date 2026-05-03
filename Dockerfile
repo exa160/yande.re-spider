@@ -16,7 +16,7 @@ RUN npm run build
 # 阶段二：后端依赖构建（编译 C 扩展）
 FROM python:3.12-slim AS backend-builder
 
-WORKDIR /build
+WORKDIR /app
 
 # 安装编译必需的系统库和工具
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=frontend-builder /frontend/dist ./frontend/dist/
 
 # 从后端构建阶段复制已安装的虚拟环境
-COPY --from=backend-builder /build/.venv ./.venv
+COPY --from=backend-builder /app/.venv ./.venv
 
 # 复制后端代码和配置
 COPY backend/ ./

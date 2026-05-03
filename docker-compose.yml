@@ -4,7 +4,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./config/config.yaml:/app/config/config.yaml
+      - ./config:/app/config
       - ./data:/app/data
       - ./downloads:/app/downloads
       - ./logs:/app/logs
@@ -13,4 +13,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    cpus: 2
+    mem_limit: 1024m
     restart: unless-stopped
