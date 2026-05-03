@@ -85,7 +85,7 @@
 yande.re-spider-next-dev/
 ├── backend/                    # 后端代码
 │   ├── src/                   # 核心源码（重构后）
-│   │   ├── __init__.py       # init_app() 初始化函数
+│   │   ├── __init__.py       # init_app() + AppConfig
 │   │   ├── api/              # API 路由层
 │   │   │   ├── __init__.py   # APILoader 自动路由注册
 │   │   │   └── v1/           # API 版本控制
@@ -99,10 +99,12 @@ yande.re-spider-next-dev/
 │   │   │   ├── constant.py   # ErrMsg枚举、PathConstant、RouterMap
 │   │   │   └── settings.py   # Pydantic 配置模型
 │   │   ├── dao/              # 数据访问层
-│   │   │   ├── database.py   # MariaDBClient ORM
+│   │   │   ├── database.py   # BaseDAO + Session 管理
 │   │   │   ├── favorite_dao.py # 收藏夹数据访问
-│   │   │   └── yande_data.py # YandeDataRepository
-│   │   ├── infrastructure/  # 基础设施层
+│   │   │   ├── yande_data_dao.py # 图片数据访问
+│   │   │   ├── tag_dao.py     # 标签缓存访问
+│   │   │   └── artist_dao.py  # 艺术家缓存访问
+│   │   ├── infrastructure/    # 基础设施层
 │   │   │   ├── advanced_search.py # 高级搜索
 │   │   │   ├── download_queue.py  # 下载队列
 │   │   │   ├── downloader.py      # MultiDown 分段下载器
@@ -112,7 +114,8 @@ yande.re-spider-next-dev/
 │   │   │   ├── downloader.py     # 下载中间件
 │   │   │   ├── errors.py         # APIException、ErrorHandleMiddleware
 │   │   │   ├── frontend_static.py # 前端静态资源
-│   │   │   └── loggers.py        # LoggerMiddleware
+│   │   │   ├── loggers.py        # LoggerMiddleware
+│   │   │   └── session.py        # RequestSessionMiddleware
 │   │   ├── models/           # 数据模型层
 │   │   │   ├── database/     # 数据库模型
 │   │   │   ├── request/      # 请求模型（Request DTO）
@@ -121,10 +124,9 @@ yande.re-spider-next-dev/
 │   │   │   ├── favorite.py   # 收藏夹模型
 │   │   │   └── yande.py      # YandePostData, Rating
 │   │   └── services/         # 业务逻辑层
+│   ├── service.py            # 应用入口
 │   ├── config/               # 配置文件目录
-│   │   └── config.yaml       # 运行时配置
 │   └── data/                 # 数据目录
-│       └── yande_data.db     # SQLite 数据库
 ├── frontend/                   # Vue.js 前端
 │   ├── src/
 │   │   ├── components/       # 组件
@@ -132,6 +134,9 @@ yande.re-spider-next-dev/
 │   │   ├── api/              # API 服务
 │   │   └── router/           # 路由
 │   └── package.json
+├── docker-compose.yml          # 生产环境 Compose
+├── docker-compose.override.yml # 本地开发覆盖配置
+├── Dockerfile                  # 多阶段构建
 ├── docs/                      # 文档
 ├── config/                    # 配置文件
 ├── pyproject.toml             # Python 项目配置
@@ -176,6 +181,20 @@ npm run dev
 - 前端界面: http://localhost:3000
 - 后端API: http://localhost:8000
 - API文档: http://localhost:8000/docs
+
+### 4. Docker 部署
+
+```bash
+# 本地开发（自动构建）
+docker compose up
+
+# 生产环境（使用预构建镜像）
+docker compose -f docker-compose.yml up
+
+# 镜像通过 GitHub Actions 自动构建推送：
+# - PR 到 next 分支 → 构建 git-<SHA> 标签
+# - 推送 v*.*.* tag → 构建语义化版本标签 + latest
+```
 
 ## API 接口
 
@@ -253,7 +272,8 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 
 ## 重构记录
 
-详见 [docs/refactor-2026-04-28.md](docs/refactor-2026-04-28.md)
+- [refactor-2026-04-28.md](docs/refactor-2026-04-28.md) - 导入路径和常量管理标准化
+- [refactor-2026-05-02.md](docs/refactor-2026-05-02.md) - 批量下载、down_flag、YandeApi重试机制等修复
 
 ## 开发计划
 
@@ -263,33 +283,15 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 - [x] 收藏夹在线数量 XML API 获取
 - [x] 下载器 MD5 失败只警告
 - [x] 下载器断点续传优化
-- [ ] 本地模式 tag 分组展示
+- [_] 本地模式 tag 分组展示
 - [ ] 点击详情页中的 tag 快速跳转查询
 - [ ] 下载历史在数据库中记录
 
-### 部署优化
+### 架构优化
 - [x] 改为 uv 管理项目依赖
-- [ ] Docker 部署构建
-
-### 架构重构（next_dev 分支）
-- [x] 目录结构重组（backend/src/）
-- [x] 自动路由注册（APILoader）
-- [x] 统一响应格式（BaseResponse）
-- [x] 统一错误处理（APIException + ErrMsg）
-- [x] 中间件层拆分（middleware/）
-- [x] 常量管理统一（PathConstant）
-- [x] 导入路径标准化（src.xxx）
-- [x] DAO 层重构
-- [x] API 路由系统重构
-- [x] 数据库模型模块化
-- [ ] 后端托管前端静态资源
+- [x] Docker 多阶段构建优化
+- [x] Docker Compose 分离生产/开发配置
 - [ ] 增加异步定时任务功能（根据 tag 定时启动下载器）
-
-### 代码规范化（待完成）
-- [x] 删除根目录 main.py（旧脚本）
-- [x] 业务逻辑从 API 路由层分离到 services 层
-- [ ] 修复 __init__.py 日志消息（"Flask" → "FastAPI"）
-- [ ] 补全 ErrMsg 枚举（添加通用错误码）
 
 ### 图片存储优化
 - [ ] 本地图片空间压缩（HEIF/AVIF 格式自动转换）
