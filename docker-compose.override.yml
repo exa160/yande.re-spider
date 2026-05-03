@@ -1,0 +1,6 @@
+services:
+  picture-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: exa160/picture-manager:local
