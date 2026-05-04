@@ -83,59 +83,7 @@ class GalleryService:
             down_flags = repo.upsert_batch_with_down_flags(yande_data.model_dump())
             if not down_flags:
                 logger.warning(f"Upsert batch returned no down_flag data, data may not be saved")
-            # TODO 直接利用pytantic格式化数据
-            # 构建图片信息
         return down_flags, len(down_flags)
-        #     images = []
-        #     for item in yande_items:
-        #         file_ext = item.file_ext or "jpg"
-        #         is_downloaded = down_flags.get(item.id, False)
-
-        #         local_preview = (
-        #             check_local_file(item.id, file_ext, "preview")
-        #             if is_downloaded
-        #             else None
-        #         )
-        #         local_original = (
-        #             check_local_file(item.id, file_ext, "original")
-        #             if is_downloaded
-        #             else None
-        #         )
-
-        #         images.append(
-        #             GalleryService._build_image_info(
-        #                 item, file_ext, is_downloaded, local_preview, local_original
-        #             )
-        #         )
-
-        # return images, len(images)
-
-    @staticmethod
-    def _build_image_info(
-        item,
-        file_ext: str,
-        is_downloaded: bool,
-        local_preview: Optional[str],
-        local_original: Optional[str],
-    ) -> dict:
-        """构建图片信息字典"""
-        return {
-            "id": item.id,
-            "tags": item.tags.split() if item.tags else [],
-            "width": item.width,
-            "height": item.height,
-            "rating": RATING_DISPLAY_MAP.get(item.rating.value, item.rating.value)
-            if item.rating else "Safe",
-            "file_url": local_original,
-            "preview_url": local_preview or local_original,
-            "file_size": item.file_size,
-            "file_ext": file_ext,
-            "author": item.author,
-            "created_at": str(item.created_at),
-            "md5": item.md5,
-            "score": item.score,
-            "down_flag": is_downloaded,
-        }
 
     @staticmethod
     def get_image_by_id(image_id: int, source: str = "local") -> Optional[dict]:

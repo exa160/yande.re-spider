@@ -11,7 +11,6 @@ from src.middleware.errors import APIException
 from src.models.request.download import DownloadTaskCreate
 from src.models.response.base_response import BaseResponse
 from src.models.response.download import (
-    ProgressData,
     ProgressResponse,
     TaskListResponse,
     DownloadTaskResponse,
@@ -29,10 +28,12 @@ router = APIRouter()
 async def create_download_task(task: DownloadTaskCreate) -> TaskCreatedResponse:
     """创建单个下载任务"""
     try:
-        task_id = await DownloadService.create_task(task.model_dump())
+        task_id = await DownloadService.create_task(task.image_id)
         return TaskCreatedResponse(
             message="下载任务创建成功", data=TaskCreatedData(task_id=task_id)
         )
+    except ValueError as e:
+        raise APIException(ErrMsg.NOT_FOUND, data={"detail": str(e)})
     except Exception as e:
         raise APIException(ErrMsg.CREATE_ERROR, e=e)
 
@@ -45,9 +46,8 @@ async def create_batch_download_tasks(
 ) -> BatchTaskCreatedResponse:
     """批量创建下载任务"""
     try:
-        task_ids = await DownloadService.create_batch_tasks(
-            [task.model_dump() for task in tasks]
-        )
+        image_ids = [task.image_id for task in tasks]
+        task_ids = await DownloadService.create_batch_tasks(image_ids)
         return BatchTaskCreatedResponse(
             message=f"成功创建 {len(task_ids)} 个下载任务",
             data=BatchTaskCreatedData(task_ids=task_ids),
@@ -83,7 +83,7 @@ async def get_download_task(task_id: str) -> DownloadTaskResponse:
     task = DownloadService.get_task(task_id)
     if not task:
         raise APIException(ErrMsg.TASK_NOT_FOUND)
-    return DownloadTaskResponse(message=ErrMsg.OK.msg, data=task)
+    return DownloadTaskResponse(data=task)
 
 
 @router.get(
@@ -94,7 +94,7 @@ async def get_task_progress(task_id: str) -> ProgressResponse:
     progress = DownloadService.get_task_progress(task_id)
     if not progress:
         raise APIException(ErrMsg.TASK_NOT_FOUND)
-    return ProgressResponse(message=ErrMsg.OK.msg, data=ProgressData(**progress))
+    return ProgressResponse(message=ErrMsg.OK.msg, data=progress)
 
 
 @router.post("/task/{task_id}/start", response_model=BaseResponse, summary="启动任务")

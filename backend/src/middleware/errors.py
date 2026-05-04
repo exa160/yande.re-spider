@@ -52,7 +52,9 @@ class ErrorHandleMiddleware:
 
         @app.exception_handler(StarletteHTTPException)
         async def http_exception_handler(request, exc):
-           return JSONResponse(
+            logger.error(f"APIException: {exc}")
+            logger.error(f"traceback: {traceback.format_exc()}")
+            return JSONResponse(
                status_code=exc.status_code,
                content=ErrorResponse(
                     code=ErrMsg.INTERNAL_ERROR.code,

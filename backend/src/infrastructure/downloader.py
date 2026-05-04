@@ -1,8 +1,8 @@
-import os.path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 from hashlib import md5
-from multiprocessing import Queue
+from pathlib import Path
+from queue import Queue
 from threading import Thread, Event, Lock
 from time import sleep
 from typing import Optional
@@ -21,8 +21,9 @@ class FileInfo(BaseModel):
     """下载文件的信息"""
 
     id: Optional[int] = None
-    file_path: str
     file_size: int
+    file_name: str
+    file_path: Path
     md5: Optional[str] = None
     url: str
 
@@ -37,38 +38,16 @@ class MD5MismatchException(DownloadException):
 
 
 class MultiDown:
-    def __init__(
-        self,
-        url: str,
-        file_path: str,
-        file_name: str,
-        file_size: int = 0,
-        _md5: str = None,
-        _id: int = None,
-        _progress_callback=None,
-    ) -> None:
+    def __init__(self, file_info: FileInfo, _progress_callback=None) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
         self.close_event = Event()
         self.progress_lock = Lock()
         self.progress_callback = _progress_callback
-        self._progress_buffer = []
-        self._file_info = None  # 延迟初始化
-        if file_size == 0:
-            file_size = self.get_file_size(url)
-        file_name = sanitize_filename(file_name)
-        self._file_info = FileInfo(
-            url=url,
-            id=_id,
-            file_path=os.path.join(file_path, file_name),
-            file_size=file_size,
-            md5=_md5,
-        )
-        # 不再这里调用 start()，改为显式调用
-
-    @property
-    def file_info(self):
-        return self._file_info
+        if not file_info.file_size:
+            file_info.file_size = self.get_file_size(file_info.url)
+        file_info.file_name = sanitize_filename(file_info.file_name)
+        self._file_info = file_info
 
     def __del__(self):
         if hasattr(self, 'data_q') and self.data_q:
@@ -76,6 +55,10 @@ class MultiDown:
                 self.close_event.set()
             except Exception:
                 pass
+
+    @property
+    def file_info(self):
+        return self._file_info
 
     @staticmethod
     def get_file_size(_url):
@@ -158,10 +141,10 @@ class MultiDown:
     @staticmethod
     def file_writer(file_info: FileInfo, data_q: Queue, close_event: Event):
         f_size = file_info.file_size
-        f_path = file_info.file_path
+        f_path = file_info.file_path / file_info.file_name
 
         # 使用文件锁确保写入安全
-        lock_path = f_path + ".lock"
+        lock_path = f_path.with_suffix(f_path.suffix + ".lock")
         lock = FileLock(lock_path, timeout=300)
 
         with lock:
@@ -204,9 +187,17 @@ class MultiDown:
 
         # 清理锁文件
         try:
-            os.remove(lock_path)
+            lock_path.unlink(missing_ok=True)
         except OSError:
             pass
+
+    def cleanup(self):
+        if hasattr(self, 'data_q') and self.data_q:
+            try:
+                self.data_q.close()
+                self.data_q.join_thread()
+            except Exception:
+                pass
 
     def down_file_in_range(self, file_size):
         split_size = config.downloader.split_size
