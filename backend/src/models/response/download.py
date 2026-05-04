@@ -1,43 +1,18 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from src.common.constant import TaskStatus
+from src.infrastructure.download_queue import TaskStore
 from src.models.response.base_response import BaseResponse, PaginatedResponse
 
 
-class DownloadTaskInfo(BaseModel):
+class DownloadTaskInfo(TaskStore.DownloadTask):
     """下载任务信息"""
-
-    task_id: str
-    image_id: int
-    file_url: str
-    save_path: str
-    file_name: str
-    status: TaskStatus
-    progress: float
-    downloaded_size: int
-    total_size: Optional[int]
-    speed: Optional[float] = None
-    thread_num: int
-    error_message: Optional[str]
-    created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
+    yande_data: dict = Field(exclude=True)
 
 
-class ProgressData(BaseModel):
-    """任务进度数据"""
 
-    task_id: str
-    status: TaskStatus
-    progress: float
-    downloaded_size: int
-    total_size: Optional[int]
-    speed: Optional[float] = None
-
-
-class ProgressResponse(BaseResponse[ProgressData]):
+class ProgressResponse(BaseResponse[TaskStore.ProgressData]):
     """任务进度响应"""
 
     ...

@@ -1,75 +1,63 @@
+from __future__ import annotations
 import asyncio
 import threading
 import time
+import hashlib
 from datetime import datetime
 from typing import Optional, List, Dict
 
 import requests
 from loguru import logger
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.common import config, path_constant
 from src.common.constant import TaskStatus
 from src.common.utils import get_proxy
 from src.dao.yande_data import YandeDataRepository
-from src.infrastructure.downloader import MultiDown
+from src.infrastructure.downloader import FileInfo, MultiDown
 
 
 class TaskStore:
-    # 任务字段映射配置: 外部字段名 -> 内部字段名 (None 表示同名)
-    TASK_FIELD_MAPPING = {
-        "image_id": "image_id",
-        "file_url": "file_url",
-        "save_path": "save_path",
-        "file_name": "file_name",
-        "thread_num": "thread_num",
-        "total_size": "total_size",
-        "tags": "tags",
-        "width": "width",
-        "height": "height",
-        "rating": "rating",
-        "author": "author",
-        "md5": "md5",
-    }
+    class ProgressData(BaseModel):
+        """任务进度数据"""
 
-    # 内部任务默认值
-    TASK_DEFAULTS = {
-        "status": TaskStatus.PENDING,
-        "progress": 0.0,
-        "downloaded_size": 0,
-        "speed": 0.0,
-        "error_message": None,
-        "started_at": None,
-        "completed_at": None,
-    }
+        task_id: str = Field(..., description="任务ID")
+        status: TaskStatus = Field(TaskStatus.PENDING, description="任务状态")
+        progress: float = Field(0.0, description="进度")
+        downloaded_size: int = Field(0, description="已下载大小")
+        speed: float = Field(0.0, description="下载速度")
+        file_size: Optional[int] = Field(None, description="总大小")
+
+    class DownloadTask(ProgressData):
+        """下载任务模型，TODO: 后续用于数据库存储，目前仅在内存中管理，yande_data后续将删除"""
+        # TODO 直接使用YandeData模型 --- IGNORE ---
+        yande_data: dict = Field(..., description="yande数据")
+        file_name: Optional[str] = Field(..., description="文件名")
+        error_message: Optional[str] = Field(None, description="错误信息")
+        started_at: Optional[str] = Field(None, description="开始时间")
+        completed_at: Optional[str] = Field(None, description="完成时间")
+        created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="创建时间")
+
+        model_config = ConfigDict(validate_assignment=True)
+
 
     def __init__(self):
-        self._tasks: Dict[str, Dict] = {}
+        self._tasks: Dict[str, TaskStore.DownloadTask] = {}
         self._lock = threading.Lock()
 
-    def create_task(self, task_id: str, task_data: dict) -> dict:
+    def create_task(self, task_id: str, yande_data: dict) -> dict:
         with self._lock:
-            # 从映射配置构建任务数据
-            task = {
+            task_data = {
                 "task_id": task_id,
-                "created_at": datetime.now().isoformat(),
+                "yande_data": yande_data,
+                "file_name": f"{yande_data.get('id')}.{yande_data.get('file_ext')}",
+                "file_size": yande_data.get("file_size"),
             }
-
-            # 应用字段映射
-            for src_field, dest_field in self.TASK_FIELD_MAPPING.items():
-                if src_field in task_data:
-                    task[dest_field] = task_data[src_field]
-
-            # 应用默认值
-            task.update(self.TASK_DEFAULTS)
-
-            # 处理默认值字段
-            task["thread_num"] = task_data.get("thread_num", 4)
-            task["total_size"] = task_data.get("total_size", 0)
-
+            task = TaskStore.DownloadTask.model_validate(task_data)
             self._tasks[task_id] = task
             return task
 
-    def get_task(self, task_id: str) -> Optional[dict]:
+    def get_task(self, task_id: str) -> Optional[TaskStore.DownloadTask]:
         with self._lock:
             return self._tasks.get(task_id)
 
@@ -79,17 +67,20 @@ class TaskStore:
         with self._lock:
             tasks = list(self._tasks.values())
             if status:
-                tasks = [t for t in tasks if t["status"] == status]
-            tasks.sort(key=lambda x: x["created_at"], reverse=True)
+                tasks = [t for t in tasks if t.status == status]
+            tasks.sort(key=lambda x: x.created_at, reverse=True)
             total = len(tasks)
             start = (page - 1) * page_size
             end = start + page_size
-            return tasks[start:end], total
+            return [task.model_dump() for task in tasks[start:end]], total
 
     def update_task(self, task_id: str, updates: dict):
         with self._lock:
-            if task_id in self._tasks:
-                self._tasks[task_id].update(updates)
+            task = self._tasks.get(task_id)
+            if task:
+                for key, value in updates.items():
+                    if hasattr(task, key):
+                        setattr(task, key, value)
             # TODO 更新数据库：目前只更新内存中的任务状态，后续需要增加数据库更新逻辑 --- IGNORE ---
 
     def delete_task(self, task_id: str) -> bool:
@@ -159,7 +150,7 @@ async def run_download_async(task_id: str):
     if not task:
         return
 
-    if task["status"] == TaskStatus.CANCELLED:
+    if task.status == TaskStatus.CANCELLED:
         return
 
     task_store.update_task(
@@ -167,27 +158,36 @@ async def run_download_async(task_id: str):
         {"status": TaskStatus.DOWNLOADING, "started_at": datetime.now().isoformat()},
     )
 
+    yande_data = task.yande_data
+
     try:
-        import hashlib
+        if not yande_data:
+            logger.error(f"No yande_data for task {task_id}")
+            task_store.update_task(
+                task_id, {"status": TaskStatus.FAILED, "error_message": "Missing yande_data"}
+            )
+            return
+
+        file_url = yande_data.get("file_url")
+        file_ext = yande_data.get("file_ext", "jpg")
+        image_id = yande_data.get("id")
+        expected_md5 = yande_data.get("md5")
+        file_size = yande_data.get("file_size", 0)
 
         originals_dir = path_constant.originals_dir
         previews_dir = path_constant.previews_dir
-        originals_dir.mkdir(parents=True, exist_ok=True)
-        previews_dir.mkdir(parents=True, exist_ok=True)
 
-        file_ext = (
-            task["file_name"].rsplit(".", 1)[-1] if "." in task["file_name"] else "jpg"
-        )
-        original_path = originals_dir / f"{task['image_id']}.{file_ext}"
+        original_path = originals_dir / f"{image_id}.{file_ext}"
 
-        expected_md5 = task.get("md5")
-        need_download = True
         download_failed = False
         error_message = None
-
+        need_download = True
         if original_path.exists() and expected_md5:
-
-            file_md5 = hashlib.md5(open(original_path, "rb").read()).hexdigest()
+            md5_hasher = hashlib.md5()
+            with original_path.open("rb") as existing_file:
+                for chunk in iter(lambda: existing_file.read(1024*1024), b""):
+                    md5_hasher.update(chunk)
+            file_md5 = md5_hasher.hexdigest()
             if file_md5 == expected_md5:
                 logger.info(
                     f"Original exists and MD5 matches ({file_md5}), skipping download"
@@ -198,7 +198,6 @@ async def run_download_async(task_id: str):
                 original_path.unlink()
 
         if need_download:
-            total_size = task.get("total_size", 0)
             downloaded_size = 0
             last_update_time = time.time()
             last_downloaded_size = 0
@@ -218,9 +217,9 @@ async def run_download_async(task_id: str):
                     download_speed = size_diff / time_diff if time_diff > 0 else 0
                     last_downloaded_size = downloaded_size
                     last_update_time = current_time
-                    if total_size > 0:
+                    if file_size > 0:
                         progress = min(
-                            downloaded_size / (total_size / 1024 / 1024), 1.0
+                            downloaded_size / (file_size / 1024 / 1024), 1.0
                         )
                         task_store.update_task(
                             task_id,
@@ -237,12 +236,13 @@ async def run_download_async(task_id: str):
                 # 在线程池中执行同步下载代码，避免阻塞事件循环
                 multi_down = await asyncio.to_thread(
                     MultiDown,
-                    url=task["file_url"],
-                    file_path=str(originals_dir),
-                    file_name=f"{task['image_id']}.{file_ext}",
-                    file_size=total_size,
-                    _md5=task.get("md5"),
-                    _id=task["image_id"],
+                    file_info=FileInfo(
+                        url=file_url,
+                        file_path=originals_dir,
+                        file_name=f"{image_id}.{file_ext}",
+                        file_size=file_size,
+                        md5=expected_md5,
+                    ),
                     _progress_callback=progress_callback,
                 )
                 await asyncio.to_thread(multi_down.start)
@@ -250,15 +250,16 @@ async def run_download_async(task_id: str):
                 download_failed = True
                 error_message = f"下载失败: {str(download_err)}"
                 logger.error(f"Download failed for {task_id}: {download_err}")
+            finally:
+                await asyncio.to_thread(multi_down.cleanup)
 
-        preview_url = task.get("preview_url")
+        preview_url = yande_data.get("preview_url")
         if preview_url:
-            preview_path = previews_dir / f"{task['image_id']}.{file_ext}"
+            preview_path = previews_dir / f"{image_id}.{file_ext}"
             if not preview_path.exists():
                 try:
-                    # 在线程池中执行同步下载代码
                     resp = await asyncio.to_thread(
-                        requests.get, preview_url, proxies= get_proxy(), timeout=10
+                        requests.get, preview_url, proxies=get_proxy(), timeout=10
                     )
                     if resp.status_code == 200:
                         with open(preview_path, "wb") as f:
@@ -266,8 +267,6 @@ async def run_download_async(task_id: str):
                         logger.info(f"Preview downloaded: {preview_path}")
                 except Exception as e:
                     logger.warning(f"Failed to download preview: {e}")
-
-        
 
         if download_failed:
             task_store.update_task(
@@ -278,34 +277,33 @@ async def run_download_async(task_id: str):
                     "completed_at": datetime.now().isoformat(),
                 },
             )
-            # 更新数据库：下载失败时不更新 down_flag，只记录错误日志
-            logger.warning(f"Download failed for image {task['image_id']}: {error_message}")
+            logger.warning(f"Download failed for image {image_id}: {error_message}")
             db_updated = False
         else:
-            # 更新数据库：下载成功，设置 down_flag=True
-            db_updated = await _update_image_database(task, True)
+            db_updated = await _update_image_database(yande_data, True)
             task_store.update_task(
                 task_id,
                 {
+                    "yande_data": {},
                     "status": TaskStatus.COMPLETED,
                     "progress": 1.0,
                     "completed_at": datetime.now().isoformat(),
                 },
             )
         if not db_updated:
-            logger.warning(f"Database update skipped for image {task['image_id']}")
+            logger.warning(f"Database update skipped for image {image_id}")
     except Exception as e:
         task_store.update_task(
             task_id, {"status": TaskStatus.FAILED, "error_message": str(e)}
         )
 
 
-async def _update_image_database(task: dict, down_flag: bool) -> bool:
+async def _update_image_database(yande_data: dict, down_flag: bool) -> bool:
     """
-    更新图片数据库（down_flag 和记录）
+    更新图片数据库（down_flag）
 
     Args:
-        task: 下载任务数据
+        yande_data: YandeData 数据（包含 id 等字段）
         down_flag: 下载标志
 
     Returns:
@@ -313,17 +311,14 @@ async def _update_image_database(task: dict, down_flag: bool) -> bool:
     """
     try:
         with YandeDataRepository() as repo:
-            # 尝试更新 down_flag
-            updated = repo.update_down_flag(task["image_id"], down_flag)
+            image_id = yande_data.get("id")
+            updated = repo.update_down_flag(image_id, down_flag)
 
             if not updated:
-                # 记录不存在，使用 upsert 插入（与 query_yande_api 流程相似）
-                # TODO: 任务信息不使用无效字段，图片入库信息以post.json接口传入数据为准，不用以下数据
-
-                repo.upsert(task)
-                logger.info(f"Image {task['image_id']} inserted via task data")
+                repo.upsert(yande_data)
+                logger.info(f"Image {image_id} inserted via yande_data")
             else:
-                logger.info(f"Image {task['image_id']} down_flag updated")
+                logger.info(f"Image {image_id} down_flag updated")
 
         return True
     except Exception as db_err:

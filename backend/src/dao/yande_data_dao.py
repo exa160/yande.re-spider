@@ -117,38 +117,6 @@ class YandeDataRepository(BaseDAO):
         results = self.session.execute(query_stmt).scalars().all()
         total = self.session.execute(count_stmt).scalar() or 0
 
-        # rating_display_map = {"s": "Safe", "q": "Questionable", "e": "Explicit"}
-        # images = []
-        # for row in results:
-        #     tags_list = row.tags.split() if row.tags else []
-        #     rating_val = row.rating.value if hasattr(row.rating, "value") else row.rating
-        #     rating_display = rating_display_map.get(rating_val, rating_val) if rating_val else "Safe"
-        #     file_ext = row.file_ext or "jpg"
-
-        #     local_preview = check_local_file(row.id, file_ext, "preview")
-        #     local_original = check_local_file(row.id, file_ext, "original")
-        #     is_downloaded = row.down_flag if hasattr(row, "down_flag") else True
-
-        #     images.append({
-        #         "id": row.id,
-        #         "tags": tags_list,
-        #         "width": row.width or 0,
-        #         "height": row.height or 0,
-        #         "rating": rating_display,
-        #         "file_url": row.file_url or "",
-        #         "preview_url": row.preview_url or "",
-        #         "sample_url": None,
-        #         "file_size": row.file_size or 0,
-        #         "file_ext": file_ext,
-        #         "author": row.author or "",
-        #         "created_at": str(row.created_at) if row.created_at else "",
-        #         "md5": row.md5 or "",
-        #         "score": row.score,
-        #         "is_downloaded": is_downloaded,
-        #         "local_preview_path": local_preview,
-        #         "local_file_path": local_original,
-        #     })
-
         return results, total
 
     def get_by_id(self, image_id: int) -> Optional[dict]:

@@ -5,45 +5,64 @@
 import uuid
 from typing import List, Optional, Tuple
 
+from loguru import logger
+
 from src.common.constant import TaskStatus
 from src.common.settings import config
-from src.infrastructure.download_queue import task_store, download_queue
+from src.dao.yande_data import YandeDataRepository
+from src.infrastructure.download_queue import TaskStore, task_store, download_queue
 
 
 class DownloadService:
     """下载服务类"""
 
     @staticmethod
-    async def create_task(task_data: dict) -> str:
+    async def create_task(image_id: int) -> str:
         """
         创建下载任务
 
         Args:
-            task_data: 任务数据
+            image_id: 图片ID
 
         Returns:
             任务 ID
         """
+        with YandeDataRepository() as repo:
+            yande_data = repo.get_by_id(image_id)
+
+        if not yande_data:
+            raise ValueError(f"Image {image_id} not found in database")
+
         task_id = str(uuid.uuid4())
-        task_store.create_task(task_id, task_data)
+        task_store.create_task(task_id, yande_data)
         await download_queue.add_task(task_id)
         return task_id
 
     @staticmethod
-    async def create_batch_tasks(tasks_data: List[dict]) -> List[str]:
+    async def create_batch_tasks(image_ids: List[int]) -> List[str]:
         """
         批量创建下载任务
 
         Args:
-            tasks_data: 任务数据列表
+            image_ids: 图片ID列表
 
         Returns:
             任务 ID 列表
         """
+        with YandeDataRepository() as repo:
+            yande_data_map = {}
+            for image_id in image_ids:
+                data = repo.get_by_id(image_id)
+                if data:
+                    yande_data_map[image_id] = data
+
         task_ids = []
-        for task_data in tasks_data:
+        for image_id in image_ids:
+            if image_id not in yande_data_map:
+                logger.warning(f"Image {image_id} not found in database, skipping task creation")
+                continue
             task_id = str(uuid.uuid4())
-            task_store.create_task(task_id, task_data)
+            task_store.create_task(task_id, yande_data_map[image_id])
             await download_queue.add_task(task_id)
             task_ids.append(task_id)
         return task_ids
@@ -68,24 +87,17 @@ class DownloadService:
         return task_store.get_tasks(status, page, page_size)
 
     @staticmethod
-    def get_task(task_id: str) -> Optional[dict]:
+    def get_task(task_id: str) -> Optional[TaskStore.DownloadTask]:
         """获取单个任务"""
         return task_store.get_task(task_id)
 
     @staticmethod
-    def get_task_progress(task_id: str) -> Optional[dict]:
+    def get_task_progress(task_id: str) -> Optional[TaskStore.ProgressData]:
         """获取任务进度"""
         task = task_store.get_task(task_id)
         if not task:
             return None
-        return {
-            "task_id": task["task_id"],
-            "status": task["status"],
-            "progress": task["progress"],
-            "downloaded_size": task["downloaded_size"],
-            "total_size": task["total_size"],
-            "speed": task.get("speed"),
-        }
+        return task
 
     @staticmethod
     async def start_task(task_id: str) -> Tuple[bool, str]:
@@ -101,7 +113,7 @@ class DownloadService:
         task = task_store.get_task(task_id)
         if not task:
             return False, "任务不存在"
-        if task["status"] not in [
+        if task.status not in [
             TaskStatus.PENDING,
             TaskStatus.PAUSED,
             TaskStatus.FAILED,
@@ -126,7 +138,7 @@ class DownloadService:
         task = task_store.get_task(task_id)
         if not task:
             return False, "任务不存在"
-        if task["status"] != TaskStatus.DOWNLOADING:
+        if task.status != TaskStatus.DOWNLOADING:
             return False, "任务无法暂停"
 
         task_store.update_task(task_id, {"status": TaskStatus.PAUSED})
@@ -146,7 +158,7 @@ class DownloadService:
         task = task_store.get_task(task_id)
         if not task:
             return False, "任务不存在"
-        if task["status"] != TaskStatus.PAUSED:
+        if task.status != TaskStatus.PAUSED:
             return False, "任务无法恢复"
 
         task_store.update_task(task_id, {"status": TaskStatus.PENDING})
@@ -167,12 +179,12 @@ class DownloadService:
         task = task_store.get_task(task_id)
         if not task:
             return False, "任务不存在"
-        if task["status"] in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]:
+        if task.status in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]:
             return False, "任务无法取消"
 
         task_store.update_task(
             task_id,
-            {"status": TaskStatus.CANCELLED, "completed_at": task["completed_at"]},
+            {"status": TaskStatus.CANCELLED, "completed_at": task.completed_at},
         )
         return True, "任务已取消"
 
