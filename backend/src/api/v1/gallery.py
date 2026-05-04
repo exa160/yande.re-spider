@@ -2,10 +2,10 @@
 图库展示相关API路由
 """
 import asyncio
+from typing import List
 
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
-from typing import List
 
 from src.common.constant import ErrMsg
 from src.middleware.errors import APIException

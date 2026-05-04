@@ -1,10 +1,6 @@
-"""
-下载相关响应模型
-"""
+from typing import List, Optional
 
-from typing import Optional
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.common.constant import TaskStatus
 from src.models.response.base_response import BaseResponse, PaginatedResponse
@@ -56,4 +52,52 @@ class DownloadTaskResponse(BaseResponse[DownloadTaskInfo]):
 
 class TaskListResponse(PaginatedResponse[list[DownloadTaskInfo]]):
     """任务列表数据"""
+    ...
+
+
+class TaskCreatedData(BaseModel):
+    """任务创建数据"""
+
+    task_id: str
+
+
+class BatchTaskCreatedData(BaseModel):
+    """批量任务创建数据"""
+
+    task_ids: List[str]
+
+
+class CountData(BaseModel):
+    """数量数据"""
+
+    count: int
+
+
+class SuccessData(BaseModel):
+    """成功数据"""
+
+    success: bool = True
+
+
+class TaskCreatedResponse(BaseResponse[TaskCreatedData]):
+    """任务创建响应"""
+
+    ...
+
+
+class BatchTaskCreatedResponse(BaseResponse[BatchTaskCreatedData]):
+    """批量任务创建响应"""
+
+    ...
+
+
+class CountResponse(BaseResponse[CountData]):
+    """数量响应"""
+
+    ...
+
+
+class SuccessResponse(BaseResponse[SuccessData]):
+    """成功响应"""
+
     ...

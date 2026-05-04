@@ -5,8 +5,8 @@
 from fastapi import APIRouter, Query
 
 from src.common.constant import ErrMsg
-from src.middleware.errors import APIException
 from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig
+from src.middleware.errors import APIException
 from src.models.response.base_response import BaseResponse
 from src.models.response.config import ConfigResponse
 from src.services.config import ConfigService

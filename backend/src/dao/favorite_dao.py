@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import List, Optional, Type
 
-from src.models.database.yande import FavoriteFolder
 from src.dao.database import BaseDAO
+from src.models.database.yande import FavoriteFolder
 
 
 class FavoriteDao(BaseDAO):

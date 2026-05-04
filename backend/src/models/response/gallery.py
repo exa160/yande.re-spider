@@ -8,11 +8,11 @@ from typing import Optional, List
 from pydantic import (
     BaseModel, ConfigDict, Field,
     FieldSerializationInfo, field_serializer, field_validator
-    )
+)
 
 from src.common.constant import Rating
-from src.models.response.base_response import BaseResponse, PaginatedResponse
 from src.common.utils import check_local_file
+from src.models.response.base_response import BaseResponse, PaginatedResponse
 
 
 class ImageDetail(BaseModel):

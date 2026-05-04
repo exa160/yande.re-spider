@@ -2,8 +2,6 @@
 配置业务逻辑层
 """
 
-from typing import Optional
-
 from src.common import config
 from src.common.constant import path_constant
 from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig
@@ -121,7 +119,6 @@ class ConfigService:
         Returns:
             (成功与否, 消息)
         """
-        from src.models.request.config import ResetConfig
 
         reset_map = {
             "api": ApiConfig,

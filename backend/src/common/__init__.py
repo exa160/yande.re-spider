@@ -1,2 +1,2 @@
-from .settings import config
 from .constant import path_constant
+from .settings import config

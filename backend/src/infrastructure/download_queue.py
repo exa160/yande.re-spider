@@ -12,7 +12,7 @@ from src.common.constant import TaskStatus
 from src.common.utils import get_proxy
 from src.dao.yande_data import YandeDataRepository
 from src.infrastructure.downloader import MultiDown
-    
+
 
 class TaskStore:
     # 任务字段映射配置: 外部字段名 -> 内部字段名 (None 表示同名)

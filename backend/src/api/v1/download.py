@@ -4,23 +4,21 @@
 
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from src.common.constant import TaskStatus, ErrMsg
 from src.middleware.errors import APIException
 from src.models.request.download import DownloadTaskCreate
 from src.models.response.base_response import BaseResponse
-from src.models.response.common import (
-    TaskCreatedResponse,
-    TaskCreatedData,
-    BatchTaskCreatedResponse,
-    BatchTaskCreatedData,
-)
 from src.models.response.download import (
     ProgressData,
     ProgressResponse,
     TaskListResponse,
     DownloadTaskResponse,
+    TaskCreatedResponse,
+    TaskCreatedData,
+    BatchTaskCreatedResponse,
+    BatchTaskCreatedData,
 )
 from src.services.download import DownloadService
 

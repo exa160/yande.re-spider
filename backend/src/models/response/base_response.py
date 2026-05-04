@@ -1,5 +1,4 @@
-from http import HTTPStatus
-from typing import TypeVar, Generic, Optional, Any
+from typing import TypeVar, Generic, Optional
 
 from pydantic import BaseModel, model_validator
 

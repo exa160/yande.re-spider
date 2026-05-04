@@ -1,11 +1,12 @@
-from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from contextvars import ContextVar
-from sqlalchemy.orm import Session
 from typing import Optional
 
-from src.dao.database import get_db_engine, _get_session_factory
+from fastapi import FastAPI
+from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+from src.dao.database import _get_session_factory
 
 _request_session: ContextVar[Optional[Session]] = ContextVar("request_session", default=None)
 

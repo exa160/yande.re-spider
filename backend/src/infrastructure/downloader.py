@@ -1,4 +1,5 @@
 import os.path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 from hashlib import md5
 from multiprocessing import Queue
@@ -6,17 +7,14 @@ from threading import Thread, Event, Lock
 from time import sleep
 from typing import Optional
 
-from pydantic import BaseModel
-from src.common.utils import get_proxy
-from filelock import FileLock
-
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from filelock import FileLock
 from loguru import logger
 from pathvalidate import sanitize_filename
+from pydantic import BaseModel
 
 from src.common import config
+from src.common.utils import get_proxy
 
 
 class FileInfo(BaseModel):

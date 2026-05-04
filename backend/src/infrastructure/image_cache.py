@@ -1,11 +1,12 @@
-import os
-from loguru import logger
-import requests
 from pathlib import Path
 from typing import Optional, Tuple
 
+import requests
+from loguru import logger
+
 from src.common import config, path_constant
 from src.common.utils import get_proxy
+
 
 class ImageCache:
     def __init__(self):
@@ -34,7 +35,7 @@ class ImageCache:
             return f"/api/v1/cache/original/{image_id}.{file_ext}"
         return None
 
-    def download_preview(self, preview_url: str, image_id: int, file_ext: str = "jpg") -> Optional[Path]:
+    def download_preview(self, preview_url: str, image_id: int, file_ext: str = "jpg") -> Path:
         preview_path = self.get_preview_path(image_id, file_ext)
         if preview_path.exists():
             return preview_path

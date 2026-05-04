@@ -1,8 +1,8 @@
 
 from typing import Optional
 
-from src.common.settings import config
 from src.common.constant import path_constant
+from src.common.settings import config
 
 
 def get_proxy() -> Optional[dict]:
