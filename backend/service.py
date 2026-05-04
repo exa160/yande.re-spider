@@ -5,7 +5,6 @@ from fastapi import FastAPI
 
 from src import init_app, app_config
 
-
 if 'uvicorn' in sys.argv[0]:
     main_app = FastAPI(**app_config.model_dump())
     init_app(main_app)

@@ -1,9 +1,9 @@
 from typing import Union, Tuple, List
 from xml.etree import ElementTree as ET
 
-from pydantic import BaseModel, model_serializer
 import requests
 from loguru import logger
+from pydantic import BaseModel, model_serializer
 
 from src.common import config
 from src.common.constant import yande_constant

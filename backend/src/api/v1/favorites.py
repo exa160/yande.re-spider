@@ -6,16 +6,16 @@ from fastapi import APIRouter
 
 from src.common.constant import ErrMsg
 from src.middleware.errors import APIException
-from src.models.response.favorites import (
-    FavoriteFolderResponse, FavoriteFoldersResponse,
-    FavoriteFoldersWithPreviewResponse
-    )
 from src.models.request.favorites import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
     ReorderRequest,
 )
 from src.models.response.base_response import BaseResponse
+from src.models.response.favorites import (
+    FavoriteFolderResponse, FavoriteFoldersResponse,
+    FavoriteFoldersWithPreviewResponse
+)
 from src.services.favorites import FavoritesService
 
 router = APIRouter()

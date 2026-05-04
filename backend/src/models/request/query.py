@@ -2,8 +2,8 @@
 查询相关请求模型
 """
 
-from typing import Optional
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from loguru import logger
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
 from src import path_constant

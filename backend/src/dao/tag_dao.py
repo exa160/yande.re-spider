@@ -1,11 +1,12 @@
 from collections import Counter
 from datetime import datetime
-from sqlalchemy import select, func
 from typing import List, Optional, Tuple
+
+from loguru import logger
+from sqlalchemy import select, func
 
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData, YandeTag, TagLocalStats
-from loguru import logger
 
 
 class TagRepository(BaseDAO):

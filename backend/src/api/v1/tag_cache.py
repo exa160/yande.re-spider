@@ -3,9 +3,9 @@
 """
 
 import asyncio
+from typing import Optional
 
 from fastapi import APIRouter
-from typing import Optional
 
 from src.common.constant import ErrMsg
 from src.middleware.errors import APIException

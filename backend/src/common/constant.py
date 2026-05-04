@@ -4,7 +4,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-
 # ==================== Rating 映射 ====================
 RATING_DISPLAY_MAP = {
     "s": "Safe",

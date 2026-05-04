@@ -1,13 +1,14 @@
+from typing import List, Optional, Tuple
+
+from loguru import logger
 from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from typing import List, Optional, Tuple
 
-from src.common.utils import check_local_file
 from src.common import config
+from src.common.utils import check_local_file
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
-from loguru import logger
 
 
 class YandeDataRepository(BaseDAO):

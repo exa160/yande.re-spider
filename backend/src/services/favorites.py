@@ -10,11 +10,11 @@ from src.dao.favorite_dao import favorite_dao
 from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
-from src.models.response.favorites import FavoriteFolder, FavoriteFolderWithPreview
 from src.models.request.favorites import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
 )
+from src.models.response.favorites import FavoriteFolder, FavoriteFolderWithPreview
 
 
 class FavoritesService:

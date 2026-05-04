@@ -3,10 +3,11 @@
 """
 
 from typing import List, Optional, Tuple
+
 from loguru import logger
 
-from src.infrastructure.yande_api import YandeApi
 from src.dao.yande_data import TagRepository, ArtistRepository
+from src.infrastructure.yande_api import YandeApi
 
 
 class TagCacheService:

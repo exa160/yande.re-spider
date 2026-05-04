@@ -2,18 +2,17 @@
 图库业务逻辑层
 """
 
+from typing import List, Optional
+
 import requests
 from loguru import logger
 
-from typing import List, Optional
-
-from src.middleware.errors import APIException
 from src.common.constant import ErrMsg
 from src.common.constant import path_constant, RATING_DISPLAY_MAP
-from src.common.utils import check_local_file
 from src.dao.yande_data import YandeDataRepository
-from src.infrastructure.yande_api import YandeApi
 from src.infrastructure.image_cache import ImageCache
+from src.infrastructure.yande_api import YandeApi
+from src.middleware.errors import APIException
 from src.models.yande import YandeSearchTags
 
 

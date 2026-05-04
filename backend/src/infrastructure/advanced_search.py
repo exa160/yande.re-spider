@@ -15,9 +15,9 @@
 """
 
 import re
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field
+from typing import Optional, List, Any
 
 
 class SearchOperator(Enum):

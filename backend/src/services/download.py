@@ -5,9 +5,9 @@
 import uuid
 from typing import List, Optional, Tuple
 
-from src.infrastructure.download_queue import task_store, download_queue
 from src.common.constant import TaskStatus
 from src.common.settings import config
+from src.infrastructure.download_queue import task_store, download_queue
 
 
 class DownloadService:

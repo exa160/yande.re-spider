@@ -1,11 +1,11 @@
-from http import HTTPStatus
 import traceback
+from http import HTTPStatus
 from typing import Generic, TypeVar, Any
 
 from fastapi import FastAPI, HTTPException
 from loguru import logger
-from starlette.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import JSONResponse
 
 from src.common.constant import ErrMsg
 from src.models.response.base_response import ErrorResponse

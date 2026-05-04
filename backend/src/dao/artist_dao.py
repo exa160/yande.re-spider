@@ -1,11 +1,12 @@
 import json
 from datetime import datetime
-from sqlalchemy import select, func
 from typing import List, Optional
+
+from loguru import logger
+from sqlalchemy import select, func
 
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeArtist
-from loguru import logger
 
 
 class ArtistRepository(BaseDAO):
