@@ -39,6 +39,17 @@
             clearable
           />
         </div>
+        <div class="search-tags" v-if="activeFilters.length > 0">
+          <el-tag
+            v-for="filter in activeFilters"
+            :key="filter.key"
+            closable
+            @close="removeFilter(filter)"
+            size="small"
+          >
+            {{ filter.label }}
+          </el-tag>
+        </div>
         <div class="search-actions">
           <el-button circle size="small" @click="toggleFavoritePanel">
             <el-icon><Folder /></el-icon>
@@ -1396,8 +1407,8 @@ html.dark-mode .search-panel {
 
 .search-tags {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .search-tags :deep(.el-tag) {
