@@ -4,7 +4,7 @@ from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, JSON
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import Enum
 
-from src.common.constant import Rating
+from src.common.constant import Rating, table_constant
 
 
 class Base(DeclarativeBase):
@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 
 class YandeData(Base):
-    __tablename__ = "yande_data"
+    __tablename__ = table_constant.yande_data
     """Yande.re 图片数据表"""
     id = Column(Integer, primary_key=True, comment="yande picture ID")
     down_flag = Column(Boolean, index=True, default=False, comment="yande picture down status")
@@ -63,7 +63,7 @@ class YandeData(Base):
 class YandeTag(Base):
     """Yande.re 标签缓存表"""
 
-    __tablename__ = "yande_tags"
+    __tablename__ = table_constant.yande_tag
 
     id = Column(Integer, primary_key=True, comment="标签ID")
     name = Column(String(512), unique=True, nullable=False, comment="标签名称")
@@ -80,7 +80,7 @@ class YandeTag(Base):
 class YandeArtist(Base):
     """Yande.re 艺术家缓存表"""
 
-    __tablename__ = "yande_artists"
+    __tablename__ = table_constant.yande_artist
 
     id = Column(Integer, primary_key=True, comment="艺术家ID")
     name = Column(String(512), unique=True, nullable=False, comment="艺术家名称")
@@ -93,7 +93,7 @@ class YandeArtist(Base):
 class TagLocalStats(Base):
     """本地标签统计表 - 记录每个标签在本地图片中的使用次数"""
 
-    __tablename__ = "tag_local_stats"
+    __tablename__ = table_constant.tag_local_stats
 
     tag_id = Column(Integer, primary_key=True, comment="标签ID")
     local_count = Column(Integer, default=0, comment="本地使用次数")
@@ -103,7 +103,7 @@ class TagLocalStats(Base):
 class FavoriteFolder(Base):
     """收藏夹数据库模型"""
 
-    __tablename__ = "favorite_folders"
+    __tablename__ = table_constant.favorite_folder
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False, comment="收藏夹名称")

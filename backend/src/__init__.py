@@ -18,12 +18,18 @@ class AppConfig(BaseModel):
 
     title: str = "Yande.re Local Picture Manager"
     description: str = "本地图片管理工具，提供图片查询、下载和管理功能"
-    version: str = "1.0.2"
+    version: str = "1.0.3"
     docs_url: str = "/docs"
     redoc_url: str = "/redoc"
 
 
 app_config = AppConfig()
+
+
+def work_dir_setup():
+    """工作目录设置，确保必要的目录存在"""
+    for path in [path_constant.data_dir, path_constant.download_dir, path_constant.log_dir]:
+        path.mkdir(parents=True, exist_ok=True)
 
 
 def init_app(app: FastAPI) -> FastAPI:
@@ -34,8 +40,7 @@ def init_app(app: FastAPI) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    path_constant.originals_dir.mkdir(parents=True, exist_ok=True)
-    path_constant.previews_dir.mkdir(parents=True, exist_ok=True)
+    work_dir_setup()
     RequestSessionMiddleware.init_app(app)
     DownloadMiddleware.init_app(app)
     APILoader.init_app(app)

@@ -4,13 +4,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-# ==================== Rating 映射 ====================
-RATING_DISPLAY_MAP = {
-    "s": "Safe",
-    "q": "Questionable",
-    "e": "Explicit",
-}
-
 
 # ==================== Pydantic 模型基类 ====================
 class ConstantModel(BaseModel):
@@ -20,6 +13,15 @@ class ConstantModel(BaseModel):
 class CommonConstant(ConstantModel):
     supported_image_exts: list[str] = ["jpg", "jpeg", "png", "gif", "webp"]
     file_write_placeholder: bytes = b"\x00"
+
+
+class DatabaseTableNameConstant(ConstantModel):
+    yande_data: str = "yande_data"
+    yande_tag: str = "yande_tags"
+    yande_artist: str = "yande_artists"
+    tag_local_stats: str = "tag_local_stats"
+    favorite_folder: str = "favorite_folders"
+
 
 
 # ==================== 路径配置 ====================
@@ -148,3 +150,4 @@ class ErrMsg(BaseMsgEnum):
 
 path_constant = PathConstant()
 yande_constant = YandeAPIConstant()
+table_constant = DatabaseTableNameConstant()
