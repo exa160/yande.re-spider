@@ -109,9 +109,6 @@
             <el-form-item label="数据库名">
               <el-input v-model="databaseConfig.schema_name" size="small" />
             </el-form-item>
-            <el-form-item label="数据表名">
-              <el-input v-model="databaseConfig.datatable" size="small" />
-            </el-form-item>
           </template>
           <el-form-item v-else>
             <el-alert type="info" :closable="false" show-icon>
@@ -135,9 +132,9 @@
       <!-- 关于 -->
       <div v-show="activeMenu === 'about'" class="config-section about-section">
         <div class="about-content">
-          <div class="about-title">Yande.re Spider Next</div>
-          <div class="about-version">Version 1.0.0</div>
-          <div class="about-desc">基于 Python + FastAPI + Vue.js 3 的图片下载管理系统</div>
+          <div class="about-title">Yande.re Local Picture Manager</div>
+          <div class="about-version">Version 1.0.2</div>
+          <div class="about-desc">Yande.re 本地图片管理工具</div>
           <div class="about-links">
             <a href="https://github.com/exa160/yande.re-spider" target="_blank" class="github-link">
               <svg height="20" width="20" viewBox="0 0 24 24" fill="currentColor">
@@ -148,7 +145,7 @@
           </div>
           <div class="about-protection" v-if="tamperDetected">
             <el-alert type="warning" :closable="false" show-icon>
-              检测到异常操作，如需帮助请联系作者
+              检测到异常操作，如需帮助请提issue
             </el-alert>
           </div>
         </div>
@@ -247,8 +244,7 @@ const databaseConfig = ref({
   port: 3306,
   user: 'root',
   password: '',
-  schema_name: 'Pictures',
-  datatable: 'YandeRE'
+  schema_name: 'Pictures'
 })
 
 const saving = ref(false)

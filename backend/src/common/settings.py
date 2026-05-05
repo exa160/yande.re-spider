@@ -56,7 +56,6 @@ class DatabaseConfig(ConfigModel):
     user: str = Field(default="root")
     password: SecretStr = Field(default=SecretStr(""))
     schema_name: str = Field(default="Pictures")
-    datatable: str = Field(default="YandeRE")
 
     @field_serializer('password', when_used="json")
     def serialize_password(self, password: SecretStr) -> str:
