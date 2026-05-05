@@ -1,10 +1,11 @@
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.common import config
+from src.common.constant import path_constant
 from src.models.database.yande import Base
 
 _cached_engine = None
@@ -20,25 +21,40 @@ def get_db_engine():
     use_mariadb = config.database.enable and config.database.host
 
     if use_mariadb:
-        _cached_engine = create_engine(
-            f"mariadb+mariadbconnector://{config.database.user}:{config.database.password.get_secret_value()}@"
-            f"{config.database.host}:{config.database.port}/{config.database.schema_name}"
+        url = URL.create(
+            drivername="mariadb+mariadbconnector",
+            username=config.database.user,
+            password=config.database.password.get_secret_value(),
+            host=config.database.host,
+            port=config.database.port,
+            database=config.database.schema_name
+        )
+        _cached_engine = create_engine(url,
+            pool_recycle=3600,          # 每小时回收连接
+            pool_pre_ping=True,         # 自动重连
+            echo=False,                 # 生产关闭 SQL 日志
+            pool_size=10,              # 连接池大小
+            max_overflow=20,           # 连接池溢出时最大创建的连接数
+            pool_timeout=30,           # 获取连接的超时时间
         )
     else:
-        db_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "data",
-            "yande_data.db",
-        )
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
         _cached_engine = create_engine(
-            f"sqlite:///{db_path}",
+            f"sqlite:///{path_constant.sqlite_file}",
             connect_args={"timeout": 30, "check_same_thread": False},
             poolclass=StaticPool,
         )
-        Base.metadata.create_all(bind=_cached_engine)
+    # TODO 考虑取消自动建表/迁移，改为手动执行脚本
+    Base.metadata.create_all(bind=_cached_engine)
 
     return _cached_engine
+
+
+def engine_change_handler():
+    global _cached_session_factory
+    global _cached_engine
+    _cached_session_factory = None
+    _cached_engine = None
+    get_db_engine()
 
 
 def _get_session_factory():

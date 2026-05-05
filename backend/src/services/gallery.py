@@ -6,9 +6,11 @@ from typing import List, Optional
 
 import requests
 from loguru import logger
+from PIL import Image
+
 
 from src.common.constant import ErrMsg
-from src.common.constant import path_constant, RATING_DISPLAY_MAP
+from src.common.constant import path_constant
 from src.dao.yande_data import YandeDataRepository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
@@ -153,20 +155,8 @@ class GalleryService:
 
     @staticmethod
     def generate_preview(image_id: int, file_ext: str = "jpg"):
-        """
-        从原图生成预览图
-
-        Args:
-            image_id: 图片 ID
-            file_ext: 文件扩展名
-
-        Returns:
-            预览图路径，失败返回 None
-        """
-        from PIL import Image
-
         cache = ImageCache()
-        preview_path = cache.get_preview_path(image_id, file_ext)
+        preview_path = cache.get_preview_path(image_id, "jpg")
 
         if preview_path.exists():
             return preview_path
@@ -185,6 +175,7 @@ class GalleryService:
             img.save(str(preview_path), "JPEG", quality=85)
             return preview_path if preview_path.exists() else None
         except Exception:
+            logger.error(f"Failed to generate preview for image {image_id}", exc_info=True)
             return None
 
     @staticmethod
@@ -220,7 +211,7 @@ class GalleryService:
         if not preview_url:
             logger.warning(f"Image {image_id} has no preview_url")
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=Exception(f"ID: {image_id} has no preview URL available"))
-        
+
         try:
             return cache.download_preview(preview_url, image_id, file_ext)
         except requests.RequestException as e:
@@ -232,3 +223,20 @@ class GalleryService:
         except Exception as e:
             logger.error(f"Unexpected error fetching preview {image_id}: {e}")
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=e)
+
+    @staticmethod
+    def get_preview_for_local(image_id: int, file_ext: str = "jpg"):
+        cache = ImageCache()
+        preview_path = cache.get_preview_path(image_id, "jpg")
+
+        if preview_path.exists():
+            return preview_path
+
+        original_path = cache.get_original_path(image_id, file_ext)
+        if original_path.exists():
+            return GalleryService.generate_preview(image_id, file_ext)
+
+        try:
+            return GalleryService.fetch_and_cache_preview(image_id, file_ext)
+        except APIException:
+            return None

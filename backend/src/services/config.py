@@ -2,9 +2,12 @@
 配置业务逻辑层
 """
 
+from sqlalchemy import URL, create_engine
+
 from src.common import config
 from src.common.constant import path_constant
 from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig
+from src.dao.database import engine_change_handler
 
 
 class ConfigService:
@@ -64,6 +67,7 @@ class ConfigService:
         """
         try:
             config.update_config(DatabaseConfig.model_validate(database_config))
+            engine_change_handler()
             return True
         except Exception:
             return False
@@ -90,12 +94,15 @@ class ConfigService:
     @staticmethod
     def _test_mariadb_connection(database_config: DatabaseConfig) -> dict:
         """测试 MariaDB 连接"""
-        from sqlalchemy import create_engine
-
-        engine = create_engine(
-            f"mariadb+mariadbconnector://{database_config.user}:{database_config.password}@"
-            f"{database_config.host}:{database_config.port}/{database_config.schema_name}?charset=utf8"
+        url = URL.create(
+            drivername="mariadb+mariadbconnector",
+            username=database_config.user,
+            password=database_config.password.get_secret_value(),
+            host=database_config.host,
+            port=database_config.port,
+            database=database_config.schema_name
         )
+        engine = create_engine(url)
         conn = engine.connect()
         conn.close()
         return {"success": True, "message": "数据库连接成功"}

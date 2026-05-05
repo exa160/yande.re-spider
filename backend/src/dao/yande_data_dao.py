@@ -132,7 +132,7 @@ class YandeDataRepository(BaseDAO):
 
         local_preview = check_local_file(row.id, file_ext, "preview")
         local_original = check_local_file(row.id, file_ext, "original")
-
+        # TODO 直接使用YandeData模型
         return {
             "id": row.id,
             "tags": tags_list,

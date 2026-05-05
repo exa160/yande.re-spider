@@ -1,7 +1,7 @@
 {
   "name": "yande-re-spider-frontend",
-  "version": "2.0.0",
-  "description": "Yande.re Spider Frontend - Vue.js 3 + Element Plus",
+  "version": "1.0.2",
+  "description": "Picture Manager Frontend - Vue.js 3 + Element Plus",
   "type": "module",
   "scripts": {
     "dev": "vite",

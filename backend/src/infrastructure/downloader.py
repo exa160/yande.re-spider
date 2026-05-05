@@ -28,7 +28,6 @@ class FileInfo(BaseModel):
     url: str
 
 
-
 class DownloadException(Exception):
     pass
 

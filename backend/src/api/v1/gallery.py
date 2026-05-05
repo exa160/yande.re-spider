@@ -99,7 +99,18 @@ async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
     preview_path = await asyncio.get_event_loop().run_in_executor(
         None, GalleryService.generate_preview, image_id, file_ext
     )
-    if preview_path and preview_path.exists():
+    if preview_path:
+        return FileResponse(str(preview_path))
+    raise APIException(ErrMsg.NOT_FOUND)
+
+
+@router.get("/cache/preview/local/{image_id}", summary="本地模式获取预览图")
+async def get_preview_for_local(image_id: int, file_ext: str = "jpg"):
+    """本地模式获取预览图 - 优先从原图生成，其次从远程下载"""
+    preview_path = await asyncio.get_event_loop().run_in_executor(
+        None, GalleryService.get_preview_for_local, image_id, file_ext
+    )
+    if preview_path:
         return FileResponse(str(preview_path))
     raise APIException(ErrMsg.NOT_FOUND)
 
@@ -110,7 +121,7 @@ async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
     preview_path = await asyncio.get_event_loop().run_in_executor(
         None, GalleryService.fetch_and_cache_preview, image_id, file_ext
     )
-    if preview_path and preview_path.exists():
+    if preview_path:
         return FileResponse(str(preview_path))
     raise APIException(ErrMsg.NOT_FOUND)
 
