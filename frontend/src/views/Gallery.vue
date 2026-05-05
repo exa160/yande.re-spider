@@ -270,7 +270,7 @@ const currentImage = ref(null)
 const previewContainerStyle = ref({})
 const downloading = ref(false)
 const overlayColorScheme = ref('dark') // 'dark' or 'light'
-const safeMode = ref(localStorage.getItem('safe_mode') === 'true')
+const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
 
 // 分析图片主色调，决定浮层文字颜色
 const analyzeImageColor = (imgUrl) => {
@@ -494,15 +494,16 @@ const handleSourceChange = (newSource) => {
   }
 }
 
-const loadImages = async () => {
-  const isFirstPage = currentPage.value === 1
+const loadImages = async (page) => {
+  const isFirstPage = page === 1 || currentPage.value === 1
+  const targetPage = page !== undefined ? page : currentPage.value
   if (isFirstPage) {
     loading.value = true
   }
   try {
     const response = await api.post('/gallery/load', {
       ...queryParams.value,
-      page: currentPage.value
+      page: targetPage
     })
     const data = response.data
     // 重构后 data 直接是图片数组
@@ -522,8 +523,11 @@ const loadImages = async () => {
     hasMore.value = response.has_more
     loadError.value = false
   } catch (error) {
-    ElMessage.error('加载图片失败')
-    loadError.value = true
+    if (isFirstPage) {
+      ElMessage.error('加载图片失败')
+      loadError.value = true
+    }
+    // 非首页失败不设置 loadError，保持显示"加载更多"
   } finally {
     if (isFirstPage) {
       loading.value = false
@@ -535,14 +539,23 @@ const loadMore = async () => {
   if (isLoadingMore.value) return
   isLoadingMore.value = true
   currentPage.value++
-  await loadImages()
+  try {
+    await loadImages()
+  } catch {
+    // 失败时回退页码
+    currentPage.value--
+  }
   isLoadingMore.value = false
 }
 
 const handleLoadError = async () => {
   // 重新加载当前页
   loadError.value = false
-  await loadImages()
+  isLoadingMore.value = true
+  try {
+    await loadImages()
+  } catch {}
+  isLoadingMore.value = false
 }
 
 const handleImageClick = async (image) => {
@@ -609,18 +622,7 @@ const batchDownload = async () => {
 
   try {
     const tasks = selectedImages.value.map(image => ({
-      image_id: image.id,
-      file_url: image.file_url,
-      save_path: './downloads',
-      file_name: `${image.id}.${image.file_ext || 'jpg'}`,
-      thread_num: 4,
-      tags: image.tags?.join ? image.tags.join(' ') : image.tags,
-      width: image.width,
-      height: image.height,
-      rating: image.rating,
-      author: image.author,
-      md5: image.md5,
-      total_size: image.file_size
+      image_id: image.id
     }))
 
     const response = await api.post('/download/task/batch', tasks)
@@ -643,18 +645,7 @@ const handleDownload = async () => {
   downloading.value = true
   try {
     await api.post('/download/task', {
-      image_id: currentImage.value.id,
-      file_url: currentImage.value.file_url,
-      save_path: './downloads',
-      file_name: `${currentImage.value.id}.${currentImage.value.file_ext || 'jpg'}`,
-      thread_num: 4,
-      tags: currentImage.value.tags?.join ? currentImage.value.tags.join(' ') : currentImage.value.tags,
-      width: currentImage.value.width,
-      height: currentImage.value.height,
-      rating: currentImage.value.rating,
-      author: currentImage.value.author,
-      md5: currentImage.value.md5,
-      total_size: currentImage.value.file_size
+      image_id: currentImage.value.id
     })
     ElMessage.success('下载任务已创建')
     currentImage.value.down_flag = true
