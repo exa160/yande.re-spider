@@ -91,10 +91,10 @@
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-if="!loading && images.length === 0" description="暂无图片" />
+    <el-empty v-if="!loading && images.length === 0 && !loadError" description="暂无图片" />
 
     <!-- 加载更多 -->
-    <div v-if="hasMore && !loading" ref="loadMoreRef" class="load-more">
+    <div v-if="(hasMore || loadError) && !loading" ref="loadMoreRef" class="load-more">
       <el-button
         @click="handleLoadMoreClick"
         :disabled="loadingMore"
@@ -559,7 +559,11 @@ const loadMore = () => {
 const handleLoadMoreClick = () => {
   if (loadingMore.value) return
   loadingMore.value = true
-  emit('load-error')
+  if (props.loadError) {
+    emit('load-error')
+  } else {
+    emit('load-more')
+  }
 }
 
 const getRatingType = (rating) => {
@@ -573,13 +577,13 @@ const getRatingType = (rating) => {
 
 const getPreviewUrl = (image) => {
   const retryTs = retrySuccessImages.value.get(image.id)
-  const tsSuffix = retryTs ? `&ts=${retryTs}` : ''
+  const tsSuffix = retryTs ? `?ts=${retryTs}` : ''
 
   if (props.sourceMode === 'local') {
     if (image.preview_url) {
       return `/api/v1/gallery/cache/preview/${image.preview_url}${tsSuffix}`
     }
-    return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
+    return `/api/v1/gallery/cache/preview/local/${image.id}${tsSuffix}`
   }
   return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
 }
@@ -630,15 +634,15 @@ const handleImageRetry = async (image, event) => {
   if (event) {
     event.stopPropagation()
   }
-  
+
   retryingImages.value.add(image.id)
   failedImages.value.delete(image.id)
   clearImageTimeout(image.id)
-  
+
   let apiSuccess = false
-  if (props.sourceMode === 'local' && image.preview_url && !image.preview_url.startsWith('http')) {
+  if (props.sourceMode === 'local') {
     try {
-      await api.get(`/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`)
+      await api.get(`/gallery/cache/preview/local/${image.id}`)
       apiSuccess = true
     } catch (e) {
       ElMessage.error('生成缩略图失败')
@@ -651,15 +655,14 @@ const handleImageRetry = async (image, event) => {
       ElMessage.error('缓存预览图失败')
     }
   }
-  
+
   retryingImages.value.delete(image.id)
-  
+
   if (apiSuccess) {
     pendingImages.value.add(image.id)
     retrySuccessImages.value.set(image.id, Date.now())
   } else {
     failedImages.value.add(image.id)
-    // 重试失败后设置新的超时
     nextTick(() => setImageTimeout(image))
   }
 }
