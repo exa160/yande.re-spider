@@ -203,3 +203,5 @@ skills-lock.json
 start.bat
 test_api.py
 .claude/settings.local.json
+backend/data/
+backend/config/
