@@ -1,118 +1,110 @@
+from enum import Enum
 from typing import List, Optional, Tuple
 
 from loguru import logger
-from sqlalchemy import select, func, or_
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import and_, select, func, or_
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.common import config
+from src.common.constant import Rating
 from src.common.utils import check_local_file
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
 
 
+class SortBy(str, Enum):
+    """排序字段枚举"""
+    ID = "id"
+    CREATED_AT = "created_at"
+    RATING = "rating"
+    FILE_SIZE = "file_size"
+    WIDTH = "width"
+    HEIGHT = "height"
+
+
+class SortOrder(str, Enum):
+    """排序方向枚举"""
+
+    ASC = "asc"
+    DESC = "desc"
+
+
 class YandeDataRepository(BaseDAO):
+    class YandeDataQueryParams(BaseModel):
+        """高级查询参数"""
+
+        tags: Optional[str] = Field(None, description="标签表达式，空格分隔，前缀 - 表示排除")
+        min_width: Optional[int] = Field(None, ge=0, description="最小宽度")
+        max_width: Optional[int] = Field(None, ge=0, description="最大宽度")
+        min_height: Optional[int] = Field(None, ge=0, description="最小高度")
+        max_height: Optional[int] = Field(None, ge=0, description="最大高度")
+        rating: Optional[list[Rating]] = Field(None, description="评分过滤")
+        min_file_size: Optional[int] = Field(None, ge=0, description="最小文件大小(KB)")
+        max_file_size: Optional[int] = Field(None, ge=0, description="最大文件大小(KB)")
+        file_types:  Optional[List[str]] = Field(None, description="文件类型列表")
+        author: Optional[str] = Field(None, max_length=100, description="作者名称")
+        sort_by: Optional[SortBy] = Field(SortBy.CREATED_AT, description="排序字段")
+        sort_order: Optional[SortOrder] = Field(SortOrder.DESC, description="排序方向")
+        page: int = Field(1, ge=1, description="页码")
+        page_size: int = Field(20, ge=1, le=100, description="每页数量")
+
+        model_config = ConfigDict(from_attributes=True)
+
+    @staticmethod
+    def _tag_filter(tags: str):
+        tags_filter = [t for t in tags.split() if t.strip()]
+        filters = []
+        for tag in tags_filter:
+            tag = tag.strip()
+            if tag.startswith("-"):
+                filters.append(~YandeData.tags.contains(tag.strip("-")))
+            else:
+                filters.append(YandeData.tags.contains(tag))
+        return and_(*filters)
+
     def query(
-        self,
-        page: int = 1,
-        page_size: int = 20,
-        tags: Optional[str] = None,
-        rating: Optional[str] = None,
-        author: Optional[str] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        min_file_size: Optional[int] = None,
-        max_file_size: Optional[int] = None,
-        file_type: Optional[str] = None,
-        sort_by: str = "created_at",
-        sort_order: str = "desc",
-        downloaded_only: bool = False,
-    ) -> Tuple[List[dict], int]:
-        query_stmt = select(YandeData)
-        count_stmt = select(func.count()).select_from(YandeData)
+        self, query_params: YandeDataQueryParams, downloaded_only: bool = None
+        ) -> Tuple[List[YandeData], int]:
+        filter_funcs = []
 
-        if tags:
-            tags_normalized = tags.upper().replace(" OR ", " AND ")
-            tags_filter = [t for t in tags_normalized.split(" AND ") if t.strip()]
-            for tag in tags_filter:
-                tag = tag.strip()
-                if tag.startswith("-"):
-                    query_stmt = query_stmt.filter(~YandeData.tags.contains(tag[1:]))
-                    count_stmt = count_stmt.filter(~YandeData.tags.contains(tag[1:]))
-                else:
-                    query_stmt = query_stmt.filter(YandeData.tags.contains(tag))
-                    count_stmt = count_stmt.filter(YandeData.tags.contains(tag))
+        # 过滤器映射字典
+        filter_mappings = {
+            "tags": lambda v: self._tag_filter(v),
+            "rating": lambda v: YandeData.rating.in_(v),
+            "file_types": lambda v: YandeData.file_ext.in_(v),
+            "min_width": lambda v: YandeData.width >= v,
+            "max_width": lambda v: YandeData.width <= v,
+            "min_height": lambda v: YandeData.height >= v,
+            "max_height": lambda v: YandeData.height <= v,
+            "min_file_size": lambda v: YandeData.file_size >= v * 1024,
+            "max_file_size": lambda v: YandeData.file_size <= v * 1024,
+            "author": lambda v: YandeData.author.contains(v),
+        }
+        if query_params.rating and len(query_params.rating) == len(Rating):
+            query_params.rating = None  # 全部评分不需要过滤
+        if downloaded_only is not None:
+            filter_funcs.append(YandeData.down_flag == downloaded_only)
+        # 应用简单过滤器
+        for param_name, filter_func in filter_mappings.items():
+            param_value = getattr(query_params, param_name, None)
+            if param_value is not None:
+                filter_funcs.append(filter_func(param_value))
 
-        if author:
-            query_stmt = query_stmt.filter(YandeData.author == author)
-            count_stmt = count_stmt.filter(YandeData.author == author)
+        count_stmt = select(func.count()).select_from(YandeData).filter(*filter_funcs)
+        query_stmt = select(YandeData).filter(*filter_funcs)
 
-        if rating and rating != "All":
-            rating_map = {
-                "Safe": "s", "Questionable": "q", "Explicit": "e",
-                "s": "s", "q": "q", "e": "e",
-            }
-            rating_values = []
-            for r in rating.split(","):
-                r = r.strip()
-                if r:
-                    mapped = rating_map.get(r, r)
-                    if mapped:
-                        rating_values.append(mapped)
+        offset = (query_params.page - 1) * query_params.page_size
+        query_stmt = query_stmt.offset(offset).limit(query_params.page_size)
 
-            if rating_values:
-                if len(rating_values) == 1:
-                    query_stmt = query_stmt.filter(YandeData.rating == rating_values[0])
-                    count_stmt = count_stmt.filter(YandeData.rating == rating_values[0])
-                else:
-                    rating_filters = [YandeData.rating == rv for rv in rating_values]
-                    query_stmt = query_stmt.filter(or_(*rating_filters))
-                    count_stmt = count_stmt.filter(or_(*rating_filters))
-
-        if min_width:
-            query_stmt = query_stmt.filter(YandeData.width >= min_width)
-            count_stmt = count_stmt.filter(YandeData.width >= min_width)
-        if max_width:
-            query_stmt = query_stmt.filter(YandeData.width <= max_width)
-            count_stmt = count_stmt.filter(YandeData.width <= max_width)
-        if min_height:
-            query_stmt = query_stmt.filter(YandeData.height >= min_height)
-            count_stmt = count_stmt.filter(YandeData.height >= min_height)
-        if max_height:
-            query_stmt = query_stmt.filter(YandeData.height <= max_height)
-            count_stmt = count_stmt.filter(YandeData.height <= max_height)
-
-        if min_file_size:
-            query_stmt = query_stmt.filter(YandeData.file_size >= min_file_size * 1024)
-            count_stmt = count_stmt.filter(YandeData.file_size >= min_file_size * 1024)
-        if max_file_size:
-            query_stmt = query_stmt.filter(YandeData.file_size <= max_file_size * 1024)
-            count_stmt = count_stmt.filter(YandeData.file_size <= max_file_size * 1024)
-
-        if file_type:
-            ext_values = [ext.strip().lower() for ext in file_type.split(",") if ext.strip()]
-            if len(ext_values) == 1:
-                query_stmt = query_stmt.filter(YandeData.file_ext == ext_values[0])
-                count_stmt = count_stmt.filter(YandeData.file_ext == ext_values[0])
-            elif len(ext_values) > 1:
-                ext_filters = [YandeData.file_ext == ext for ext in ext_values]
-                query_stmt = query_stmt.filter(or_(*ext_filters))
-                count_stmt = count_stmt.filter(or_(*ext_filters))
-
-        if downloaded_only:
-            query_stmt = query_stmt.filter(YandeData.down_flag == True)
-            count_stmt = count_stmt.filter(YandeData.down_flag == True)
-
-        sort_column = getattr(YandeData, sort_by, YandeData.id)
-        if sort_order.lower() == "desc":
+        sort_column = getattr(YandeData, query_params.sort_by, YandeData.id)
+        if query_params.sort_order == "desc":
             query_stmt = query_stmt.order_by(sort_column.desc())
-        else:
+        elif query_params.sort_order == "asc":
             query_stmt = query_stmt.order_by(sort_column.asc())
-
-        offset = (page - 1) * page_size
-        query_stmt = query_stmt.offset(offset).limit(page_size)
+        else:
+            query_stmt = query_stmt.order_by(sort_column.desc())
 
         results = self.session.execute(query_stmt).scalars().all()
         total = self.session.execute(count_stmt).scalar() or 0
@@ -223,9 +215,9 @@ class YandeDataRepository(BaseDAO):
             self.session.rollback()
             return 0
 
-    def upsert_batch_with_down_flags(self, yande_items: list) -> dict:
+    def upsert_batch_with_down_flags(self, yande_items: list) -> Optional[List[YandeData]]:
         if not yande_items:
-            return {}
+            return None
 
         try:
             stmt = self._build_upsert_stmt(yande_items, returning=True)
@@ -237,6 +229,7 @@ class YandeDataRepository(BaseDAO):
             self.session.rollback()
 
         try:
+            # 回退方案：不使用 returning，直接查询更新后的 down_flag
             stmt = self._build_upsert_stmt(yande_items)
             self.session.execute(stmt)
             existing_ids = [r["id"] for r in yande_items]
@@ -248,7 +241,7 @@ class YandeDataRepository(BaseDAO):
         except Exception as e:
             logger.warning(f"Fallback down_flag query failed: {e}")
             self.session.rollback()
-            return {}
+            return None
 
     def upsert(self, yande_item) -> bool:
         result = self.upsert_batch([yande_item])
