@@ -1,6 +1,6 @@
 {
   "name": "yande-re-spider-frontend",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Picture Manager Frontend - Vue.js 3 + Element Plus",
   "type": "module",
   "scripts": {
