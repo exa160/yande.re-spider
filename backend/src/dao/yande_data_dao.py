@@ -161,6 +161,12 @@ class YandeDataRepository(BaseDAO):
         stmt = select(YandeData.id).filter_by(id=image_id, down_flag=True)
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
+    def get_file_ext(self, image_id: int) -> Optional[str]:
+        """只查询 file_ext，轻量级方法"""
+        stmt = select(YandeData.file_ext).filter_by(id=image_id)
+        result = self.session.execute(stmt).scalar_one_or_none()
+        return result if result else "jpg"
+
     def update_down_flag(self, image_id: int, down_flag: bool = True) -> bool:
         try:
             stmt = select(YandeData).filter_by(id=image_id)
