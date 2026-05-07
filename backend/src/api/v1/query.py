@@ -1,5 +1,11 @@
 """
 查询相关API路由
+
+TODO [2026-05-07]: /search 接口目前未被前端使用
+   前端图库加载使用的是 /gallery/load 接口
+   本接口的 /search 端点为遗留代码，如后续UI不需要可删除
+   相关模型: QueryParams (models/request/query.py)
+             QueryResponse (models/response/query.py)
 """
 
 from fastapi import APIRouter
