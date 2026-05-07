@@ -800,13 +800,15 @@ const parseFavoriteTagsToParams = (tagsStr) => {
   const parts = tagsStr.split(/\s+/)
   for (const part of parts) {
     if (part.startsWith('rating:')) {
-      params.ratings = [part.split(':')[1]]
+      params.rating = [part.split(':')[1]]
     } else if (part.startsWith('score:>=')) {
       params.min_score = parseInt(part.split(':')[1])
     } else if (part.startsWith('score:<=')) {
       params.max_score = parseInt(part.split(':')[1])
-    } else if (part.startsWith('order:')) {
-      params.order = part.split(':')[1]
+    } else if (part.startsWith('sort_by:')) {
+      params.sort_by = part.split(':')[1]
+    } else if (part.startsWith('sort_order:')) {
+      params.sort_order = part.split(':')[1]
     } else if (part.startsWith('width:>=')) {
       params.min_width = parseInt(part.split(':')[1])
     } else if (part.startsWith('width:<=')) {
@@ -1127,7 +1129,7 @@ const buildLocalParams = () => {
   return {
     tags: tags || undefined,
     author: queryParams.author || undefined,
-    ratings: queryParams.rating.length > 0 ? queryParams.rating : undefined,
+    rating: queryParams.rating.length > 0 ? queryParams.rating : undefined,
     file_types: queryParams.fileType.length > 0 ? queryParams.fileType : undefined,
     min_width: queryParams.minWidth || undefined,
     max_width: queryParams.maxWidth || undefined,
@@ -1154,7 +1156,7 @@ const buildOnlineParams = () => {
   return {
     tags: tags || undefined,
     author: queryParams.author || undefined,
-    ratings: queryParams.rating,
+    rating: queryParams.rating,
     file_types: queryParams.fileTypeSingle ? [queryParams.fileTypeSingle] : undefined,
     min_width: queryParams.minWidth || undefined,
     max_width: queryParams.maxWidth || undefined,
@@ -1171,9 +1173,8 @@ const buildOnlineParams = () => {
     max_date: queryParams.maxDate || undefined,
     min_id: queryParams.minId || undefined,
     max_id: queryParams.maxId || undefined,
-    order: (queryParams.sortBy !== 'id' || queryParams.sortOrder !== 'desc') 
-      ? `${queryParams.sortBy}_${queryParams.sortOrder}` 
-      : undefined,
+    sort_by: queryParams.sortBy,
+    sort_order: queryParams.sortOrder,
     page: 1,
     page_size: 20,
   }

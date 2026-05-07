@@ -63,12 +63,12 @@ export function buildSearchString(params) {
 
   // 评分（支持多选）
   if (params.rating) {
-    const ratings = Array.isArray(params.rating) ? params.rating : [params.rating]
-    if (ratings.length === 1) {
-      parts.push(`rating:${ratings[0]}`)
-    } else if (ratings.length > 1) {
+    const rating = Array.isArray(params.rating) ? params.rating : [params.rating]
+    if (rating.length === 1) {
+      parts.push(`rating:${rating[0]}`)
+    } else if (rating.length > 1) {
       // 多选时用 OR 连接
-      parts.push(`(${ratings.map(r => `rating:${r}`).join(' OR ')})`)
+      parts.push(`(${rating.map(r => `rating:${r}`).join(' OR ')})`)
     }
   }
 
