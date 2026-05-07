@@ -11,10 +11,12 @@ from PIL import Image
 
 from src.common.constant import ErrMsg
 from src.common.constant import path_constant
-from src.dao.yande_data import YandeDataRepository
+from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
+from src.models.database.yande import YandeData
+from src.models.request.gallery import GalleryLoadRequest
 from src.models.yande import YandeSearchTags
 
 
@@ -22,7 +24,7 @@ class GalleryService:
     """图库服务类"""
 
     @staticmethod
-    def query_local_database(params: dict) -> tuple[List[dict], int]:
+    def query_local_database(params: GalleryLoadRequest) -> tuple[List[YandeData], int]:
         """
         查询本地数据库
 
@@ -33,27 +35,15 @@ class GalleryService:
             (图片列表, 总数)
         """
         with YandeDataRepository() as repo:
+            repo.YandeDataQueryParams.model_validate(params)
             images, total = repo.query(
-                page=params.get("page", 1),
-                page_size=params.get("page_size", 20),
-                tags=params.get("tags"),
-                rating=params.get("rating"),
-                author=params.get("author"),
-                min_width=params.get("min_width"),
-                max_width=params.get("max_width"),
-                min_height=params.get("min_height"),
-                max_height=params.get("max_height"),
-                min_file_size=params.get("min_file_size"),
-                max_file_size=params.get("max_file_size"),
-                file_type=params.get("file_type"),
-                sort_by=params.get("sort_by", "created_at"),
-                sort_order=params.get("sort_order", "desc"),
+                query_params=params,
                 downloaded_only=True,
             )
         return images, total
 
     @staticmethod
-    def query_yande_api(params: dict) -> tuple[List[dict], int]:
+    def query_yande_api(params: GalleryLoadRequest) -> tuple[List[dict], int]:
         """
         查询 yande.re API 并同步到本地数据库
 
@@ -64,17 +54,19 @@ class GalleryService:
             (图片列表, 总数)
         """
         yande_api = YandeApi()
-        page = params.get("page", 1)
-        page_size = params.get("page_size", 25)
         search_tags = YandeSearchTags.model_validate(params)
 
-        author_tags = params.get("author", "")
         success, yande_data = yande_api.get_ranking(
-            page, limit=page_size, tags=author_tags, search_tags=search_tags
+            query_params=YandeApi.PostRankQueryParams(
+                page=params.page,
+                limit=params.page_size,
+                tags=params.tags,
+                search_tags=search_tags
+            )
         )
 
         if not success:
-            raise APIException(ErrMsg.LOAD_YANDE_DATA_ERROR)
+            raise APIException(message=yande_data.reason, e=yande_data)
 
         yande_items = list(yande_data.root)
         if not yande_items:
@@ -163,6 +155,7 @@ class GalleryService:
 
         original_path = cache.get_original_path(image_id, file_ext)
         if not original_path.exists():
+            logger.warning(f"Original image {image_id} not found for preview generation")
             return None
 
         try:
@@ -213,7 +206,7 @@ class GalleryService:
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=Exception(f"ID: {image_id} has no preview URL available"))
 
         try:
-            return cache.download_preview(preview_url, image_id, file_ext)
+            return cache.download_preview(preview_url, image_id, "jpg")
         except requests.RequestException as e:
             logger.error(f"Request error for image {image_id}: {e}")
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=e)
@@ -236,7 +229,4 @@ class GalleryService:
         if original_path.exists():
             return GalleryService.generate_preview(image_id, file_ext)
 
-        try:
-            return GalleryService.fetch_and_cache_preview(image_id, file_ext)
-        except APIException:
-            return None
+        # return GalleryService.fetch_and_cache_preview(image_id, "jpg")

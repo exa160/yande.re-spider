@@ -31,11 +31,11 @@ class ConfigService:
         """
         try:
             tmp_config = config.yande_api.model_dump(mode="json")
-            tmp_config.update(api_config)
+            tmp_config.update(api_config.model_dump(exclude={"headers"}))
             config.update_config(ApiConfig.model_validate(tmp_config))
             return True
-        except Exception:
-            return False
+        except Exception as e:
+            raise e
 
     @staticmethod
     def update_downloader_config(down_config: DownloaderConfig) -> bool:

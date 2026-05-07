@@ -1,3 +1,4 @@
+import re
 import traceback
 from http import HTTPStatus
 from typing import Generic, TypeVar, Any
@@ -16,6 +17,8 @@ T = TypeVar('T')
 class APIException(HTTPException, Generic[T]):
     def __init__(self, err_msg: str | ErrMsg, err_code: str = None, data: Any = None, e: Exception = None):
         self.http_status = HTTPStatus.OK
+        # 获取调用栈信息，用于日志追踪
+        self._source_location = self._get_source_location()
         if isinstance(err_msg, ErrMsg):
             # 优先使用传入的 err_code，否则使用 ErrMsg 中的 code
             self.err_code = err_code if err_code else err_msg.code
@@ -33,6 +36,18 @@ class APIException(HTTPException, Generic[T]):
             self.data = data
         super().__init__(status_code=self.http_status.value, detail=self.err_msg)
 
+    @staticmethod
+    def _get_source_location() -> str:
+        """获取最近的非框架调用位置"""
+        for line in traceback.format_stack()[::-1]:
+            # 跳过 middleware 和 framework 相关的文件
+            if 'middleware' not in line and 'starlette' not in line and 'fastapi' not in line:
+                # 提取文件路径和行号
+                match = re.search(r'File "(.*?)", line (\d+)', line)
+                if match:
+                    return f"{match.group(1)}:{match.group(2)}"
+        return "unknown"
+
 
 class ErrorHandleMiddleware:
     @staticmethod
@@ -40,7 +55,8 @@ class ErrorHandleMiddleware:
         # APIException 专用处理
         @app.exception_handler(APIException)
         async def api_exception_handler(request, exc):
-            logger.error(f"APIException: {exc}")
+            logger.error(f"APIException: {exc.err_code} - {exc.err_msg}")
+            logger.error(f"source: {exc._source_location}")
             logger.error(f"traceback: {traceback.format_exc()}")
             return JSONResponse(
                 status_code=exc.http_status.value,

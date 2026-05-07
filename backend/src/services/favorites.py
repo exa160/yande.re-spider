@@ -5,9 +5,9 @@
 from datetime import datetime
 from typing import List, Optional
 
-from src.common.constant import ErrMsg
+from src.common.constant import ErrMsg, Rating
 from src.dao.favorite_dao import favorite_dao
-from src.dao.yande_data_dao import YandeDataRepository
+from src.dao.yande_data_dao import YandeDataRepository, SortBy
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
 from src.models.request.favorites import (
@@ -114,16 +114,25 @@ class FavoritesService:
 
     @staticmethod
     def preview_folder(folder_id: int, limit: int = 6) -> Optional[dict]:
-        """预览收藏夹查询结果"""
+        """
+        预览收藏夹查询结果
+        Args:
+            folder_id: 收藏夹ID
+            limit: 预览图片数量
+        TODO: 文件夹目录预览图
+        """
         folder = favorite_dao.get_by_id(folder_id)
         if not folder:
             return None
 
         try:
             search_params = FavoritesService._parse_tags_to_params(folder.tags)
+            search_params.page = 1
+            search_params.page_size = limit
             with YandeDataRepository() as repo:
                 images, total = repo.query(
-                    page=1, page_size=limit, downloaded_only=True, **search_params
+                    query_params=search_params,
+                    downloaded_only=True,
                 )
 
             FavoritesService._refresh_local_count(folder_id)
@@ -179,9 +188,12 @@ class FavoritesService:
             return None
         try:
             search_params = FavoritesService._parse_tags_to_params(folder.tags)
+            search_params.page = 1
+            search_params.page_size = 1
             with YandeDataRepository() as repo:
                 _, total = repo.query(
-                    page=1, page_size=1, downloaded_only=True, **search_params
+                    query_params=search_params,
+                    downloaded_only=True,
                 )
             folder = favorite_dao.update(
                 folder_id, local_count=total, last_refresh=datetime.now()
@@ -192,50 +204,46 @@ class FavoritesService:
             raise APIException[FavoriteFolder](err_msg=ErrMsg.REFRESH_LOCAL_COUNT_FAILED, data=folder, e=e)
 
     @staticmethod
-    def _parse_tags_to_params(tags_str: str) -> dict:
-        """解析标签字符串为查询参数"""
-        # TODO 去除重复代码
-        params = {}
+    def _parse_tags_to_params(tags_str: str) -> YandeDataRepository.YandeDataQueryParams:
+        """
+        解析标签字符串为查询参数
+        TODO 与生成tag的代码有重复
+        TODO -排除功能
+        """
+        params = YandeDataRepository.YandeDataQueryParams()
 
         if not tags_str:
             return params
 
+        tags_list = []
         parts = tags_str.split()
         for part in parts:
             if part.startswith("rating:"):
-                rating = part.split(":", 1)[1]
-                params["rating"] = rating
-            elif part.startswith("score:>"):
-                score = part.split(":", 1)[1]
-                params["min_score"] = int(score)
-            elif part.startswith("score:<"):
-                score = part.split(":", 1)[1]
-                params["max_score"] = int(score)
+                rating_str = part.split(":", 1)[1]
+                params.rating = [Rating(r) for r in rating_str.split()]
             elif part.startswith("order:"):
-                order = part.split(":", 1)[1]
-                params["sort_by"] = order
+                order = part.split(":", 1)[-1]
+                params.sort_by = order.split("_")[0]
+                params.sort_order = order.split("_")[1] if "_" in order else "desc"
             elif part.startswith("width:>="):
                 width = part.split(":", 1)[1]
-                params["min_width"] = int(width)
+                params.min_width = int(width)
             elif part.startswith("width:<="):
                 width = part.split(":", 1)[1]
-                params["max_width"] = int(width)
+                params.max_width = int(width)
             elif part.startswith("height:>="):
                 height = part.split(":", 1)[1]
-                params["min_height"] = int(height)
+                params.min_height = int(height)
             elif part.startswith("height:<="):
                 height = part.split(":", 1)[1]
-                params["max_height"] = int(height)
+                params.max_height = int(height)
             elif part.startswith("ext:"):
                 ext = part.split(":", 1)[1]
-                params["file_type"] = ext
+                params.file_types = [ext]
             elif not part.startswith("-"):
-                if "tags" not in params:
-                    params["tags"] = []
-                if isinstance(params["tags"], list):
-                    params["tags"].append(part)
+                tags_list.append(part)
 
-        if "tags" in params and isinstance(params["tags"], list):
-            params["tags"] = " ".join(params["tags"])
+        if tags_list:
+            params.tags = " ".join(tags_list)
 
         return params

@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 from loguru import logger
 
-from src.dao.yande_data import TagRepository, ArtistRepository
+from src.dao import TagRepository, ArtistRepository
 from src.infrastructure.yande_api import YandeApi
 
 

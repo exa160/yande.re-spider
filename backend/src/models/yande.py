@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, List
 
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel, ConfigDict, RootModel
 
 from src.common.constant import Rating
 
@@ -92,7 +92,7 @@ class YandeSearchTags(BaseModel):
     user: Optional[str] = None  # 用户: user:bob
     vote: Optional[int] = None  # 投票数: vote:3
     md5: Optional[str] = None  # MD5哈希: md5:foo
-    source: Optional[str] = None  # 来源: source:http://site.com
+    # source: Optional[str] = None  # 来源: source:http://site.com # TODO 与来源选择冲突
     min_id: Optional[int] = None  # 最小ID: id:>=100
     max_id: Optional[int] = None  # 最大ID: id:<=100
     min_width: Optional[int] = None
@@ -108,11 +108,14 @@ class YandeSearchTags(BaseModel):
     max_score: Optional[int] = None
     min_filesize: Optional[int] = None  # KB
     max_filesize: Optional[int] = None
-    ratings: List[str] = []
+    rating: Optional[List[Rating]] = None
     file_exts: List[str] = []
-    order: str = "id"  # 默认按ID排序
+    sort_by: Optional[str] = None  # 排序字段
+    sort_order: Optional[str] = None  # 排序方向: asc/desc
     parent_id: Optional[int] = None  # 父贴ID: parent:1234
     parent_none: bool = False  # 无父贴: parent:none
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class YandeRunningConfig(BaseModel):

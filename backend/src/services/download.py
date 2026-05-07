@@ -9,7 +9,7 @@ from loguru import logger
 
 from src.common.constant import TaskStatus
 from src.common.settings import config
-from src.dao.yande_data import YandeDataRepository
+from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.download_queue import TaskStore, task_store, download_queue
 
 
