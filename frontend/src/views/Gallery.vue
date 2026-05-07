@@ -427,14 +427,17 @@ const parseFavoriteTags = (tagsStr) => {
   const parts = tagsStr.split(/\s+/)
   for (const part of parts) {
     if (part.startsWith('rating:')) {
-      params.ratings = [part.split(':')[1]]
+      params.rating = [part.split(':')[1]]
     } else if (part.startsWith('score:>')) {
       params.min_score = parseInt(part.split(':')[1])
     } else if (part.startsWith('score:<=')) {
       params.max_score = parseInt(part.split(':')[1])
-    } else if (part.startsWith('order:')) {
+    } else if (part.startsWith('sort_order:')) {
       const orderVal = part.split(':')[1]
-      params.order = orderVal
+      params.sort_order = orderVal
+    } else if (part.startsWith('sort_by:')) {
+      const sortByVal = part.split(':')[1]
+      params.sort_by = sortByVal
     } else if (part.startsWith('width:>=')) {
       params.min_width = parseInt(part.split(':')[1])
     } else if (part.startsWith('width:<=')) {
