@@ -124,8 +124,8 @@ class ErrMsg(BaseMsgEnum):
 
     # 图库界面
     LOAD_YANDE_DATA_ERROR = ("0010", "Failed to load yande data.", HTTPStatus.INTERNAL_SERVER_ERROR)
-    LOAD_PREVIEW_DATA_ERROR = ("0010", "Failed to load preview data.", HTTPStatus.NOT_FOUND)
-    SAVE_PREVIEW_DATA_ERROR = ("0010", "Failed to save preview data.", HTTPStatus.NOT_FOUND)
+    LOAD_PREVIEW_DATA_ERROR = ("0011", "Failed to load preview data.", HTTPStatus.NOT_FOUND)
+    SAVE_PREVIEW_DATA_ERROR = ("0012", "Failed to save preview data.", HTTPStatus.NOT_FOUND)
 
     # 配置相关
     CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)

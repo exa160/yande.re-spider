@@ -30,7 +30,7 @@ class ApiConfig(ConfigModel):
         https: str = ""
 
     class Headers(ConfigModel):
-        user_agent: str = Field('', serialization_alias='user-agent')
+        user_agent: str = Field('', serialization_alias='User-agent')
         accept: str = Field('', serialization_alias='Accept')
         accept_language: str = Field('', serialization_alias='Accept-Language')
 

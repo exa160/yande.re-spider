@@ -25,15 +25,12 @@ router = APIRouter()
 async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
     """加载图库数据（支持本地/在线模式）"""
     try:
-        params = request.model_dump()
-        source = params.pop("source", "local")
-
-        if source == "local":
-            images, total = GalleryService.query_local_database(params)
+        if request.source == "local":
+            images, total = GalleryService.query_local_database(request)
         else:
-            images, total = GalleryService.query_yande_api(params)
+            images, total = GalleryService.query_yande_api(request)
 
-        has_more = len(images) >= params.get("page_size")
+        has_more = len(images) >= request.page_size
 
         return GalleryLoadResponse(
             message=ErrMsg.OK.msg,
