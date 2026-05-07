@@ -1,12 +1,13 @@
-from typing import Union, Tuple, List
+import traceback
+from typing import Optional, Tuple, List
 from xml.etree import ElementTree as ET
 
 import requests
 from loguru import logger
-from pydantic import BaseModel, model_serializer
+from pydantic import BaseModel, Field, model_serializer
 
 from src.common import config
-from src.common.constant import yande_constant
+from src.common.constant import Rating, yande_constant
 from src.common.utils import get_proxy
 from src.models.yande import YandePostData, YandeSearchTags
 
@@ -14,8 +15,12 @@ from src.models.yande import YandePostData, YandeSearchTags
 class YandeApi:
     class PostRankQueryParams(BaseModel):
         page: int = 1
-        tags: str = ""
-        search_tags: YandeSearchTags = None
+        limit: Optional[int] = 25
+        tags: Optional[str] = None
+        search_tags: YandeSearchTags = Field(
+            default_factory=YandeSearchTags,
+            exclude=True,  # 排除在序列化之外，单独处理
+            )
 
         @model_serializer(mode="wrap")
         def serialize(self, handler):
@@ -68,13 +73,12 @@ class YandeApi:
 
     def search_trans(self, search_tags: YandeSearchTags) -> str:
         """将 YandeSearchTags 转换为 yande.re API 识别的搜索标签字符串"""
-        # TODO 优化：使用配置驱动的方式替代硬编码，提升可维护性和扩展性，可见advanced_search.py
         parts = []
 
         # 简单字段映射: {模型字段名: 格式字符串}
         simple_mappings = {
             "tags": "{value}",
-            "user": "user:{value}",
+            "artist": "artist:{value}",
             "vote": "vote:{value}",
             "md5": "md5:{value}",
             "source": "source:{value}",
@@ -117,17 +121,17 @@ class YandeApi:
                 if value is not None:
                     parts.append(f"{max_prefix}{value}")
 
-        # 处理 ratings
-        if search_tags.ratings:
-            ratings = search_tags.ratings
-            if len(ratings) == 3:
+        # 处理 rating
+        if search_tags.rating:
+            rating = set(search_tags.rating)
+            if len(rating) == 3:
                 pass  # 全部评级，无需添加
-            elif len(ratings) == 2:
-                excluded = list(set(["e", "q", "s"]) - set(ratings))
+            elif len(rating) == 2:
+                excluded = list(set(Rating) - rating)
                 if excluded:
-                    parts.append(f"-rating:{excluded[0]}")
+                    parts.append(f"-rating:{excluded[0].value}")
             else:
-                parts.append(f"rating:{ratings[0]}")
+                parts.append(f"rating:{rating[0].value}")
 
         # 处理 file_exts
         if search_tags.file_exts:
@@ -138,8 +142,13 @@ class YandeApi:
                 parts.extend(f"ext:{ext}" for ext in exts)
 
         # 处理 order (排除默认排序)
-        if search_tags.order and search_tags.order not in ("id", "id_desc"):
-            parts.append(f"order:{search_tags.order}")
+        if search_tags.sort_by:
+            sort_by = search_tags.sort_by
+            if search_tags.sort_order in ("asc", "desc"):
+                order = search_tags.sort_order
+            else:
+                order = "desc"
+            parts.append(f"order:{sort_by}_{order}")
 
         # 处理 parent_none
         if search_tags.parent_none:
@@ -148,44 +157,33 @@ class YandeApi:
         return " ".join(parts)
 
     def get_ranking(
-        self, page: int, limit: int = 25,
-          tags: str = "", search_tags: YandeSearchTags = None
-    ) -> Union[Tuple[bool, bytes], Tuple[bool, YandePostData]]:
-        query_params = dict(page=page, limit=limit)
-
-        combined_tags = tags
-        if search_tags:
-            search_str = self.search_trans(search_tags)
-            combined_tags = f"{tags} {search_str}" if tags else search_str
-
-        if combined_tags:
-            query_params.update(dict(tags=combined_tags))
-
+        self,
+        query_params: PostRankQueryParams
+    ) -> Tuple[bool, Optional[YandePostData]]:
+        exception = None
         for i in range(config.yande_api.retry):
             req = None
             try:
+                logger.info(f"Requesting Yande API with params: {query_params.model_dump()}")
+                logger.info(f"{self.proxies} {self.headers}")
                 req = requests.get(
                     self.post_json_api,
-                    params=query_params,
+                    params=query_params.model_dump(mode="json"),
                     proxies=self.proxies,
                     headers=self.headers,
                     timeout=config.yande_api.timeout,
                 )
-                if req.status_code > 300:
-                    logger.info(
-                        f"get api error {page} {combined_tags}: {req.status_code}"
-                    )
-                    if req.status_code > 500:
-                        continue
-                    return False, req.content
-                else:
-                    return True, YandePostData.model_validate_json(req.content)
+                req.raise_for_status()
+                return True, YandePostData.model_validate_json(req.content)
             except Exception as e:
+                logger.warning(traceback.format_exc())
                 logger.warning(
                     f"[{i + 1}] requests error"
-                    f"page: {page} tag: {combined_tags}: {e} {req.content if req is not None else req}"
+                    f"page: {query_params.page} tag:"
+                    f"{query_params.tags}: {e} {req.content if req is not None else req}"
                 )
-        return False, b""
+                exception = e
+        return False, exception
 
     def get_tags(
         self,

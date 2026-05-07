@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.common import config, path_constant
 from src.common.constant import TaskStatus
 from src.common.utils import get_proxy
-from src.dao.yande_data import YandeDataRepository
+from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.downloader import FileInfo, MultiDown
 
 
