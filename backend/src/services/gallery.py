@@ -218,15 +218,18 @@ class GalleryService:
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=e)
 
     @staticmethod
-    def get_preview_for_local(image_id: int, file_ext: str = "jpg"):
+    def get_preview_for_local(image_id: int, file_ext: str = None):
         cache = ImageCache()
         preview_path = cache.get_preview_path(image_id, "jpg")
 
         if preview_path.exists():
             return preview_path
 
-        original_path = cache.get_original_path(image_id, file_ext)
-        if original_path.exists():
-            return GalleryService.generate_preview(image_id, file_ext)
+        with YandeDataRepository() as repo:
+            actual_file_ext = repo.get_file_ext(image_id)
 
-        # return GalleryService.fetch_and_cache_preview(image_id, "jpg")
+        original_path = cache.get_original_path(image_id, actual_file_ext)
+        if original_path.exists():
+            return GalleryService.generate_preview(image_id, actual_file_ext)
+
+        return None
