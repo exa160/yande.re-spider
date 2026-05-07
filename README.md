@@ -220,6 +220,11 @@ rating:e width:>=1000 height:>=1000 ext:png -explicit_tag +safe_tag
 - [ ] Electron 桌面客户端
 - [ ] 移动端适配优化
 
+### 已知问题
+- [ ] 收藏夹高级查询逻辑失效
+- [ ] 收藏夹数量不根据已有查询tag刷新，仅根据主tag+当前筛选刷新
+- [ ] 标签功能慢
+
 ## 许可证
 
 MIT License
