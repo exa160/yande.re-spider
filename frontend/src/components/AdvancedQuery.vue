@@ -783,6 +783,27 @@ const buildCurrentTagsString = () => {
 // 选择收藏夹
 const selectFavorite = (folder) => {
   selectedFavorite.value = folder
+  // 解析收藏夹的特殊参数（rating, score 等）
+  if (folder.tags) {
+    const favParams = parseFavoriteTagsToParams(folder.tags)
+    queryParams.rating = favParams.rating || []
+    queryParams.minScore = favParams.min_score || null
+    queryParams.maxScore = favParams.max_score || null
+    queryParams.sortBy = favParams.sort_by || queryParams.sortBy
+    queryParams.sortOrder = favParams.sort_order || queryParams.sortOrder
+    queryParams.minWidth = favParams.min_width || null
+    queryParams.maxWidth = favParams.max_width || null
+    queryParams.minHeight = favParams.min_height || null
+    queryParams.maxHeight = favParams.max_height || null
+    queryParams.fileTypeSingle = favParams.file_types?.[0] || ''
+    queryParams.minId = favParams.min_id || null
+    queryParams.maxId = favParams.max_id || null
+    queryParams.minMpixels = favParams.min_mpixels || null
+    queryParams.maxMpixels = favParams.max_mpixels || null
+    queryParams.ratio = favParams.ratio || ''
+    queryParams.minDate = favParams.min_date || ''
+    queryParams.maxDate = favParams.max_date || ''
+  }
   showFavoritePanel.value = false
   handleSearch()
 }
@@ -800,7 +821,10 @@ const parseFavoriteTagsToParams = (tagsStr) => {
   const parts = tagsStr.split(/\s+/)
   for (const part of parts) {
     if (part.startsWith('rating:')) {
-      params.rating = [part.split(':')[1]]
+      if (!params.rating) {
+        params.rating = []
+      }
+      params.rating.push(part.split(':')[1])
     } else if (part.startsWith('score:>=')) {
       params.min_score = parseInt(part.split(':')[1])
     } else if (part.startsWith('score:<=')) {
@@ -1046,6 +1070,7 @@ const removeFilter = (filter) => {
       queryParams.maxDate = ''
       break
   }
+  handleSearch()
 }
 
 // 收缩/展开

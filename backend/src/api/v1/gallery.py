@@ -24,24 +24,21 @@ router = APIRouter()
 @router.post("/load", response_model=GalleryLoadResponse, summary="加载图库")
 async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
     """加载图库数据（支持本地/在线模式）"""
-    try:
-        if request.source == "local":
-            images, total = GalleryService.query_local_database(request)
-        else:
-            images, total = GalleryService.query_yande_api(request)
+    if request.source == "local":
+        images, total = await asyncio.to_thread(GalleryService.query_local_database, request)
+    else:
+        images, total = await asyncio.to_thread(GalleryService.query_yande_api, request)
 
-        has_more = len(images) >= request.page_size
+    has_more = len(images) >= request.page_size
 
-        return GalleryLoadResponse(
-            message=ErrMsg.OK.msg,
-            data=images,
-            total=total,
-            page=request.page,
-            page_size=request.page_size,
-            has_more=has_more
+    return GalleryLoadResponse(
+        message=ErrMsg.OK.msg,
+        data=images,
+        total=total,
+        page=request.page,
+        page_size=request.page_size,
+        has_more=has_more
         )
-    except Exception as e:
-        raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
 @router.get(
@@ -51,7 +48,7 @@ async def get_image_detail(
     image_id: int, source: str = Query("local", description="数据源")
 ) -> ImageDetailResponse:
     """获取单张图片详情"""
-    image = GalleryService.get_image_by_id(image_id, source)
+    image = await asyncio.to_thread(GalleryService.get_image_by_id, image_id, source)
     if not image:
         raise APIException(ErrMsg.NOT_FOUND)
     return ImageDetailResponse(message=ErrMsg.OK.msg, data=ImageDetail(**image))
@@ -81,10 +78,10 @@ async def get_gallery_statistics(
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
-@router.get("/cache/preview/{filename}", summary="获取预览图文件")
-async def get_preview_image(filename: str):
+@router.get("/cache/preview/{image_id}", summary="获取预览图文件")
+async def get_preview_image(image_id: int):
     """获取预览图文件"""
-    preview_path = GalleryService.get_preview_path(filename)
+    preview_path = GalleryService.get_preview_path(f"{image_id}.jpg")
     if preview_path.exists():
         return FileResponse(str(preview_path))
     raise APIException(ErrMsg.NOT_FOUND)
@@ -102,10 +99,10 @@ async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
 
 
 @router.get("/cache/preview/local/{image_id}", summary="本地模式获取预览图")
-async def get_preview_for_local(image_id: int, file_ext: str = "jpg"):
+async def get_preview_for_local(image_id: int):
     """本地模式获取预览图 - 优先从原图生成，其次从远程下载"""
     preview_path = await asyncio.get_event_loop().run_in_executor(
-        None, GalleryService.get_preview_for_local, image_id, file_ext
+        None, GalleryService.get_preview_for_local, image_id
     )
     if preview_path:
         return FileResponse(str(preview_path))
@@ -113,10 +110,10 @@ async def get_preview_for_local(image_id: int, file_ext: str = "jpg"):
 
 
 @router.get("/cache/preview/fetch/{image_id}", summary="获取并缓存预览图")
-async def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
+async def fetch_and_cache_preview(image_id: int):
     """从远程获取并缓存预览图"""
     preview_path = await asyncio.get_event_loop().run_in_executor(
-        None, GalleryService.fetch_and_cache_preview, image_id, file_ext
+        None, GalleryService.fetch_and_cache_preview, image_id
     )
     if preview_path:
         return FileResponse(str(preview_path))

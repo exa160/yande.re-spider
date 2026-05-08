@@ -7,6 +7,7 @@ TODO [2026-05-07]: /search 接口目前未被前端使用
    相关模型: QueryParams (models/request/query.py)
              QueryResponse (models/response/query.py)
 """
+import asyncio
 
 from fastapi import APIRouter
 
@@ -24,9 +25,8 @@ router = APIRouter()
 async def advanced_search(params: QueryParams) -> QueryResponse:
     """高级查询接口"""
     try:
-        # 使用 GalleryService 进行查询
         query_params = params.model_dump()
-        images, total = GalleryService.query_local_database(query_params)
+        images, total = await asyncio.to_thread(GalleryService.query_local_database, query_params)
 
         return QueryResponse(
             message=ErrMsg.OK.msg,

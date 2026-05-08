@@ -1,5 +1,5 @@
 import traceback
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 from xml.etree import ElementTree as ET
 
 import requests
@@ -159,7 +159,7 @@ class YandeApi:
     def get_ranking(
         self,
         query_params: PostRankQueryParams
-    ) -> Tuple[bool, Optional[YandePostData]]:
+    ) -> Tuple[bool, Union[YandePostData, Exception, None]]:
         exception = None
         for i in range(config.yande_api.retry):
             req = None

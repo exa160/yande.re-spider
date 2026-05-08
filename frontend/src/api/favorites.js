@@ -51,7 +51,7 @@ export function updateOnlineCount(folderId, count) {
 
 // 更新本地数量
 export function updateLocalCount(folderId, count) {
-  return api.post(`/favorites/${folderId}/local-count?count=${count}`)
+  return api.post(`/favorites/${folderId}/refresh`)
 }
 
 // 从 yande API 刷新在线数量

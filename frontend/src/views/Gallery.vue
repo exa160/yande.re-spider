@@ -328,7 +328,7 @@ watch(currentImage, (img) => {
     // preview_url 不以 http 开头则是本地路径
     const isLocalPreview = img.preview_url && !img.preview_url.startsWith('http')
     const imgUrl = isLocalPreview
-      ? `/api/v1/gallery/cache/preview/${img.preview_url}`
+      ? `/api/v1/gallery/cache/preview/${img.id}`
       : ''
     analyzeImageColor(imgUrl)
   }
@@ -515,7 +515,7 @@ const loadImages = async (page) => {
       images.value = imageList
       if (currentFavorite.value) {
         if (querySource.value === 'local') {
-          updateLocalCount(currentFavorite.value.id, response.total).catch(() => {})
+          updateLocalCount(currentFavorite.value.id).catch(() => {})
         } else {
           refreshOnlineCount(currentFavorite.value.id).catch(() => {})
         }
@@ -527,7 +527,19 @@ const loadImages = async (page) => {
     loadError.value = false
   } catch (error) {
     if (isFirstPage) {
-      ElMessage.error('加载图片失败')
+      // 根据错误码显示不同提示
+      const errorCode = error.code || ''
+      if (errorCode === '0101') {
+        ElMessage.error('网络错误：请检查网络连接')
+      } else if (errorCode === '0102') {
+        ElMessage.error('代理错误：请检查代理设置')
+      } else if (errorCode === '0103') {
+        ElMessage.error('请求超时：请稍后重试')
+      } else if (error.detail) {
+        ElMessage.error(error.detail)
+      } else {
+        ElMessage.error(error.message || '加载图片失败')
+      }
       loadError.value = true
     }
     // 非首页失败不设置 loadError，保持显示"加载更多"
@@ -697,7 +709,7 @@ const getDetailUrl = (image) => {
     return `/api/v1/gallery/cache/original/${image.file_url}`
   }
   // 在线模式：使用 fetch 缓存原图（避免直接访问远程URL导致CORS）
-  return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}`
 }
 
 // 页面加载时自动查询本地

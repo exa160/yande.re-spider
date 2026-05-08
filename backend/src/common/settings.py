@@ -62,7 +62,12 @@ class DatabaseConfig(ConfigModel):
         return password.get_secret_value()
 
 
+class AppConfig(ConfigModel):
+    debug: bool = Field(default=False, description='开启时接口返回完整错误信息')
+
+
 class Config(ConfigModel):
+    app: AppConfig = AppConfig()
     database: DatabaseConfig = DatabaseConfig()
     yande_api: ApiConfig = ApiConfig()
     downloader: DownloaderConfig = DownloaderConfig()
