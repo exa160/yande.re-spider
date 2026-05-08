@@ -11,6 +11,7 @@ from PIL import Image
 
 from src.common.constant import ErrMsg
 from src.common.constant import path_constant
+from src.common.utils import get_error_type_from_exception
 from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
@@ -66,7 +67,8 @@ class GalleryService:
         )
 
         if not success:
-            raise APIException(message=yande_data.reason, e=yande_data)
+            err_msg, detail = get_error_type_from_exception(yande_data)
+            raise APIException(err_msg=err_msg, data={"detail": detail})
 
         yande_items = list(yande_data.root)
         if not yande_items:
@@ -172,13 +174,12 @@ class GalleryService:
             return None
 
     @staticmethod
-    def fetch_and_cache_preview(image_id: int, file_ext: str = "jpg"):
+    def fetch_and_cache_preview(image_id: int):
         """
         从远程获取并缓存预览图,如果本地已存在则直接返回(默认jpg格式，有修改需适配preview_url)
 
         Args:
             image_id: 图片 ID
-            file_ext: 文件扩展名
 
         Returns:
             预览图路径，失败抛出 APIException
@@ -188,7 +189,7 @@ class GalleryService:
         """
 
         cache = ImageCache()
-        preview_path = cache.get_preview_path(image_id, file_ext)
+        preview_path = cache.get_preview_path(image_id, "jpg")
 
         if preview_path.exists():
             return preview_path
@@ -218,7 +219,7 @@ class GalleryService:
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=e)
 
     @staticmethod
-    def get_preview_for_local(image_id: int, file_ext: str = None):
+    def get_preview_for_local(image_id: int):
         cache = ImageCache()
         preview_path = cache.get_preview_path(image_id, "jpg")
 

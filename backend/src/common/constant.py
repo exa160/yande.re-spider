@@ -122,6 +122,11 @@ class ErrMsg(BaseMsgEnum):
     NOT_FOUND = ("0005", "Resource not found.", HTTPStatus.NOT_FOUND)
     PARAM_ERROR = ("0006", "Invalid parameter.", HTTPStatus.BAD_REQUEST)
 
+    # 网络相关错误
+    NETWORK_ERROR = ("0101", "Network error. Please check your internet connection.", HTTPStatus.BAD_GATEWAY)
+    PROXY_ERROR = ("0102", "Proxy error. Please check proxy settings.", HTTPStatus.BAD_GATEWAY)
+    TIMEOUT_ERROR = ("0103", "Request timeout. Please try again later.", HTTPStatus.GATEWAY_TIMEOUT)
+
     # 图库界面
     LOAD_YANDE_DATA_ERROR = ("0010", "Failed to load yande data.", HTTPStatus.INTERNAL_SERVER_ERROR)
     LOAD_PREVIEW_DATA_ERROR = ("0011", "Failed to load preview data.", HTTPStatus.NOT_FOUND)

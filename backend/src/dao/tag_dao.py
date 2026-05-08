@@ -83,35 +83,57 @@ class TagRepository(BaseDAO):
 
     def calculate_local_stats(self) -> int:
         tag_counter: Counter = Counter()
+
         with self.session.no_autoflush:
             stmt = select(YandeData.tags).where(YandeData.down_flag == True)
             results = self.session.execute(stmt).scalars().all()
 
             for tags_str in results:
                 if tags_str:
-                    tag_list = tags_str.split()
-                    tag_counter.update(tag_list)
+                    tag_counter.update(tags_str.split())
 
-            stats_updated = 0
-            for tag_name, local_count in tag_counter.items():
-                tag_stmt = select(YandeTag).filter_by(name=tag_name)
-                tag_obj = self.session.execute(tag_stmt).scalar_one_or_none()
-                if tag_obj:
-                    stats_stmt = select(TagLocalStats).filter_by(tag_id=tag_obj.id)
-                    existing = self.session.execute(stats_stmt).scalar_one_or_none()
-                    if existing:
-                        existing.local_count = local_count
-                        existing.last_calculated = datetime.now()
-                    else:
-                        new_stats = TagLocalStats(
-                            tag_id=tag_obj.id,
-                            local_count=local_count,
-                            last_calculated=datetime.now(),
-                        )
-                        self.session.add(new_stats)
-                    stats_updated += 1
+        if not tag_counter:
+            return 0
 
-            return stats_updated
+        now = datetime.now()
+
+        tag_names = list(tag_counter.keys())
+        tags_stmt = select(YandeTag).filter(YandeTag.name.in_(tag_names))
+        tag_objs = {t.name: t for t in self.session.execute(tags_stmt).scalars().all()}
+
+        tag_ids = [t.id for t in tag_objs.values()]
+        if not tag_ids:
+            return 0
+
+        stats_stmt = select(TagLocalStats).filter(TagLocalStats.tag_id.in_(tag_ids))
+        existing_stats = {s.tag_id: s for s in self.session.execute(stats_stmt).scalars().all()}
+
+        to_update = []
+        to_insert = []
+
+        for tag_name, local_count in tag_counter.items():
+            tag_obj = tag_objs.get(tag_name)
+            if not tag_obj:
+                continue
+
+            if tag_obj.id in existing_stats:
+                to_update.append((existing_stats[tag_obj.id], local_count))
+            else:
+                to_insert.append({
+                    'tag_id': tag_obj.id,
+                    'local_count': local_count,
+                    'last_calculated': now,
+                })
+
+        for stats_obj, local_count in to_update:
+            stats_obj.local_count = local_count
+            stats_obj.last_calculated = now
+
+        if to_insert:
+            for data in to_insert:
+                self.session.add(TagLocalStats(**data))
+
+        return len(tag_counter)
 
     def get_tags_with_stats(
         self,

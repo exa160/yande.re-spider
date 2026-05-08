@@ -220,7 +220,9 @@ class FavoritesService:
         for part in parts:
             if part.startswith("rating:"):
                 rating_str = part.split(":", 1)[1]
-                params.rating = [Rating(r) for r in rating_str.split()]
+                if not params.rating:
+                    params.rating = []
+                params.rating.append(Rating(rating_str))
             elif part.startswith("order:"):
                 order = part.split(":", 1)[-1]
                 params.sort_by = order.split("_")[0]

@@ -8,6 +8,7 @@ from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
+from src.common import config
 from src.common.constant import ErrMsg
 from src.models.response.base_response import ErrorResponse
 
@@ -83,9 +84,13 @@ class ErrorHandleMiddleware:
         async def global_exception_handler(request, exc):
             logger.error(f"Unhandled Exception: {exc}")
             logger.error(f"traceback: {traceback.format_exc()}")
+            if config.app.debug:
+                message = f"{HTTPStatus.INTERNAL_SERVER_ERROR.description}: {str(exc)}"
+            else:
+                message = HTTPStatus.INTERNAL_SERVER_ERROR.description
             return JSONResponse(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
                 content=ErrorResponse(
-                    message=f"{HTTPStatus.INTERNAL_SERVER_ERROR.description}: {str(exc)}"
+                    message=message
                 ).model_dump(mode="json")
             )
