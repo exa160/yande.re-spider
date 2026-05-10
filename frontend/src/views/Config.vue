@@ -133,7 +133,7 @@
       <div v-show="activeMenu === 'about'" class="config-section about-section">
         <div class="about-content">
           <div class="about-title">Yande.re Local Picture Manager</div>
-          <div class="about-version">Version 1.0.4</div>
+          <div class="about-version">Version 1.0.6</div>
           <div class="about-desc">Yande.re 本地图片管理工具</div>
           <div class="about-links">
             <a href="https://github.com/exa160/yande.re-spider" target="_blank" class="github-link">
