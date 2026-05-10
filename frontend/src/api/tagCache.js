@@ -2,7 +2,7 @@ import api from './index'
 
 export const tagCacheApi = {
   refreshTags(params = {}) {
-    return api.post('/tag_cache/refresh-tags', params)
+    return api.post('/tag_cache/refresh-tags', params, { timeout: 120000 })
   },
 
   refreshArtists(params = {}) {
