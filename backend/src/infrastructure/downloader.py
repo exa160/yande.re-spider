@@ -277,6 +277,3 @@ class MultiDown:
             return
 
         raise last_exception
-
-
-# 已删除 queue_wait 函数，使用 Event 替代轮询

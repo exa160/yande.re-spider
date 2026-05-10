@@ -66,6 +66,17 @@ class YandePostData(RootModel):
     root: List[YandePostItem]
 
 
+class YandeTagData(RootModel):
+    """
+    yande.re接口获取的tag json内容
+    """
+
+    class YandeTagItem(BaseModel):
+        id: int
+
+    root: List[YandeTagItem]
+
+
 class YandeSearchTags(BaseModel):
     """Yande.re 高级搜索标签转换模型
 

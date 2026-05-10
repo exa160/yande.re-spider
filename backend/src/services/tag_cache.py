@@ -42,8 +42,8 @@ class TagCacheService:
         with TagRepository() as repo:
             repo.clear_all_tags()
 
-        success, tags = yande_api.get_tags(limit=0)
-        if success and tags:
+        tags = yande_api.get_tags(limit=0)
+        if tags:
             with TagRepository() as repo:
                 total_updated = repo.upsert_tags(tags)
             last_id = max(t["id"] for t in tags) if tags else 0
@@ -61,15 +61,15 @@ class TagCacheService:
         with TagRepository() as repo:
             current_after_id = repo.get_max_id()
 
-        if not current_after_id or current_after_id == 0:
+        if not current_after_id:
             logger.info("Tag cache is empty, switching to full refresh")
             return TagCacheService._full_refresh_tags(yande_api)
 
         logger.info(f"增量更新，从最大ID {current_after_id} 开始")
 
         while has_more:
-            success, tags = yande_api.get_tags(limit=limit, after_id=current_after_id)
-            if not success or not tags:
+            tags = yande_api.get_tags(limit=limit, after_id=current_after_id)
+            if not tags:
                 logger.warning(f"Failed to fetch tags after_id {current_after_id}")
                 break
 
@@ -111,8 +111,8 @@ class TagCacheService:
 
         try:
             while pages_done < max_pages:
-                success, artists = yande_api.get_artists(page=current_page)
-                if not success or not artists:
+                artists = yande_api.get_artists(page=current_page)
+                if not artists:
                     logger.warning(f"Failed to fetch artists at page {current_page}")
                     break
 

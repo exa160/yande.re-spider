@@ -4,38 +4,72 @@ from typing import List, Optional, Tuple
 
 from loguru import logger
 from sqlalchemy import select, func
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from src.common import config
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData, YandeTag, TagLocalStats
 
 
 class TagRepository(BaseDAO):
 
+    @staticmethod
+    def _chunked(iterable, chunk_size: int):
+        """将列表切分成指定大小的子列表"""
+        for i in range(0, len(iterable), chunk_size):
+            yield iterable[i:i + chunk_size]
+
     def upsert_tags(self, tags: List[dict]) -> int:
-        count = 0
-        for tag_data in tags:
+        if not tags:
+            return 0
+
+        use_mariadb = config.database.enable and config.database.host
+
+        normalized_tags = [
+            {
+                "id": t["id"],
+                "name": t.get("name", ""),
+                "count": t.get("count", 0),
+                "type": t.get("type", 0),
+                "ambiguous": t.get("ambiguous", False),
+                "updated_at": datetime.now(),
+            }
+            for t in tags
+        ]
+
+        chunk_size = 5000
+        total_inserted = 0
+        for chunk in self._chunked(normalized_tags, chunk_size):
             try:
-                stmt = select(YandeTag).filter_by(id=tag_data.get("id"))
-                existing = self.session.execute(stmt).scalar_one_or_none()
-                if existing:
-                    existing.name = tag_data.get("name", existing.name)
-                    existing.count = tag_data.get("count", existing.count)
-                    existing.type = tag_data.get("type", existing.type)
-                    existing.ambiguous = tag_data.get("ambiguous", existing.ambiguous)
+                if use_mariadb:
+                    stmt = mysql_insert(YandeTag).values(chunk)
+                    update_cols = {
+                        k: stmt.inserted[k]
+                        for k in ["name", "count", "type", "ambiguous", "updated_at"]
+                    }
+                    stmt = stmt.on_duplicate_key_update(**update_cols)
                 else:
-                    new_tag = YandeTag(
-                        id=tag_data["id"],
-                        name=tag_data.get("name", ""),
-                        count=tag_data.get("count", 0),
-                        type=tag_data.get("type", 0),
-                        ambiguous=tag_data.get("ambiguous", False),
-                        updated_at=datetime.now(),
+                    stmt = sqlite_insert(YandeTag).values(chunk)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=[YandeTag.id],
+                        set_={
+                            "name": stmt.excluded.name,
+                            "count": stmt.excluded.count,
+                            "type": stmt.excluded.type,
+                            "ambiguous": stmt.excluded.ambiguous,
+                            "updated_at": stmt.excluded.updated_at,
+                        },
                     )
-                    self.session.add(new_tag)
-                count += 1
+
+                self.session.execute(stmt)
+                total_inserted += len(chunk)
+
             except Exception as e:
-                logger.warning(f"Upsert tag error: {e}")
-        return count
+                logger.warning(f"Upsert tags chunk error: {e}")
+                self.session.rollback()
+        return total_inserted
+
 
     def get_tag_by_id(self, tag_id: int) -> Optional[dict]:
         stmt = select(YandeTag).filter_by(id=tag_id)

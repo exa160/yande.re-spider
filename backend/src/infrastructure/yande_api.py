@@ -1,15 +1,35 @@
-import traceback
-from typing import Optional, Tuple, List, Union
+from functools import wraps
+from random import uniform
+import time
+from typing import Optional, List, Union
 from xml.etree import ElementTree as ET
 
 import requests
 from loguru import logger
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import BaseModel, Field, model_validator
 
 from src.common import config
 from src.common.constant import Rating, yande_constant
 from src.common.utils import get_proxy
 from src.models.yande import YandePostData, YandeSearchTags
+
+
+def _with_retry(method):
+    """重试装饰器 - 参考 image_cache.py 的实现"""
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        action_name = method.__name__.replace("_", " ")
+        last_exception: Exception = Exception("Unknown error")
+        for attempt in range(config.yande_api.retry):
+            try:
+                return method(self, *args, **kwargs)
+            except requests.RequestException as e:
+                last_exception = e
+                logger.warning(f"[{attempt + 1}] {action_name} failed: {e}")
+                if attempt < config.yande_api.retry - 1:
+                    time.sleep(uniform(0.1, 1.0))
+        raise last_exception
+    return wrapper
 
 
 class YandeApi:
@@ -19,63 +39,60 @@ class YandeApi:
         tags: Optional[str] = None
         search_tags: YandeSearchTags = Field(
             default_factory=YandeSearchTags,
-            exclude=True,  # 排除在序列化之外，单独处理
-            )
+            exclude=True,
+        )
 
-        @model_serializer(mode="wrap")
-        def serialize(self, handler):
-            if self.search_tags:
-                search_str = YandeApi().search_trans(self.search_tags)
-                self.tags = f"{self.tags} {search_str}" if self.tags else search_str
-            return handler(self)
-
+        @model_validator(mode='after')
+        def serialize(self) -> str:
+            search_str = YandeApi.search_trans(self.search_tags)
+            self.tags = f"{self.tags} {search_str}" if self.tags else search_str
+            return self
 
     def __init__(self):
         self.post_json_api = yande_constant.post_json_api
         self.post_xml_api = yande_constant.post_xml_api
         self.tag_json_api = yande_constant.tag_json_api
         self.artist_json_api = yande_constant.artist_json_api
-        self.proxies = get_proxy()
-        self.headers = config.yande_api.headers.model_dump(by_alias=True)
+
+        self._session = requests.Session()
+        proxies = get_proxy()
+        if proxies:
+            self._session.proxies = proxies
+        headers = config.yande_api.headers
+        if headers is not None:
+            self._session.headers.update(headers.model_dump(by_alias=True, exclude_none=True))
+
+
+    def _get(self, url: str, params: Optional[dict] = None, timeout: Optional[int] = None) -> requests.Response:
+        """统一 GET 请求 - 内部使用 session"""
+        if timeout is None:
+            timeout = config.yande_api.timeout
+        actual_params = params if params is not None else {}
+        resp = self._session.get(url, params=actual_params, timeout=timeout)
+        resp.raise_for_status()
+        return resp
+
 
     def get_count(self, tags: str = "") -> int:
-        """
-        使用 XML API 获取指定标签的总数
-        返回 -1 表示获取失败
-        """
-        query_params = {"page": 1, "limit": 1}
+        """使用 XML API 获取指定标签的总数，返回 -1 表示获取失败"""
+        query_params: dict[str, Union[str, int]] = {"page": 1, "limit": 1}
         if tags:
             query_params["tags"] = tags
 
-        for i in range(config.yande_api.retry):
-            try:
-                req = requests.get(
-                    self.post_xml_api,
-                    params=query_params,
-                    proxies=self.proxies,
-                    headers=self.headers,
-                    timeout=config.yande_api.timeout,
-                )
-                if req.status_code != 200:
-                    logger.warning(
-                        f"[{i + 1}] get count error {req.status_code}: {req.text[:200]}"
-                    )
-                    continue
+        try:
+            resp = self._get(self.post_xml_api, params=query_params)
+            root = ET.fromstring(resp.content)
+            count_attr = root.get("count")
+            return int(count_attr) if count_attr else 0
+        except requests.RequestException as e:
+            logger.warning(f"get count error: {e}")
+            return -1
 
-                root = ET.fromstring(req.content)
-                count_attr = root.get("count")
-                if count_attr:
-                    return int(count_attr)
-                return 0
-            except Exception as e:
-                logger.warning(f"[{i + 1}] get count error: {e}")
-        return -1
-
-    def search_trans(self, search_tags: YandeSearchTags) -> str:
+    @staticmethod
+    def search_trans(search_tags: YandeSearchTags) -> str:
         """将 YandeSearchTags 转换为 yande.re API 识别的搜索标签字符串"""
         parts = []
 
-        # 简单字段映射: {模型字段名: 格式字符串}
         simple_mappings = {
             "tags": "{value}",
             "artist": "artist:{value}",
@@ -86,7 +103,6 @@ class YandeApi:
             "parent_id": "parent:{value}",
         }
 
-        # 范围字段映射: {模型字段名: (最小值前缀, 最大值前缀)}
         range_mappings = {
             "min_id": ("id:>=", "id:<="),
             "max_id": ("id:<=", "id:>="),
@@ -104,13 +120,11 @@ class YandeApi:
             "max_filesize": ("filesize:<=", "filesize:>="),
         }
 
-        # 处理简单映射字段
         for field, fmt in simple_mappings.items():
             value = getattr(search_tags, field, None)
             if value:
                 parts.append(fmt.format(value=value))
 
-        # 处理范围映射字段
         for field, (min_prefix, max_prefix) in range_mappings.items():
             if field.startswith("min_"):
                 value = getattr(search_tags, field, None)
@@ -121,27 +135,20 @@ class YandeApi:
                 if value is not None:
                     parts.append(f"{max_prefix}{value}")
 
-        # 处理 rating
         if search_tags.rating:
-            rating = set(search_tags.rating)
-            if len(rating) == 3:
-                pass  # 全部评级，无需添加
-            elif len(rating) == 2:
-                excluded = list(set(Rating) - rating)
+            rating_set = set(search_tags.rating)
+            if len(rating_set) == 3:
+                pass
+            elif len(rating_set) == 2:
+                excluded = list(set(Rating) - rating_set)
                 if excluded:
                     parts.append(f"-rating:{excluded[0].value}")
             else:
-                parts.append(f"rating:{rating[0].value}")
+                parts.append(f"rating:{next(iter(rating_set)).value}")
 
-        # 处理 file_exts
         if search_tags.file_exts:
-            exts = search_tags.file_exts
-            if len(exts) == 1:
-                parts.append(f"ext:{exts[0]}")
-            else:
-                parts.extend(f"ext:{ext}" for ext in exts)
+            parts.extend(f"ext:{ext}" for ext in search_tags.file_exts)
 
-        # 处理 order (排除默认排序)
         if search_tags.sort_by:
             sort_by = search_tags.sort_by
             if search_tags.sort_order in ("asc", "desc"):
@@ -150,145 +157,68 @@ class YandeApi:
                 order = "desc"
             parts.append(f"order:{sort_by}_{order}")
 
-        # 处理 parent_none
         if search_tags.parent_none:
             parts.append("parent:none")
 
         return " ".join(parts)
 
-    def get_ranking(
-        self,
-        query_params: PostRankQueryParams
-    ) -> Tuple[bool, Union[YandePostData, Exception, None]]:
-        exception = None
-        for i in range(config.yande_api.retry):
-            req = None
-            try:
-                logger.info(f"Requesting Yande API with params: {query_params.model_dump()}")
-                logger.info(f"{self.proxies} {self.headers}")
-                req = requests.get(
-                    self.post_json_api,
-                    params=query_params.model_dump(mode="json"),
-                    proxies=self.proxies,
-                    headers=self.headers,
-                    timeout=config.yande_api.timeout,
-                )
-                req.raise_for_status()
-                return True, YandePostData.model_validate_json(req.content)
-            except Exception as e:
-                logger.warning(traceback.format_exc())
-                logger.warning(
-                    f"[{i + 1}] requests error"
-                    f"page: {query_params.page} tag:"
-                    f"{query_params.tags}: {e} {req.content if req is not None else req}"
-                )
-                exception = e
-        return False, exception
+    @_with_retry
+    def get_ranking(self, query_params: PostRankQueryParams) -> YandePostData:
+        """获取 ranking 数据"""
+        resp = self._get(
+            self.post_json_api,
+            params=query_params.model_dump(mode="json"),
+        )
+        return YandePostData.model_validate_json(resp.content)
 
+    @_with_retry
     def get_tags(
         self,
         page: int = 1,
         limit: int = 100,
-        name_pattern: str = None,
-        after_id: int = None,
-    ) -> Tuple[bool, List[dict]]:
-        """
-        获取标签列表
-        :param page: 页码
-        :param limit: 每页数量 (最大 1000)
-        :param name_pattern: 标签名匹配模式 (可选)
-        :param after_id: 仅返回 ID 大于此值的标签 (用于增量更新)
-        :return: (成功标志, 标签列表)
-        """
-        query_params = {"page": page, "limit": min(limit, 1000)}
-        if name_pattern:
+        name_pattern: Optional[str] = None,
+        after_id: Optional[int] = None,
+    ) -> List[dict]:
+        """获取标签列表"""
+        query_params: dict[str, Union[str, int]] = {"page": page, "limit": min(limit, 1000)}
+        if name_pattern is not None:
             query_params["name"] = name_pattern
         if after_id is not None:
             query_params["after_id"] = after_id
+        resp = self._get(self.tag_json_api, params=query_params, timeout=60)
+        return resp.json()
 
-        for i in range(config.yande_api.retry):
-            try:
-                req = requests.get(
-                    self.tag_json_api,
-                    params=query_params,
-                    proxies=self.proxies,
-                    headers=self.headers,
-                    timeout=60,
-                )
-                if req.status_code != 200:
-                    logger.warning(f"[{i + 1}] get tags error {req.status_code}")
-                    continue
-                tags = req.json()
-                return True, tags
-            except Exception as e:
-                logger.warning(f"[{i + 1}] get tags error: {e}")
-        return False, []
 
-    def get_artists(
-        self, page: int = 1, name_pattern: str = None
-    ) -> Tuple[bool, List[dict]]:
-        """
-        获取艺术家列表
-        :param page: 页码
-        :param name_pattern: 艺术家名匹配模式 (可选)
-        :return: (成功标志, 艺术家列表)
-        """
-        query_params = {"page": page}
-        if name_pattern:
+    @_with_retry
+    def get_artists(self, page: int = 1, name_pattern: Optional[str] = None) -> List[dict]:
+        """获取艺术家列表"""
+        query_params: dict[str, Union[str, int]] = {"page": page}
+        if name_pattern is not None:
             query_params["name"] = name_pattern
 
-        for i in range(config.yande_api.retry):
-            try:
-                req = requests.get(
-                    self.artist_json_api,
-                    params=query_params,
-                    proxies=self.proxies,
-                    headers=self.headers,
-                    timeout=60,
-                )
-                if req.status_code != 200:
-                    logger.warning(f"[{i + 1}] get artists error {req.status_code}")
-                    continue
-                artists = req.json()
-                return True, artists
-            except Exception as e:
-                logger.warning(f"[{i + 1}] get artists error: {e}")
-        return False, []
+        resp = self._get(self.artist_json_api, params=query_params, timeout=60)
+        return resp.json()
+
 
     def get_tag_count(self) -> int:
         """获取标签总数"""
-        for i in range(config.yande_api.retry):
-            try:
-                req = requests.get(
-                    self.tag_json_api,
-                    params={"page": 1, "limit": 1},
-                    proxies=self.proxies,
-                    headers=self.headers,
-                    timeout=config.yande_api.timeout,
-                )
-                if req.status_code == 200:
-                    data = req.json()
-                    if isinstance(data, list) and len(data) > 0:
-                        return data[0].get("id", 0)
-            except Exception as e:
-                logger.warning(f"[{i + 1}] get tag count error: {e}")
+        try:
+            resp = self._get(self.tag_json_api, params={"page": 1, "limit": 1}, timeout=60)
+            data = resp.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data[0].get("id", 0)
+        except requests.RequestException as e:
+            logger.warning(f"get_tag_count error: {e}")
         return 0
+
 
     def get_artist_count(self) -> int:
         """获取艺术家总数"""
-        for i in range(config.yande_api.retry):
-            try:
-                req = requests.get(
-                    self.artist_json_api,
-                    params={"page": 1, "limit": 1},
-                    proxies=self.proxies,
-                    headers=self.headers,
-                    timeout=config.yande_api.timeout,
-                )
-                if req.status_code == 200:
-                    data = req.json()
-                    if isinstance(data, list) and len(data) > 0:
-                        return data[0].get("id", 0)
-            except Exception as e:
-                logger.warning(f"[{i + 1}] get artist count error: {e}")
+        try:
+            resp = self._get(self.artist_json_api, params={"page": 1, "limit": 1}, timeout=60)
+            data = resp.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data[0].get("id", 0)
+        except requests.RequestException as e:
+            logger.warning(f"get_artist_count error: {e}")
         return 0

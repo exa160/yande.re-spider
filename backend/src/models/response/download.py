@@ -3,12 +3,13 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from src.infrastructure.download_queue import TaskStore
+from src.models.database.yande import YandeData
 from src.models.response.base_response import BaseResponse, PaginatedResponse
 
 
 class DownloadTaskInfo(TaskStore.DownloadTask):
     """下载任务信息"""
-    yande_data: dict = Field(exclude=True)
+    yande_data: Optional[YandeData] = Field(None, exclude=True)
 
 
 

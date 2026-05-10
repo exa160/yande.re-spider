@@ -1,3 +1,5 @@
+app:
+  debug: false
 database:
   enable: false
   host: localhost
@@ -6,7 +8,7 @@ database:
   password: ''
   schema_name: Pictures
 yande_api:
-  proxy_enable: false
+  proxy_enable: true
   proxies:
     http: http://192.168.100.222:20171
     https: http://192.168.100.222:20171

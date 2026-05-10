@@ -59,13 +59,13 @@ class ImageCache:
     def get_original_path(self, image_id: int, file_ext: str = "jpg") -> Path:
         return self.ORIGINALS_DIR / f"{image_id}.{file_ext}"
 
-    def get_preview_url(self, image_id: int, file_ext: str = "jpg") -> str:
+    def get_preview_url(self, image_id: int, file_ext: str = "jpg") -> str | None:
         preview_path = self.get_preview_path(image_id, file_ext)
         if preview_path.exists():
             return f"/api/v1/cache/preview/{image_id}.{file_ext}"
         return None
 
-    def get_original_url(self, image_id: int, file_ext: str = "jpg") -> str:
+    def get_original_url(self, image_id: int, file_ext: str = "jpg") -> str | None:
         original_path = self.get_original_path(image_id, file_ext)
         if original_path.exists():
             return f"/api/v1/cache/original/{image_id}.{file_ext}"
