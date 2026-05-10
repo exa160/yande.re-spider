@@ -13,7 +13,7 @@
     <div class="task-cards" v-if="isMobile && tasks.length > 0">
       <div v-for="task in tasks" :key="task.task_id" class="task-card">
         <div class="card-header">
-          <span class="card-id">ID: {{ task.image_id }}</span>
+          <span class="card-id">ID: {{ task.file_name }}</span>
           <el-tag :type="getStatusType(task.status)" size="small">
             {{ task.status }}
           </el-tag>
@@ -71,7 +71,7 @@
 
     <!-- 大屏表格列表 -->
     <el-table v-if="!isMobile" :data="tasks" style="width: 100%" v-loading="loading" size="small">
-      <el-table-column prop="image_id" label="图片ID" width="100" />
+      <el-table-column prop="task_id" label="图片ID" show-overflow-tooltip/>
       <el-table-column prop="file_name" label="文件名" show-overflow-tooltip>
         <template #default="{ row }">
           {{ getFileName(row) }}
@@ -93,7 +93,7 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="大小" width="130">
+      <el-table-column label="大小" show-overflow-tooltip>
         <template #default="{ row }">
           {{ formatFileSize(row.downloaded_size) }} / {{ row.file_size ? formatFileSize(row.file_size) : '-' }}
         </template>
