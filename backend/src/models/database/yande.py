@@ -82,8 +82,8 @@ class YandeArtist(Base):
 
     __tablename__ = table_constant.yande_artist
 
-    id = Column(Integer, primary_key=True, comment="艺术家ID")
-    name = Column(String(512), unique=True, nullable=False, comment="艺术家名称")
+    id = Column(Integer, primary_key=True, comment="艺术家ID", autoincrement=False)
+    name = Column(String(512), index=True, nullable=False, comment="艺术家名称")
     alias_id = Column(Integer, nullable=True, comment="别名ID")
     group_id = Column(Integer, nullable=True, comment="组ID")
     urls = Column(Text, nullable=True, comment="相关链接 (JSON)")

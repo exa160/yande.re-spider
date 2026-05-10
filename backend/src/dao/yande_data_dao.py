@@ -64,6 +64,35 @@ class YandeDataRepository(BaseDAO):
                 filters.append(YandeData.tags.contains(tag))
         return and_(*filters)
 
+    @staticmethod
+    def _build_upsert_stmt(yande_items: list, returning: bool = False):
+        use_mariadb = config.database.enable and config.database.host
+
+        if use_mariadb:
+            stmt = mysql_insert(YandeData).values(yande_items)
+            update_cols = {
+                k: stmt.inserted[k]
+                for k in yande_items[0].keys()
+                if k not in ("id", "down_flag")
+            }
+            update_cols["down_flag"] = YandeData.down_flag
+            stmt = stmt.on_duplicate_key_update(**update_cols)
+        else:
+            stmt = sqlite_insert(YandeData).values(yande_items)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[YandeData.id],
+                set_={
+                    k: stmt.excluded[k]
+                    for k in yande_items[0].keys()
+                    if k != "id"
+                },
+            )
+
+        if returning:
+            stmt = stmt.returning(YandeData)
+
+        return stmt
+
     def query(
         self, query_params: YandeDataQueryParams, downloaded_only: bool = None
         ) -> Tuple[List[YandeData], int]:
@@ -111,39 +140,9 @@ class YandeDataRepository(BaseDAO):
 
         return results, total
 
-    def get_by_id(self, image_id: int) -> Optional[dict]:
+    def get_by_id(self, image_id: int) -> Optional[YandeData]:
         stmt = select(YandeData).filter_by(id=image_id)
-        row = self.session.execute(stmt).scalar_one_or_none()
-        if not row:
-            return None
-
-        rating_display_map = {"s": "Safe", "q": "Questionable", "e": "Explicit"}
-        tags_list = row.tags.split() if row.tags else []
-        rating_display = rating_display_map.get(row.rating, row.rating) if row.rating else "Safe"
-        file_ext = row.file_ext or "jpg"
-
-        local_preview = check_local_file(row.id, file_ext, "preview")
-        local_original = check_local_file(row.id, file_ext, "original")
-        # TODO 直接使用YandeData模型
-        return {
-            "id": row.id,
-            "tags": tags_list,
-            "width": row.width or 0,
-            "height": row.height or 0,
-            "rating": rating_display,
-            "file_url": row.file_url or "",
-            "preview_url": row.preview_url or "",
-            "sample_url": None,
-            "file_size": row.file_size or 0,
-            "file_ext": file_ext,
-            "author": row.author or "",
-            "created_at": str(row.created_at) if row.created_at else "",
-            "md5": row.md5 or "",
-            "score": row.score,
-            "is_downloaded": True,
-            "local_preview_path": local_preview,
-            "local_file_path": local_original,
-        }
+        return self.session.execute(stmt).scalar_one_or_none()
 
     def insert(self, data: dict) -> bool:
         try:
@@ -179,34 +178,6 @@ class YandeDataRepository(BaseDAO):
         except Exception as e:
             logger.warning(f"Update down_flag error: {e}")
             return False
-
-    def _build_upsert_stmt(self, yande_items: list, returning: bool = False):
-        use_mariadb = config.database.enable and config.database.host
-
-        if use_mariadb:
-            stmt = mysql_insert(YandeData).values(yande_items)
-            update_cols = {
-                k: stmt.excluded[k]
-                for k in yande_items[0].keys()
-                if k not in ("id", "down_flag")
-            }
-            update_cols["down_flag"] = YandeData.down_flag
-            stmt = stmt.on_duplicate_key_update(**update_cols)
-        else:
-            stmt = sqlite_insert(YandeData).values(yande_items)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=[YandeData.id],
-                set_={
-                    k: stmt.excluded[k]
-                    for k in yande_items[0].keys()
-                    if k != "id"
-                },
-            )
-
-        if returning:
-            stmt = stmt.returning(YandeData)
-
-        return stmt
 
     def upsert_batch(self, yande_items: list) -> int:
         if not yande_items:
@@ -247,9 +218,11 @@ class YandeDataRepository(BaseDAO):
         except Exception as e:
             logger.warning(f"Fallback down_flag query failed: {e}")
             self.session.rollback()
-            return None
+            raise e
 
     def upsert(self, yande_item) -> bool:
+        if hasattr(yande_item, '__dict__'):
+            yande_item = {k: v for k, v in yande_item.__dict__.items() if not k.startswith('_')}
         result = self.upsert_batch([yande_item])
         return result > 0
 

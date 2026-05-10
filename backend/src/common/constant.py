@@ -35,7 +35,7 @@ class PathConstant(ConstantModel):
     config_file: Path = config_dir / "config.yaml"
     data_dir: Path = base_dir / "data"
     sqlite_file: Path = data_dir / "yande_data.db"
-    log_dir: Path = base_dir / "log"
+    log_dir: Path = base_dir / "logs"
     frontend_dist: Path = base_dir / "frontend" / "dist"
 
 

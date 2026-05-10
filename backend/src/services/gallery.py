@@ -57,17 +57,17 @@ class GalleryService:
         yande_api = YandeApi()
         search_tags = YandeSearchTags.model_validate(params)
 
-        success, yande_data = yande_api.get_ranking(
-            query_params=YandeApi.PostRankQueryParams(
-                page=params.page,
-                limit=params.page_size,
-                tags=params.tags,
-                search_tags=search_tags
+        try:
+            yande_data = yande_api.get_ranking(
+                query_params=YandeApi.PostRankQueryParams(
+                    page=params.page,
+                    limit=params.page_size,
+                    tags=params.tags,
+                    search_tags=search_tags
+                )
             )
-        )
-
-        if not success:
-            err_msg, detail = get_error_type_from_exception(yande_data)
+        except requests.RequestException as e:
+            err_msg, detail = get_error_type_from_exception(e)
             raise APIException(err_msg=err_msg, data={"detail": detail})
 
         yande_items = list(yande_data.root)
@@ -77,8 +77,6 @@ class GalleryService:
         with YandeDataRepository() as repo:
             # 批量 upsert（一次数据库操作），并返回当前记录的 down_flag
             down_flags = repo.upsert_batch_with_down_flags(yande_data.model_dump())
-            if not down_flags:
-                logger.warning(f"Upsert batch returned no down_flag data, data may not be saved")
         return down_flags, len(down_flags)
 
     @staticmethod
@@ -201,7 +199,7 @@ class GalleryService:
             logger.warning(f"Image {image_id} not found in database")
             raise APIException(ErrMsg.NOT_FOUND, data={"image_id": image_id})
 
-        preview_url = image_data.get("preview_url")
+        preview_url = image_data.preview_url
         if not preview_url:
             logger.warning(f"Image {image_id} has no preview_url")
             raise APIException(ErrMsg.LOAD_PREVIEW_DATA_ERROR, e=Exception(f"ID: {image_id} has no preview URL available"))

@@ -6,15 +6,14 @@ import hashlib
 from datetime import datetime
 from typing import Optional, List, Dict
 
-import requests
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common import config, path_constant
 from src.common.constant import TaskStatus
-from src.common.utils import get_proxy
 from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.downloader import FileInfo, MultiDown
+from src.models.database.yande import YandeData
 
 
 class TaskStore:
@@ -29,31 +28,28 @@ class TaskStore:
         file_size: Optional[int] = Field(None, description="总大小")
 
     class DownloadTask(ProgressData):
-        """下载任务模型，TODO: 后续用于数据库存储，目前仅在内存中管理，yande_data后续将删除"""
-        # TODO 直接使用YandeData模型 --- IGNORE ---
-        yande_data: dict = Field(..., description="yande数据")
+        yande_data: Optional[YandeData] = Field(None, description="yande数据")
         file_name: Optional[str] = Field(..., description="文件名")
         error_message: Optional[str] = Field(None, description="错误信息")
         started_at: Optional[str] = Field(None, description="开始时间")
         completed_at: Optional[str] = Field(None, description="完成时间")
         created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="创建时间")
-
-        model_config = ConfigDict(validate_assignment=True)
+        # TODO sqlalchemy替换为sqlmodel
+        model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True, from_attributes=True)
 
 
     def __init__(self):
         self._tasks: Dict[str, TaskStore.DownloadTask] = {}
         self._lock = threading.Lock()
 
-    def create_task(self, task_id: str, yande_data: dict) -> dict:
+    def create_task(self, task_id: str, yande_data: YandeData) -> dict:
         with self._lock:
-            task_data = {
-                "task_id": task_id,
-                "yande_data": yande_data,
-                "file_name": f"{yande_data.get('id')}.{yande_data.get('file_ext')}",
-                "file_size": yande_data.get("file_size"),
-            }
-            task = TaskStore.DownloadTask.model_validate(task_data)
+            task = TaskStore.DownloadTask(
+                task_id=task_id,
+                yande_data=yande_data,
+                file_name=f"{yande_data.id}.{yande_data.file_ext}",
+                file_size=yande_data.file_size
+            )
             self._tasks[task_id] = task
             return task
 
@@ -168,19 +164,19 @@ async def run_download_async(task_id: str):
             )
             return
 
-        file_url = yande_data.get("file_url")
-        file_ext = yande_data.get("file_ext", "jpg")
-        image_id = yande_data.get("id")
-        expected_md5 = yande_data.get("md5")
-        file_size = yande_data.get("file_size", 0)
+        file_url = yande_data.file_url
+        file_ext = yande_data.file_ext or "jpg"
+        image_id = yande_data.id
+        expected_md5 = yande_data.md5
+        file_size = yande_data.file_size or 0
 
         originals_dir = path_constant.originals_dir
-        previews_dir = path_constant.previews_dir
 
         original_path = originals_dir / f"{image_id}.{file_ext}"
 
         download_failed = False
         error_message = None
+        db_updated = False
         need_download = True
         if original_path.exists() and expected_md5:
             md5_hasher = hashlib.md5()
@@ -231,20 +227,19 @@ async def run_download_async(task_id: str):
                                 * 1024,  # Convert MB/s to bytes/s
                             },
                         )
-
+            # 在线程池中执行同步下载代码，避免阻塞事件循环
+            multi_down = await asyncio.to_thread(
+                MultiDown,
+                file_info=FileInfo(
+                    url=file_url,
+                    file_path=originals_dir,
+                    file_name=f"{image_id}.{file_ext}",
+                    file_size=file_size,
+                    md5=expected_md5,
+                ),
+                _progress_callback=progress_callback,
+            )
             try:
-                # 在线程池中执行同步下载代码，避免阻塞事件循环
-                multi_down = await asyncio.to_thread(
-                    MultiDown,
-                    file_info=FileInfo(
-                        url=file_url,
-                        file_path=originals_dir,
-                        file_name=f"{image_id}.{file_ext}",
-                        file_size=file_size,
-                        md5=expected_md5,
-                    ),
-                    _progress_callback=progress_callback,
-                )
                 await asyncio.to_thread(multi_down.start)
             except Exception as download_err:
                 download_failed = True
@@ -252,21 +247,16 @@ async def run_download_async(task_id: str):
                 logger.error(f"Download failed for {task_id}: {download_err}")
             finally:
                 await asyncio.to_thread(multi_down.cleanup)
-
-        preview_url = yande_data.get("preview_url")
-        if preview_url:
-            preview_path = previews_dir / f"{image_id}.{file_ext}"
-            if not preview_path.exists():
-                try:
-                    resp = await asyncio.to_thread(
-                        requests.get, preview_url, proxies=get_proxy(), timeout=10
-                    )
-                    if resp.status_code == 200:
-                        with open(preview_path, "wb") as f:
-                            f.write(resp.content)
-                        logger.info(f"Preview downloaded: {preview_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to download preview: {e}")
+        else:
+            task_store.update_task(
+                task_id,
+                {
+                    "status": TaskStatus.COMPLETED,
+                    "error_message": "已下载",
+                    "progress": 1.0,
+                    "downloaded_size": file_size
+                },
+            )
 
         if download_failed:
             task_store.update_task(
@@ -278,13 +268,12 @@ async def run_download_async(task_id: str):
                 },
             )
             logger.warning(f"Download failed for image {image_id}: {error_message}")
-            db_updated = False
         else:
             db_updated = await _update_image_database(yande_data, True)
             task_store.update_task(
                 task_id,
                 {
-                    "yande_data": {},
+                    "yande_data": None,
                     "status": TaskStatus.COMPLETED,
                     "progress": 1.0,
                     "completed_at": datetime.now().isoformat(),
@@ -298,20 +287,10 @@ async def run_download_async(task_id: str):
         )
 
 
-async def _update_image_database(yande_data: dict, down_flag: bool) -> bool:
-    """
-    更新图片数据库（down_flag）
-
-    Args:
-        yande_data: YandeData 数据（包含 id 等字段）
-        down_flag: 下载标志
-
-    Returns:
-        是否更新成功
-    """
+async def _update_image_database(yande_data: YandeData, down_flag: bool) -> bool:
     try:
         with YandeDataRepository() as repo:
-            image_id = yande_data.get("id")
+            image_id = yande_data.id
             updated = repo.update_down_flag(image_id, down_flag)
 
             if not updated:

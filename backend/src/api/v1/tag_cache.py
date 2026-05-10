@@ -22,10 +22,13 @@ router = APIRouter()
 async def refresh_tags(request: RefreshTagsRequest) -> BaseResponse:
     """从 yande.re API 批量获取标签并入库缓存，支持全量和增量更新"""
     try:
-        result = TagCacheService.refresh_tags(
-            limit=request.limit, full_refresh=request.full_refresh
-        )
+        # future = asyncio.get_running_loop().run_in_executor(
+        #     None, TagCacheService.refresh_tags, request.limit, request.full_refresh
+        #     )
+        # asyncio.ensure_future(future)
+        result = await asyncio.to_thread(TagCacheService.refresh_tags, request.limit, request.full_refresh)
         return BaseResponse(message="刷新成功", data=result)
+        return BaseResponse(message="Run in Background.")
     except Exception as e:
         raise APIException(ErrMsg.UPDATE_ERROR, e=e)
 
@@ -38,7 +41,7 @@ async def refresh_tags(request: RefreshTagsRequest) -> BaseResponse:
 async def refresh_artists(request: RefreshArtistsRequest) -> BaseResponse:
     """从 yande.re API 批量获取艺术家并入库缓存"""
     try:
-        future =asyncio.get_running_loop().run_in_executor(
+        future = asyncio.get_running_loop().run_in_executor(
             None, TagCacheService.refresh_artists, request.page, request.max_pages
             )
         asyncio.ensure_future(future)
