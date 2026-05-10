@@ -18,7 +18,7 @@
             本地
           </el-button>
         </el-button-group>
-        <el-tooltip content="省流模式" :hide-after="0" trigger="click">
+        <el-tooltip content="省流模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button
             :type="saveDataMode ? 'warning' : ''"
             circle
@@ -27,7 +27,7 @@
             <el-icon><Connection /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="安全模式" :hide-after="0" trigger="click">
+        <el-tooltip content="安全模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button
             :type="safeMode ? 'danger' : ''"
             circle
@@ -40,18 +40,18 @@
       </div>
       <!-- 右侧工具按钮 -->
       <div class="toolbar-right">
-        <el-tooltip content="夜间模式" :hide-after="0" trigger="click">
+        <el-tooltip content="夜间模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button circle @click="toggleDarkMode">
             <el-icon v-if="isDarkMode"><Sunny /></el-icon>
             <el-icon v-else><Moon /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="下载管理" :hide-after="0" trigger="click">
+        <el-tooltip content="下载管理" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button circle @click="showDownloadDialog = true">
             <el-icon><Download /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="配置" :hide-after="0" trigger="click">
+        <el-tooltip content="配置" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button circle @click="showConfigDialog = true">
             <el-icon><Setting /></el-icon>
           </el-button>
@@ -241,7 +241,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
@@ -402,6 +402,14 @@ const toggleDarkMode = () => {
   localStorage.setItem('dark_mode', isDarkMode.value ? 'true' : 'false')
   document.documentElement.classList.toggle('dark-mode', isDarkMode.value)
 }
+
+// 检测触摸设备 - 优先使用 CSS media query（更可靠，避免虚拟机误判）
+const isTouchDevice = computed(() => {
+  // 媒体查询能更准确反映设备能力
+  const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
+  const hasNoHover = window.matchMedia('(hover: none)').matches
+  return hasCoarsePointer && hasNoHover
+})
 
 // 监听模式变化，保存到 localStorage
 const stopSourceWatch = watch(querySource, (val) => {
