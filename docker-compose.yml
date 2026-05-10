@@ -1,6 +1,6 @@
 services:
   picture-manager:
-    image: exa160/picture-manager:${TAG:-1.0.0}
+    image: exa160/picture-manager:latest
     ports:
       - "8000:8000"
     volumes:
