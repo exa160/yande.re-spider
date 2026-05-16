@@ -13,7 +13,7 @@
     <div class="task-cards" v-if="isMobile && tasks.length > 0">
       <div v-for="task in tasks" :key="task.task_id" class="task-card">
         <div class="card-header">
-          <span class="card-id">ID: {{ task.image_id }}</span>
+          <span class="card-id">ID: {{ task.file_name }}</span>
           <el-tag :type="getStatusType(task.status)" size="small">
             {{ task.status }}
           </el-tag>
@@ -27,7 +27,7 @@
         </div>
         <div class="card-info">
           <span class="card-size">
-            {{ formatFileSize(task.downloaded_size) }} / {{ task.total_size ? formatFileSize(task.total_size) : '-' }}
+            {{ formatFileSize(task.downloaded_size) }} / {{ task.file_size ? formatFileSize(task.file_size) : '-' }}
           </span>
           <span v-if="task.speed" class="card-speed">
             {{ formatSpeed(task.speed) }}
@@ -71,8 +71,12 @@
 
     <!-- 大屏表格列表 -->
     <el-table v-if="!isMobile" :data="tasks" style="width: 100%" v-loading="loading" size="small">
-      <el-table-column prop="image_id" label="图片ID" width="100" />
-      <el-table-column prop="file_name" label="文件名" show-overflow-tooltip />
+      <el-table-column prop="task_id" label="图片ID" show-overflow-tooltip/>
+      <el-table-column prop="file_name" label="文件名" show-overflow-tooltip>
+        <template #default="{ row }">
+          {{ getFileName(row) }}
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="getStatusType(row.status)" size="small">
@@ -89,9 +93,9 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="大小" width="130">
+      <el-table-column label="大小" show-overflow-tooltip>
         <template #default="{ row }">
-          {{ formatFileSize(row.downloaded_size) }} / {{ row.total_size ? formatFileSize(row.total_size) : '-' }}
+          {{ formatFileSize(row.downloaded_size) }} / {{ row.file_size ? formatFileSize(row.file_size) : '-' }}
         </template>
       </el-table-column>
       <el-table-column label="速度" width="90">
@@ -211,7 +215,8 @@ const loadTasks = async (showLoading = true) => {
         page_size: pageSize.value
       }
     })
-    tasks.value = response.tasks || []
+    const data = response.data
+    tasks.value = Array.isArray(data) ? data : []
     total.value = response.total || 0
     
     if (hasActiveTasks.value) {
@@ -304,6 +309,10 @@ const getProgressStatus = (status) => {
   if (status === 'completed') return 'success'
   if (status === 'failed') return 'exception'
   return null
+}
+
+const getFileName = (task) => {
+  return task.file_name || task.yande_data?.id || task.image_id || '-'
 }
 
 const formatFileSize = (bytes) => {

@@ -21,7 +21,13 @@ api.interceptors.response.use(
     return response.data
   },
   error => {
-    return Promise.reject(error)
+    // 提取错误信息
+    const errorInfo = {
+      code: error.response?.data?.code || 'UNKNOWN',
+      message: error.response?.data?.message || error.message || 'Unknown error',
+      detail: error.response?.data?.data?.detail || null
+    }
+    return Promise.reject(errorInfo)
   }
 )
 

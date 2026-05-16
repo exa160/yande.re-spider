@@ -130,17 +130,15 @@ html, body {
   color: var(--text-secondary);
 }
 
-/* Tooltip 深色主题 - 浅色模式适配 */
-.el-tooltip__popper.is-dark {
+/* 深色模式下自定义 tooltip 样式 */
+.dark-mode .el-tooltip__popper.is-light {
   background: var(--bg-secondary) !important;
   color: var(--text-primary) !important;
   border: 1px solid var(--border-color) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
-/* Tooltip 深色主题 - 深色模式适配 */
-.dark-mode .el-tooltip__popper.is-dark {
-  background: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid var(--border-color) !important;
+.dark-mode .el-tooltip__popper.is-light .el-tooltip__arrow::before {
+  border-color: var(--bg-secondary) !important;
 }
 </style>

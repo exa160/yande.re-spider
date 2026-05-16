@@ -9,9 +9,9 @@ export function getAllFolders() {
   return api.get('/favorites')
 }
 
-// 获取收藏夹及图片数量
-export function getFoldersWithCount() {
-  return api.get('/favorites/with-count')
+// 获取收藏夹及图片预览，TODO: 文件夹图标带预览图
+export function getFoldersWithPreview() {
+  return api.get('/favorites/with-preview')
 }
 
 // 获取单个收藏夹详情
@@ -51,7 +51,7 @@ export function updateOnlineCount(folderId, count) {
 
 // 更新本地数量
 export function updateLocalCount(folderId, count) {
-  return api.post(`/favorites/${folderId}/local-count?count=${count}`)
+  return api.post(`/favorites/${folderId}/refresh`)
 }
 
 // 从 yande API 刷新在线数量
@@ -61,7 +61,6 @@ export function refreshOnlineCount(folderId) {
 
 export default {
   getAllFolders,
-  getFoldersWithCount,
   getFolder,
   createFolder,
   updateFolder,
