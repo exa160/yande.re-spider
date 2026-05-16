@@ -23,7 +23,7 @@
           <div class="folder-info">
             <div class="folder-name">{{ folder.name }}</div>
             <div class="folder-meta">
-              <span class="folder-count">{{ folder.image_count || 0 }} 张</span>
+              <span class="folder-count">{{ folder.local_count || 0 }} 张</span>
             </div>
           </div>
           <div class="folder-actions">
@@ -125,7 +125,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Folder, Edit, Delete, FolderOpened, Star, Collection, Present } from '@element-plus/icons-vue'
-import { getFoldersWithCount, createFolder, updateFolder, deleteFolder } from '@/api/favorites'
+import { getAllFolders, createFolder, updateFolder, deleteFolder } from '@/api/favorites'
 
 const emit = defineEmits(['select', 'create'])
 
@@ -156,7 +156,8 @@ const colorOptions = [
 
 const loadFolders = async () => {
   try {
-    folders.value = await getFoldersWithCount()
+    const response = await getAllFolders()
+    folders.value = response.data || []
   } catch (error) {
     ElMessage.error('加载收藏夹失败')
   }

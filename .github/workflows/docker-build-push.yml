@@ -31,11 +31,12 @@ jobs:
           images: |
             ${{ secrets.DOCKERHUB_USERNAME }}/picture-manager
           tags: |
-            # 仅在 PR 事件时生成 commit SHA 标签（格式：git-<短SHA>）
+            # Generate commit SHA tag (format: git-<short SHA>) only on PR events
             type=sha,prefix=git-,enable=${{ github.event_name == 'pull_request' }}
-            # 仅在 tag 推送时生成语义化版本标签
+            # Generate semantic version tags only on tag push
             type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}  # 只有推送 tag 时才打 latest 标签
+            # Add 'latest' tag only on tag push
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
 
       - name: Build and push Docker images
         uses: docker/build-push-action@v7

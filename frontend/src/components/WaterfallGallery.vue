@@ -25,7 +25,7 @@
         class="waterfall-item"
         :class="{ 
           'selected': isSelected(image),
-          'image-loaded': pendingImages.has(image.id) || image.local_preview_path,
+          'image-loaded': loadedImages.has(image.id) || !image.preview_url?.startsWith('http'),
           'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
         }"
         @click="handleImageClick(image)"
@@ -50,8 +50,8 @@
           fit="cover"
           class="waterfall-image"
           :style="{ height: getPlaceholderHeight(image) + 'px' }"
-          :class="{ 
-            'fade-in': pendingImages.has(image.id) || image.local_preview_path,
+          :class="{
+            'fade-in': !loadingImages.has(image.id) || loadedImages.has(image.id),
             'safe-blur': safeMode && image.rating !== 'Safe'
           }"
           @error="handleImageError(image)"
@@ -63,7 +63,7 @@
             </div>
           </template>
           <template #placeholder>
-            <div class="image-placeholder skeleton-shimmer"></div>
+            <div v-if="loadingImages.has(image.id)" class="image-placeholder skeleton-shimmer"></div>
           </template>
         </el-image>
 
@@ -81,7 +81,7 @@
             <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
               {{ image.rating }}
             </el-tag>
-            <div v-if="image.local_file_path || image.local_preview_path" class="downloaded-dot"></div>
+            <div v-if="image.down_flag" class="downloaded-dot"></div>
           </div>
         </div>
 
@@ -91,12 +91,12 @@
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-if="!loading && images.length === 0" description="暂无图片" />
+    <el-empty v-if="!loading && images.length === 0 && !loadError" description="暂无图片" />
 
     <!-- 加载更多 -->
-    <div v-if="hasMore && !loading" ref="loadMoreRef" class="load-more">
-      <el-button 
-        @click="loadMore" 
+    <div v-if="(hasMore || loadError) && !loading" ref="loadMoreRef" class="load-more">
+      <el-button
+        @click="handleLoadMoreClick"
         :disabled="loadingMore"
         class="load-more-btn"
       >
@@ -104,6 +104,7 @@
           <el-icon class="is-loading"><Loading /></el-icon>
           加载中...
         </span>
+        <span v-else-if="loadError">重新加载</span>
         <span v-else>加载更多</span>
       </el-button>
     </div>
@@ -149,13 +150,17 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  loadError: {
+    type: Boolean,
+    default: false
+  },
   safeMode: {
     type: Boolean,
     default: false
   }
 })
 
-const emit = defineEmits(['image-click', 'image-select', 'load-more', 'multi-select-start'])
+const emit = defineEmits(['image-click', 'image-select', 'load-more', 'load-error', 'multi-select-start'])
 
 // 监听 isLoadingMore prop，当父组件重置时同步状态
 watch(() => props.isLoadingMore, (newVal) => {
@@ -166,7 +171,8 @@ watch(() => props.isLoadingMore, (newVal) => {
 
 const loadingMore = ref(false)
 const failedImages = ref(new Set())
-const pendingImages = ref(new Set())
+const loadingImages = ref(new Set())
+const loadedImages = ref(new Set())
 const retryingImages = ref(new Set())
 const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
@@ -294,8 +300,9 @@ watch(() => props.images.length, () => {
     displayedImages.value = []
     visibleImages.value.clear()
     failedImages.value.clear()
+    loadingImages.value.clear()
+    loadedImages.value.clear()
     retryingImages.value.clear()
-    pendingImages.value.clear()
     retrySuccessImages.value.clear()
     // 清除所有超时
     imageLoadTimeouts.value.forEach(t => clearTimeout(t))
@@ -306,9 +313,9 @@ watch(() => props.images.length, () => {
   const newItems = newImages.filter(img => !existingIds.has(img.id))
   if (newItems.length > 0) {
     displayedImages.value = [...displayedImages.value, ...newItems]
-    // 为新图片设置加载超时
+    // 新图片加入后标记为正在加载
     newItems.forEach(img => {
-      // 延迟设置超时，等图片开始加载
+      loadingImages.value.add(img.id)
       nextTick(() => setImageTimeout(img))
     })
   }
@@ -546,9 +553,19 @@ const handleSelect = (image, checked) => {
 }
 
 const loadMore = () => {
-  if (loadingMore.value) return
+  if (loadingMore.value || props.loadError) return
   loadingMore.value = true
   emit('load-more')
+}
+
+const handleLoadMoreClick = () => {
+  if (loadingMore.value) return
+  loadingMore.value = true
+  if (props.loadError) {
+    emit('load-error')
+  } else {
+    emit('load-more')
+  }
 }
 
 const getRatingType = (rating) => {
@@ -562,38 +579,28 @@ const getRatingType = (rating) => {
 
 const getPreviewUrl = (image) => {
   const retryTs = retrySuccessImages.value.get(image.id)
-  const tsSuffix = retryTs ? `&ts=${retryTs}` : ''
-  
+  const tsSuffix = retryTs ? `?ts=${retryTs}` : ''
+
   if (props.sourceMode === 'local') {
-    if (image.local_preview_path) {
-      return `/api/v1/gallery/cache/preview/${image.id}.${image.file_ext || 'jpg'}${tsSuffix}`
+    if (image.preview_url) {
+      return `/api/v1/gallery/cache/preview/${image.id}${tsSuffix}`
     }
-    if (image.local_file_path) {
-      return `/api/v1/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
-    }
-    return ''
+    return `/api/v1/gallery/cache/preview/local/${image.id}${tsSuffix}`
   }
-  if (props.sourceMode === 'yande' && !visibleImages.value.has(image.id)) {
-    return ''
-  }
-  if (pendingImages.value.has(image.id)) {
-    return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
-  }
-  if (props.saveDataMode) {
-    return ''
-  }
-  return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}${tsSuffix}`
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}${tsSuffix}`
 }
 
 const handleImageError = (image) => {
+  loadingImages.value.delete(image.id)
   failedImages.value.add(image.id)
-  pendingImages.value.delete(image.id)
+  loadedImages.value.delete(image.id)
   clearImageTimeout(image.id)
 }
 
 const handleImageLoad = (image) => {
+  loadingImages.value.delete(image.id)
+  loadedImages.value.add(image.id)
   failedImages.value.delete(image.id)
-  pendingImages.value.add(image.id)
   retrySuccessImages.value.delete(image.id)
   clearImageTimeout(image.id)
 }
@@ -611,13 +618,13 @@ const clearImageTimeout = (imageId) => {
 const setImageTimeout = (image) => {
   clearImageTimeout(image.id)
   const timeoutId = setTimeout(() => {
-    // 超时后检查：如果图片有URL但不在pendingImages中，认为加载失败
-    if (!pendingImages.value.has(image.id) && !retryingImages.value.has(image.id)) {
-      const url = getPreviewUrl(image)
-      if (url && !props.saveDataMode) {
+    // 超时后检查：如果图片在 loadingImages 但不在 loadedImages，认为加载失败
+    if (loadingImages.value.has(image.id) && !loadedImages.value.has(image.id)) {
+      if (!props.saveDataMode) {
         failedImages.value.add(image.id)
       }
     }
+    loadingImages.value.delete(image.id)
     imageLoadTimeouts.value.delete(image.id)
   }, IMAGE_LOAD_TIMEOUT)
   imageLoadTimeouts.value.set(image.id, timeoutId)
@@ -631,40 +638,36 @@ const handleImageRetry = async (image, event) => {
   if (event) {
     event.stopPropagation()
   }
-  
+
   retryingImages.value.add(image.id)
   failedImages.value.delete(image.id)
+  loadingImages.value.add(image.id)
   clearImageTimeout(image.id)
-  
+
   let apiSuccess = false
   if (props.sourceMode === 'local') {
-    if (image.local_file_path) {
-      try {
-        await api.get(`/gallery/cache/preview/generate/${image.id}?file_ext=${image.file_ext || 'jpg'}`)
-        apiSuccess = true
-      } catch (e) {
-        ElMessage.error('生成缩略图失败')
-      }
+    try {
+      await api.get(`/gallery/cache/preview/local/${image.id}`)
+      apiSuccess = true
+    } catch (e) {
+      ElMessage.error('生成缩略图失败')
     }
   } else {
     try {
-      await api.get(`/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`)
+      await api.get(`/gallery/cache/preview/fetch/${image.id}`)
       apiSuccess = true
     } catch (e) {
       ElMessage.error('缓存预览图失败')
     }
   }
-  
+
   retryingImages.value.delete(image.id)
-  
-  if (apiSuccess) {
-    pendingImages.value.add(image.id)
-    retrySuccessImages.value.set(image.id, Date.now())
-  } else {
+
+  if (!apiSuccess) {
     failedImages.value.add(image.id)
-    // 重试失败后设置新的超时
     nextTick(() => setImageTimeout(image))
   }
+  // 如果 API 成功，等待 el-image 的 load/error 事件处理状态
 }
 
 // 使用 IntersectionObserver 监听加载更多元素
@@ -674,7 +677,7 @@ const setupLoadMoreObserver = () => {
   loadMoreObserver = new IntersectionObserver(
     (entries) => {
       const entry = entries[0]
-      if (entry.isIntersecting && props.hasMore && !props.loading && !loadingMore.value) {
+      if (entry.isIntersecting && props.hasMore && !props.loading && !loadingMore.value && !props.loadError) {
         loadMore()
       }
     },
@@ -928,9 +931,9 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
 }
 
 .image-placeholder {
+  position: relative;
   width: 100%;
   height: 100%;
-  background: var(--skeleton-bg, #f5f7fa);
 }
 
 /* 图片信息悬浮层 - 始终显示 */

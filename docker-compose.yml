@@ -1,10 +1,18 @@
 services:
-  yande-spider:
-    build: .
+  picture-manager:
+    image: exa160/picture-manager:latest
     ports:
       - "8000:8000"
     volumes:
-      - ./config/config.yaml:/app/config/config.yaml
-      - ./data/yande_data.db:/app/data/yande_data.db
+      - ./config:/app/config
+      - ./data:/app/data
       - ./downloads:/app/downloads
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: 2
+    mem_limit: 1024m
     restart: unless-stopped

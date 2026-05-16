@@ -18,7 +18,7 @@
             本地
           </el-button>
         </el-button-group>
-        <el-tooltip content="省流模式" :hide-after="0" trigger="click">
+        <el-tooltip content="省流模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button
             :type="saveDataMode ? 'warning' : ''"
             circle
@@ -27,7 +27,7 @@
             <el-icon><Connection /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="安全模式" :hide-after="0" trigger="click">
+        <el-tooltip content="安全模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button
             :type="safeMode ? 'danger' : ''"
             circle
@@ -40,18 +40,18 @@
       </div>
       <!-- 右侧工具按钮 -->
       <div class="toolbar-right">
-        <el-tooltip content="夜间模式" :hide-after="0" trigger="click">
+        <el-tooltip content="夜间模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button circle @click="toggleDarkMode">
             <el-icon v-if="isDarkMode"><Sunny /></el-icon>
             <el-icon v-else><Moon /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="下载管理" :hide-after="0" trigger="click">
+        <el-tooltip content="下载管理" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button circle @click="showDownloadDialog = true">
             <el-icon><Download /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="配置" :hide-after="0" trigger="click">
+        <el-tooltip content="配置" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button circle @click="showConfigDialog = true">
             <el-icon><Setting /></el-icon>
           </el-button>
@@ -69,6 +69,7 @@
         :loading="loading"
         :has-more="hasMore"
         :is-loading-more="isLoadingMore"
+        :load-error="loadError"
         :selected-images="selectedImages"
         :selectable="querySource === 'yande'"
         :source-mode="querySource"
@@ -77,6 +78,7 @@
         @image-click="handleImageClick"
         @image-select="handleImageSelect"
         @load-more="loadMore"
+        @load-error="handleLoadError"
         @multi-select-start="handleMultiSelectStart"
       />
     </div>
@@ -101,39 +103,68 @@
       </div>
     </transition>
 
+            <!-- 全屏查看器 -->
+            <el-image-viewer
+              v-if="viewerVisible"
+              :url-list="imageUrlList"
+              :initial-index="currentImageIndex"
+              @close="viewerVisible = false"
+              @switch="onViewerSwitch"
+            />
     <!-- 图片预览弹窗 - 自定义浮层 -->
     <teleport to="body">
-      <div 
-        v-if="previewVisible && currentImage" 
-        class="image-preview-overlay" 
+      <div
+        v-if="previewVisible && currentImage && !viewerVisible"
+        class="image-preview-overlay"
         @click.self="previewVisible = false"
       >
-        <div class="float-image-wrapper" :style="previewContainerStyle">
-          <el-image
-            :src="getDetailUrl(currentImage)"
-            :preview-src-list="[getDetailUrl(currentImage)]"
-            fit="contain"
-            class="float-main-image"
-            :zoom-rate="1.1"
-            :preview-teleported="true"
-          />
-
-          <div class="float-header" :class="`overlay-${overlayColorScheme}`">
-            <div class="float-header-left">
-              <span class="float-id">ID: {{ currentImage.id }}</span>
-              <el-tag :type="getRatingType(currentImage.rating)" size="small">
-                {{ currentImage.rating }}
-              </el-tag>
-              <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
-            </div>
-            <el-button circle @click="previewVisible = false" class="float-close-btn">
-              <el-icon><Close /></el-icon>
+<div class="float-image-wrapper" :style="previewContainerStyle">
+            <!-- 左侧导航按钮 -->
+            <el-button
+              v-if="images.length > 1"
+              class="image-nav-btn image-nav-btn-left"
+              circle
+              @click.stop="goToPrevImage"
+              :disabled="currentImageIndex <= 0"
+            >
+              <el-icon><ArrowLeft /></el-icon>
             </el-button>
-          </div>
+
+            <el-image
+              :src="getDetailUrl(currentImage)"
+              fit="contain"
+              class="float-main-image"
+              :preview-teleported="true"
+              @click.stop="viewerVisible = true"
+            />
+
+            <!-- 右侧导航按钮 -->
+            <el-button
+              v-if="images.length > 1"
+              class="image-nav-btn image-nav-btn-right"
+              circle
+              @click.stop="goToNextImage"
+              :disabled="currentImageIndex >= images.length - 1"
+            >
+              <el-icon><ArrowRight /></el-icon>
+            </el-button>
+
+            <div class="float-header" :class="`overlay-${overlayColorScheme}`">
+              <div class="float-header-left">
+                <span class="float-id">ID: {{ currentImage.id }}</span>
+                <el-tag :type="getRatingType(currentImage.rating)" size="small">
+                  {{ currentImage.rating }}
+                </el-tag>
+                <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
+              </div>
+              <el-button circle @click="previewVisible = false" class="float-close-btn">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
 
           <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
             <div class="float-footer-left">
-              <template v-if="!currentImage.is_downloaded">
+              <template v-if="!currentImage.down_flag">
                 <el-button 
                   type="primary" 
                   @click.stop="handleDownload" 
@@ -239,7 +270,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ElImageViewer } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
@@ -254,6 +286,7 @@ const images = ref([])
 const loading = ref(false)
 const hasMore = ref(false)
 const isLoadingMore = ref(false)
+const loadError = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
 const currentFavorite = ref(null)
@@ -267,7 +300,40 @@ const currentImage = ref(null)
 const previewContainerStyle = ref({})
 const downloading = ref(false)
 const overlayColorScheme = ref('dark') // 'dark' or 'light'
-const safeMode = ref(localStorage.getItem('safe_mode') === 'true')
+const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
+const viewerVisible = ref(false)
+
+// 图片导航
+const currentImageIndex = computed(() => {
+  if (!currentImage.value) return -1
+  return images.value.findIndex(img => img.id === currentImage.value.id)
+})
+
+// 计算所有图片的 URL 列表（用于 el-image-viewer）
+const imageUrlList = computed(() => {
+  return images.value.map(img => getDetailUrl(img))
+})
+
+const goToPrevImage = () => {
+  const idx = currentImageIndex.value
+  if (idx > 0) {
+    currentImage.value = images.value[idx - 1]
+  }
+}
+
+const goToNextImage = () => {
+  const idx = currentImageIndex.value
+  if (idx >= 0 && idx < images.value.length - 1) {
+    currentImage.value = images.value[idx + 1]
+  }
+}
+
+// viewer 切换时同步 currentImage
+const onViewerSwitch = (index) => {
+  if (images.value[index]) {
+    currentImage.value = images.value[index]
+  }
+}
 
 // 分析图片主色调，决定浮层文字颜色
 const analyzeImageColor = (imgUrl) => {
@@ -322,8 +388,10 @@ const analyzeImageColor = (imgUrl) => {
 watch(currentImage, (img) => {
   if (previewVisible.value && img) {
     // 使用本地预览图进行分析，无本地路径时不尝试加载远程图片（避免CORS）
-    const imgUrl = img.local_preview_path 
-      ? `/api/v1/gallery/cache/preview/${img.id}.${img.file_ext || 'jpg'}`
+    // preview_url 不以 http 开头则是本地路径
+    const isLocalPreview = img.preview_url && !img.preview_url.startsWith('http')
+    const imgUrl = isLocalPreview
+      ? `/api/v1/gallery/cache/preview/${img.id}`
       : ''
     analyzeImageColor(imgUrl)
   }
@@ -398,6 +466,14 @@ const toggleDarkMode = () => {
   document.documentElement.classList.toggle('dark-mode', isDarkMode.value)
 }
 
+// 检测触摸设备 - 优先使用 CSS media query（更可靠，避免虚拟机误判）
+const isTouchDevice = computed(() => {
+  // 媒体查询能更准确反映设备能力
+  const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
+  const hasNoHover = window.matchMedia('(hover: none)').matches
+  return hasCoarsePointer && hasNoHover
+})
+
 // 监听模式变化，保存到 localStorage
 const stopSourceWatch = watch(querySource, (val) => {
   localStorage.setItem('gallery_source', val)
@@ -422,14 +498,17 @@ const parseFavoriteTags = (tagsStr) => {
   const parts = tagsStr.split(/\s+/)
   for (const part of parts) {
     if (part.startsWith('rating:')) {
-      params.ratings = [part.split(':')[1]]
+      params.rating = [part.split(':')[1]]
     } else if (part.startsWith('score:>')) {
       params.min_score = parseInt(part.split(':')[1])
     } else if (part.startsWith('score:<=')) {
       params.max_score = parseInt(part.split(':')[1])
-    } else if (part.startsWith('order:')) {
+    } else if (part.startsWith('sort_order:')) {
       const orderVal = part.split(':')[1]
-      params.order = orderVal
+      params.sort_order = orderVal
+    } else if (part.startsWith('sort_by:')) {
+      const sortByVal = part.split(':')[1]
+      params.sort_by = sortByVal
     } else if (part.startsWith('width:>=')) {
       params.min_width = parseInt(part.split(':')[1])
     } else if (part.startsWith('width:<=')) {
@@ -489,31 +568,52 @@ const handleSourceChange = (newSource) => {
   }
 }
 
-const loadImages = async () => {
-  const isFirstPage = currentPage.value === 1
+const loadImages = async (page) => {
+  const isFirstPage = page === 1 || currentPage.value === 1
+  const targetPage = page !== undefined ? page : currentPage.value
   if (isFirstPage) {
     loading.value = true
   }
   try {
     const response = await api.post('/gallery/load', {
       ...queryParams.value,
-      page: currentPage.value
+      page: targetPage
     })
+    const data = response.data
+    // 重构后 data 直接是图片数组
+    const imageList = Array.isArray(data) ? data : []
     if (currentPage.value === 1) {
-      images.value = response.images
+      images.value = imageList
       if (currentFavorite.value) {
         if (querySource.value === 'local') {
-          updateLocalCount(currentFavorite.value.id, response.total).catch(() => {})
+          updateLocalCount(currentFavorite.value.id).catch(() => {})
         } else {
           refreshOnlineCount(currentFavorite.value.id).catch(() => {})
         }
       }
     } else {
-      images.value.push(...response.images)
+      images.value.push(...imageList)
     }
     hasMore.value = response.has_more
+    loadError.value = false
   } catch (error) {
-    ElMessage.error('加载图片失败')
+    if (isFirstPage) {
+      // 根据错误码显示不同提示
+      const errorCode = error.code || ''
+      if (errorCode === '0101') {
+        ElMessage.error('网络错误：请检查网络连接')
+      } else if (errorCode === '0102') {
+        ElMessage.error('代理错误：请检查代理设置')
+      } else if (errorCode === '0103') {
+        ElMessage.error('请求超时：请稍后重试')
+      } else if (error.detail) {
+        ElMessage.error(error.detail)
+      } else {
+        ElMessage.error(error.message || '加载图片失败')
+      }
+      loadError.value = true
+    }
+    // 非首页失败不设置 loadError，保持显示"加载更多"
   } finally {
     if (isFirstPage) {
       loading.value = false
@@ -525,7 +625,22 @@ const loadMore = async () => {
   if (isLoadingMore.value) return
   isLoadingMore.value = true
   currentPage.value++
-  await loadImages()
+  try {
+    await loadImages()
+  } catch {
+    // 失败时回退页码
+    currentPage.value--
+  }
+  isLoadingMore.value = false
+}
+
+const handleLoadError = async () => {
+  // 重新加载当前页
+  loadError.value = false
+  isLoadingMore.value = true
+  try {
+    await loadImages()
+  } catch {}
   isLoadingMore.value = false
 }
 
@@ -541,9 +656,9 @@ const handleImageClick = async (image) => {
     try {
       const response = await tagCacheApi.getTagsByNames(image.tags)
       tagTypesMap.value = {}
-      // 后端返回的是 {"tag_name": type} 格式的字典
-      if (response && typeof response === 'object') {
-        Object.assign(tagTypesMap.value, response)
+      // 重构后 BaseResponse.data 是 {tag_name: type} 格式的字典
+      if (response?.data && typeof response.data === 'object') {
+        Object.assign(tagTypesMap.value, response.data)
       }
     } catch (e) {
       console.warn('获取 tag 类型失败:', e)
@@ -590,35 +705,21 @@ const batchDownload = async () => {
   }
 
   downloading.value = true
-  let successCount = 0
-  let failCount = 0
 
   try {
-    for (const image of selectedImages.value) {
-      try {
-        await api.post('/download/task', {
-          image_id: image.id,
-          file_url: image.file_url,
-          save_path: './downloads',
-          file_name: `${image.id}.${image.file_ext || 'jpg'}`,
-          thread_num: 4,
-          tags: image.tags?.join ? image.tags.join(' ') : image.tags,
-          width: image.width,
-          height: image.height,
-          rating: image.rating,
-          author: image.author,
-          md5: image.md5,
-          total_size: image.file_size
-        })
-        successCount++
-      } catch (e) {
-        failCount++
-      }
-    }
-    ElMessage.success(`成功创建 ${successCount} 个下载任务${failCount > 0 ? `, ${failCount} 个失败` : ''}`)
+    const tasks = selectedImages.value.map(image => ({
+      image_id: image.id
+    }))
+
+    const response = await api.post('/download/task/batch', tasks)
+    const { data } = response
+
+    ElMessage.success(`成功创建 ${data.task_ids?.length || tasks.length} 个下载任务`)
     selectedImages.value = []
     selectAll.value = false
     isIndeterminate.value = false
+  } catch (error) {
+    ElMessage.error('批量创建下载任务失败')
   } finally {
     downloading.value = false
   }
@@ -630,21 +731,10 @@ const handleDownload = async () => {
   downloading.value = true
   try {
     await api.post('/download/task', {
-      image_id: currentImage.value.id,
-      file_url: currentImage.value.file_url,
-      save_path: './downloads',
-      file_name: `${currentImage.value.id}.${currentImage.value.file_ext || 'jpg'}`,
-      thread_num: 4,
-      tags: currentImage.value.tags?.join ? currentImage.value.tags.join(' ') : currentImage.value.tags,
-      width: currentImage.value.width,
-      height: currentImage.value.height,
-      rating: currentImage.value.rating,
-      author: currentImage.value.author,
-      md5: currentImage.value.md5,
-      total_size: currentImage.value.file_size
+      image_id: currentImage.value.id
     })
     ElMessage.success('下载任务已创建')
-    currentImage.value.is_downloaded = true
+    currentImage.value.down_flag = true
   } catch (error) {
     ElMessage.error('创建下载任务失败')
   } finally {
@@ -684,20 +774,13 @@ const formatFileSize = (bytes) => {
 
 const getDetailUrl = (image) => {
   if (!image) return ''
-  if (image.local_file_path) {
-    const filename = `${image.id}.${image.file_ext || 'jpg'}`
-    return `/api/v1/gallery/cache/original/${filename}`
+  // file_url 是本地原图路径，preview_url 是本地预览图路径
+  // file_url 不以 http 开头则是本地原图
+  if (image.file_url && !image.file_url.startsWith('http')) {
+    return `/api/v1/gallery/cache/original/${image.file_url}`
   }
-  if (image.local_preview_path) {
-    const filename = `${image.id}.${image.file_ext || 'jpg'}`
-    return `/api/v1/gallery/cache/preview/${filename}`
-  }
-  // 在线模式：使用缓存的预览图API（避免直接访问远程URL导致CORS）
-  if (image.preview_url) {
-    return `/api/v1/gallery/cache/preview/fetch/${image.id}?file_ext=${image.file_ext || 'jpg'}`
-  }
-  // 无本地路径时返回空字符串，不直接返回远程file_url
-  return ''
+  // 在线模式：使用 fetch 缓存原图（避免直接访问远程URL导致CORS）
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}`
 }
 
 // 页面加载时自动查询本地
@@ -709,7 +792,25 @@ onMounted(() => {
       calculatePreviewSize()
     }
   })
+  // 键盘左右箭头切换图片
+  window.addEventListener('keydown', handleKeydown)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+// 键盘事件处理
+const handleKeydown = (e) => {
+  if (!previewVisible.value || !currentImage.value) return
+  if (e.key === 'ArrowLeft') {
+    goToPrevImage()
+    e.preventDefault()
+  } else if (e.key === 'ArrowRight') {
+    goToNextImage()
+    e.preventDefault()
+  }
+}
 </script>
 
 <style scoped>
@@ -971,6 +1072,36 @@ html.dark-mode .selection-count {
   background: transparent;
 }
 
+/* 左右导航按钮 */
+.image-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.image-nav-btn:hover {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.image-nav-btn-left {
+  left: 16px;
+}
+
+.image-nav-btn-right {
+  right: 16px;
+}
+
+.image-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 /* 顶部信息栏 */
 .float-header {
   position: absolute;
@@ -990,7 +1121,7 @@ html.dark-mode .selection-count {
 .float-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .float-id {
