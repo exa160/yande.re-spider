@@ -103,35 +103,64 @@
       </div>
     </transition>
 
+            <!-- 全屏查看器 -->
+            <el-image-viewer
+              v-if="viewerVisible"
+              :url-list="imageUrlList"
+              :initial-index="currentImageIndex"
+              @close="viewerVisible = false"
+              @switch="onViewerSwitch"
+            />
     <!-- 图片预览弹窗 - 自定义浮层 -->
     <teleport to="body">
-      <div 
-        v-if="previewVisible && currentImage" 
-        class="image-preview-overlay" 
+      <div
+        v-if="previewVisible && currentImage && !viewerVisible"
+        class="image-preview-overlay"
         @click.self="previewVisible = false"
       >
-        <div class="float-image-wrapper" :style="previewContainerStyle">
-          <el-image
-            :src="getDetailUrl(currentImage)"
-            :preview-src-list="[getDetailUrl(currentImage)]"
-            fit="contain"
-            class="float-main-image"
-            :zoom-rate="1.1"
-            :preview-teleported="true"
-          />
-
-          <div class="float-header" :class="`overlay-${overlayColorScheme}`">
-            <div class="float-header-left">
-              <span class="float-id">ID: {{ currentImage.id }}</span>
-              <el-tag :type="getRatingType(currentImage.rating)" size="small">
-                {{ currentImage.rating }}
-              </el-tag>
-              <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
-            </div>
-            <el-button circle @click="previewVisible = false" class="float-close-btn">
-              <el-icon><Close /></el-icon>
+<div class="float-image-wrapper" :style="previewContainerStyle">
+            <!-- 左侧导航按钮 -->
+            <el-button
+              v-if="images.length > 1"
+              class="image-nav-btn image-nav-btn-left"
+              circle
+              @click.stop="goToPrevImage"
+              :disabled="currentImageIndex <= 0"
+            >
+              <el-icon><ArrowLeft /></el-icon>
             </el-button>
-          </div>
+
+            <el-image
+              :src="getDetailUrl(currentImage)"
+              fit="contain"
+              class="float-main-image"
+              :preview-teleported="true"
+              @click.stop="viewerVisible = true"
+            />
+
+            <!-- 右侧导航按钮 -->
+            <el-button
+              v-if="images.length > 1"
+              class="image-nav-btn image-nav-btn-right"
+              circle
+              @click.stop="goToNextImage"
+              :disabled="currentImageIndex >= images.length - 1"
+            >
+              <el-icon><ArrowRight /></el-icon>
+            </el-button>
+
+            <div class="float-header" :class="`overlay-${overlayColorScheme}`">
+              <div class="float-header-left">
+                <span class="float-id">ID: {{ currentImage.id }}</span>
+                <el-tag :type="getRatingType(currentImage.rating)" size="small">
+                  {{ currentImage.rating }}
+                </el-tag>
+                <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
+              </div>
+              <el-button circle @click="previewVisible = false" class="float-close-btn">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
 
           <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
             <div class="float-footer-left">
@@ -242,6 +271,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ElImageViewer } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
@@ -271,6 +301,39 @@ const previewContainerStyle = ref({})
 const downloading = ref(false)
 const overlayColorScheme = ref('dark') // 'dark' or 'light'
 const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
+const viewerVisible = ref(false)
+
+// 图片导航
+const currentImageIndex = computed(() => {
+  if (!currentImage.value) return -1
+  return images.value.findIndex(img => img.id === currentImage.value.id)
+})
+
+// 计算所有图片的 URL 列表（用于 el-image-viewer）
+const imageUrlList = computed(() => {
+  return images.value.map(img => getDetailUrl(img))
+})
+
+const goToPrevImage = () => {
+  const idx = currentImageIndex.value
+  if (idx > 0) {
+    currentImage.value = images.value[idx - 1]
+  }
+}
+
+const goToNextImage = () => {
+  const idx = currentImageIndex.value
+  if (idx >= 0 && idx < images.value.length - 1) {
+    currentImage.value = images.value[idx + 1]
+  }
+}
+
+// viewer 切换时同步 currentImage
+const onViewerSwitch = (index) => {
+  if (images.value[index]) {
+    currentImage.value = images.value[index]
+  }
+}
 
 // 分析图片主色调，决定浮层文字颜色
 const analyzeImageColor = (imgUrl) => {
@@ -729,7 +792,25 @@ onMounted(() => {
       calculatePreviewSize()
     }
   })
+  // 键盘左右箭头切换图片
+  window.addEventListener('keydown', handleKeydown)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+// 键盘事件处理
+const handleKeydown = (e) => {
+  if (!previewVisible.value || !currentImage.value) return
+  if (e.key === 'ArrowLeft') {
+    goToPrevImage()
+    e.preventDefault()
+  } else if (e.key === 'ArrowRight') {
+    goToNextImage()
+    e.preventDefault()
+  }
+}
 </script>
 
 <style scoped>
@@ -991,6 +1072,36 @@ html.dark-mode .selection-count {
   background: transparent;
 }
 
+/* 左右导航按钮 */
+.image-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.image-nav-btn:hover {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.image-nav-btn-left {
+  left: 16px;
+}
+
+.image-nav-btn-right {
+  right: 16px;
+}
+
+.image-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 /* 顶部信息栏 */
 .float-header {
   position: absolute;
@@ -1010,7 +1121,7 @@ html.dark-mode .selection-count {
 .float-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .float-id {
