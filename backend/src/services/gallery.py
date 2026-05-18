@@ -92,14 +92,13 @@ class GalleryService:
             图片信息字典，不存在返回 None
         """
         if source == "local":
-            images, _ = GalleryService.query_local_database({"page": 1, "page_size": 1})
+            with YandeDataRepository() as repo:
+                return repo.get_by_id(image_id)
         else:
-            images, _ = GalleryService.query_yande_api({"page": 1, "page_size": 100})
-
-        for img in images:
-            if img["id"] == image_id:
-                return img
-        return None
+            images, _ = GalleryService.query_yande_api(
+                GalleryLoadRequest(page=1, page_size=1, tags=f"id:{image_id}")
+            )
+            return images[0] if images else None
 
     @staticmethod
     def get_statistics(source: str = "local") -> dict:

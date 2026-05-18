@@ -20,53 +20,26 @@ class ConfigService:
 
     @staticmethod
     def update_api_config(api_config: ApiConfig) -> bool:
-        """
-        更新 API 配置
-
-        Args:
-            api_config: API 配置数据
-
-        Returns:
-            是否成功
-        """
         try:
             tmp_config = config.yande_api.model_dump(mode="json")
             tmp_config.update(api_config.model_dump(exclude={"headers"}))
-            config.update_config(ApiConfig.model_validate(tmp_config))
+            config.config = config.update_config(ApiConfig.model_validate(tmp_config))
             return True
         except Exception as e:
             raise e
 
     @staticmethod
     def update_downloader_config(down_config: DownloaderConfig) -> bool:
-        """
-        更新下载器配置
-
-        Args:
-            down_config: 下载器配置数据
-
-        Returns:
-            是否成功
-        """
         try:
-            config.update_config(DownloaderConfig.model_validate(down_config))
+            config.config = config.update_config(DownloaderConfig.model_validate(down_config))
             return True
         except Exception:
             return False
 
     @staticmethod
     def update_database_config(database_config: DatabaseConfig) -> bool:
-        """
-        更新数据库配置
-
-        Args:
-            database_config: 数据库配置数据
-
-        Returns:
-            是否成功
-        """
         try:
-            config.update_config(DatabaseConfig.model_validate(database_config))
+            config.config = config.update_config(DatabaseConfig.model_validate(database_config))
             engine_change_handler()
             return True
         except Exception:
@@ -137,5 +110,6 @@ class ConfigService:
         if reset_model is None:
             return False, f"{section} not in {list(reset_map.keys())}."
 
-        config.update_config(reset_model())
+        from src.common import config as config_module
+        config_module.config = config.update_config(reset_model())
         return True, "Reset success."

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from src.api import APILoader
 from src.common.constant import path_constant
+from src.common.settings import config
 from src.middleware.downloader import DownloadMiddleware
 from src.middleware.errors import ErrorHandleMiddleware
 from src.middleware.frontend_static import FrontendStaticLoader
@@ -32,15 +33,43 @@ def work_dir_setup():
         path.mkdir(parents=True, exist_ok=True)
 
 
+def check_database_migration():
+    """检查数据库迁移状态，若 Alembic 版本不一致则记录警告"""
+    try:
+        from alembic.config import Config as AlembicConfig
+        from alembic.script import ScriptDirectory
+        from alembic.runtime.migration import MigrationContext
+        from src.dao.database import get_db_engine
+
+        alembic_cfg = AlembicConfig()
+        alembic_cfg.set_main_option("script_location", str(path_constant.base_dir / "migrations"))
+        script = ScriptDirectory.from_config(alembic_cfg)
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            context = MigrationContext.configure(conn)
+            current_rev = context.get_current_revision()
+        head_rev = script.get_current_head()
+        if current_rev != head_rev:
+            logger.warning(
+                f"Database migration outdated: current={current_rev}, head={head_rev}. "
+                "Run 'alembic upgrade head' to apply pending migrations."
+            )
+    except Exception as e:
+        logger.debug(f"Migration check skipped: {e}")
+
+
 def init_app(app: FastAPI) -> FastAPI:
+    if not config.cors.allow_origins:
+        logger.warning("CORS allow_origins is empty, no cross-origin requests will be allowed")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=config.cors.allow_origins,
+        allow_credentials=config.cors.allow_credentials,
+        allow_methods=config.cors.allow_methods,
+        allow_headers=config.cors.allow_headers,
     )
     work_dir_setup()
+    check_database_migration()
     RequestSessionMiddleware.init_app(app)
     DownloadMiddleware.init_app(app)
     APILoader.init_app(app)

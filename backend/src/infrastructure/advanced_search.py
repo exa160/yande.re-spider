@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, List, Any
 
+from src.common.constant import Rating
+
 
 class SearchOperator(Enum):
     EQ = "="
@@ -27,12 +29,6 @@ class SearchOperator(Enum):
     GE = ">="
     LT = "<"
     LE = "<="
-
-
-class SearchRating(Enum):
-    SAFE = "s"
-    QUESTIONABLE = "q"
-    EXPLICIT = "e"
 
 
 SUPPORTED_FIELDS = {
@@ -100,21 +96,13 @@ class AdvancedSearch:
         return self
 
     def add_rating(self, rating: str) -> "AdvancedSearch":
-        rating_map = {
-            "s": "s",
-            "safe": "s",
-            "q": "q",
-            "questionable": "q",
-            "e": "e",
-            "explicit": "e",
-            "S": "s",
-            "Q": "q",
-            "E": "e",
-            "Safe": "s",
-            "Questionable": "q",
-            "Explicit": "e",
-        }
-        mapped = rating_map.get(rating, rating)
+        rating_lookup = {}
+        for r in Rating:
+            rating_lookup[r.value] = r.value
+            rating_lookup[r.display.lower()] = r.value
+            rating_lookup[r.display] = r.value
+            rating_lookup[r.name] = r.value
+        mapped = rating_lookup.get(rating, rating)
         if mapped:
             self.add_condition("rating", SearchOperator.EQ, mapped)
         return self

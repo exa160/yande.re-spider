@@ -53,9 +53,10 @@ COPY backend/ ./
 COPY config/ ./config/
 
 # 创建运行时需要的目录
-RUN mkdir -p /app/logs /app/data /app/downloads
+RUN mkdir -p /app/logs /app/data /app/downloads && \
+    chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["uvicorn", "service:main_app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -4,7 +4,7 @@ from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, JSON
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import Enum
 
-from src.common.constant import Rating, table_constant
+from src.common.constant import Rating, TaskStatus, table_constant
 
 
 class Base(DeclarativeBase):
@@ -118,3 +118,25 @@ class FavoriteFolder(Base):
     updated_at = Column(
         DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间"
     )
+
+
+class DownloadTaskModel(Base):
+    """下载任务持久化表"""
+
+    __tablename__ = table_constant.download_task
+
+    task_id = Column(String(36), primary_key=True, comment="任务ID")
+    image_id = Column(Integer, index=True, comment="图片ID")
+    file_name = Column(String(256), nullable=True, comment="文件名")
+    file_size = Column(Integer, nullable=True, comment="总大小")
+    status = Column(
+        Enum(TaskStatus, values_callable=lambda x: [e.value for e in x]),
+        index=True, default=TaskStatus.PENDING, comment="任务状态"
+    )
+    progress = Column(Integer, default=0, comment="进度(0-100)")
+    downloaded_size = Column(Integer, default=0, comment="已下载大小")
+    speed = Column(Integer, default=0, comment="下载速度")
+    error_message = Column(Text, nullable=True, comment="错误信息")
+    started_at = Column(DateTime, nullable=True, comment="开始时间")
+    completed_at = Column(DateTime, nullable=True, comment="完成时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")

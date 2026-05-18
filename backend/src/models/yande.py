@@ -1,16 +1,9 @@
 from datetime import datetime
-from enum import Enum
 from typing import Optional, List
 
 from pydantic import BaseModel, ConfigDict, RootModel
 
 from src.common.constant import Rating
-
-
-class SearchRating(Enum):
-    S = "safe"
-    R15 = "questionable"
-    R18 = "explicit"
 
 
 class YandePostData(RootModel):

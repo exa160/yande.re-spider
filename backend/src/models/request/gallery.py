@@ -6,8 +6,7 @@ from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
-from src.common.constant import Rating
-from src.dao.yande_data_dao import SortBy, SortOrder
+from src.common.constant import Rating, SortBy, SortOrder
 
 
 class GalleryLoadRequest(BaseModel):

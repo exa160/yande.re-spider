@@ -43,8 +43,11 @@ def get_db_engine():
             connect_args={"timeout": 30},
             poolclass=NullPool,
         )
-    # TODO 考虑取消自动建表/迁移，改为手动执行脚本
-    Base.metadata.create_all(bind=_cached_engine)
+    # Alembic 迁移优先；若表不存在则自动创建（兼容未执行 alembic upgrade 的场景）
+    from sqlalchemy import inspect
+    inspector = inspect(_cached_engine)
+    if not inspector.get_table_names():
+        Base.metadata.create_all(bind=_cached_engine)
 
     return _cached_engine
 

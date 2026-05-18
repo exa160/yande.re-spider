@@ -67,7 +67,7 @@ async def create_folder(folder: FavoriteFolderCreate) -> BaseResponse:
 async def get_folder(folder_id: int) -> BaseResponse:
     """获取指定收藏夹详情"""
     # 访问时刷新本地数量
-    folder = FavoritesService._refresh_local_count(folder_id)
+    folder = FavoritesService.get_folder(folder_id)
     if not folder:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     return FavoriteFolderResponse(data=folder)

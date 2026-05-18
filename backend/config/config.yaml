@@ -25,3 +25,11 @@ downloader:
   chunk_size: 10240
   split_size: 52428800
   retry_times: 3
+cors:
+  allow_origins:
+    - http://localhost:5173
+  allow_methods:
+    - '*'
+  allow_headers:
+    - '*'
+  allow_credentials: true

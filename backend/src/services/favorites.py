@@ -5,9 +5,9 @@
 from datetime import datetime
 from typing import List, Optional
 
-from src.common.constant import ErrMsg, Rating
+from src.common.constant import ErrMsg, Rating, SortBy
 from src.dao.favorite_dao import favorite_dao
-from src.dao.yande_data_dao import YandeDataRepository, SortBy
+from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
 from src.models.request.favorites import (

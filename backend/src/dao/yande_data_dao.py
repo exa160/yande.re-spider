@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import List, Optional, Tuple
 
 from loguru import logger
@@ -8,27 +7,10 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.common import config
-from src.common.constant import Rating
+from src.common.constant import Rating, SortBy, SortOrder
 from src.common.utils import check_local_file
 from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
-
-
-class SortBy(str, Enum):
-    """排序字段枚举"""
-    ID = "id"
-    CREATED_AT = "created_at"
-    RATING = "rating"
-    FILE_SIZE = "file_size"
-    WIDTH = "width"
-    HEIGHT = "height"
-
-
-class SortOrder(str, Enum):
-    """排序方向枚举"""
-
-    ASC = "asc"
-    DESC = "desc"
 
 
 class YandeDataRepository(BaseDAO):

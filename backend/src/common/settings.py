@@ -1,6 +1,7 @@
+import threading
 from functools import wraps
 from pathlib import Path
-from typing import Optional
+from typing import ClassVar, Optional
 
 import yaml
 from loguru import logger
@@ -11,16 +12,19 @@ from src.common.constant import path_constant
 
 class ConfigModel(BaseModel):
     model_config = ConfigDict(frozen=True)
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @staticmethod
-    def set_frozen_data_(func):
+    def update_config_data(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            self.model_config['frozen'] = False
-            f = func(self, *args, **kwargs)
-            self.model_config['frozen'] = True
-            return f
-
+            updates = func(self, *args, **kwargs)
+            if updates:
+                with self._lock:
+                    new_instance = self.model_copy(update=updates)
+                save_config(new_instance, path_constant.config_file)
+                return new_instance
+            return self
         return wrapper
 
 
@@ -66,21 +70,27 @@ class AppConfig(ConfigModel):
     debug: bool = Field(default=False, description='开启时接口返回完整错误信息')
 
 
+class CorsConfig(ConfigModel):
+    allow_origins: list[str] = Field(default=["http://localhost:5173"], description='CORS允许的来源列表')
+    allow_methods: list[str] = Field(default=["*"], description='CORS允许的HTTP方法')
+    allow_headers: list[str] = Field(default=["*"], description='CORS允许的请求头')
+    allow_credentials: bool = Field(default=True, description='是否允许携带凭证')
+
+
 class Config(ConfigModel):
     app: AppConfig = AppConfig()
     database: DatabaseConfig = DatabaseConfig()
     yande_api: ApiConfig = ApiConfig()
     downloader: DownloaderConfig = DownloaderConfig()
+    cors: CorsConfig = CorsConfig()
 
-    @ConfigModel.set_frozen_data_
-    def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig):
+    @ConfigModel.update_config_data
+    def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig | CorsConfig) -> dict:
         for config_name, config_data in self.__dict__.items():
-            logger.info(f"{isinstance(config_model, type(config_data))}， Checking config: {config_name}, type: {type(config_data)}, new type: {type(config_model)}")
             if isinstance(config_model, type(config_data)):
-                self.__setattr__(config_name, config_model)
                 logger.info(f"Updated config: {config_name}, new value: {config_model}")
-                break
-        save_config(self, path_constant.config_file)
+                return {config_name: config_model}
+        return {}
 
 
 def load_config(config_path: Path = Path('config.yaml')) -> Config:

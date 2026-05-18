@@ -21,6 +21,7 @@ class DatabaseTableNameConstant(ConstantModel):
     yande_artist: str = "yande_artists"
     tag_local_stats: str = "tag_local_stats"
     favorite_folder: str = "favorite_folders"
+    download_task: str = "download_task"
 
 
 
@@ -86,7 +87,7 @@ class Rating(str, Enum):
 
     @property
     def code(self) -> str:
-        return self.value  # 's', 'q', 'e'
+        return self.value
 
     @property
     def display(self) -> str:
@@ -95,6 +96,20 @@ class Rating(str, Enum):
             "q": "Questionable",
             "e": "Explicit"
         }[self.value]
+
+
+class SortBy(str, Enum):
+    ID = "id"
+    CREATED_AT = "created_at"
+    RATING = "rating"
+    FILE_SIZE = "file_size"
+    WIDTH = "width"
+    HEIGHT = "height"
+
+
+class SortOrder(str, Enum):
+    ASC = "asc"
+    DESC = "desc"
 
 
 # ==================== 错误码枚举 ====================

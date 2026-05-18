@@ -52,25 +52,9 @@
 4. **日志记录**：在 `middleware/loggers.py` 统一日志格式
 5. **枚举优先**：状态码、错误码使用枚举而非硬编码字符串
 6. **frozen 配置**：PathConstant 等配置类使用 `frozen=True` 防止意外修改
-
+7. **后端工作目录**: 后端项目根目录为 `backend/`，所有导入使用 `src.xxx` 格式
+8. **前端工作目录**: 后端项目根目录为 `frontend/`
 ---
-
-## 重构状态追踪
-
-### 已完成的重构（next_dev 分支）
-
-| 重构项 | 状态 | 提交记录 |
-|--------|------|----------|
-| 目录结构重组（backend/src/） | ✅ 完成 | 738beef, d4a01e4 |
-| 自动路由注册（APILoader） | ✅ 完成 | b8afae8 |
-| 统一响应格式（BaseResponse） | ✅ 完成 | 1489e01 |
-| 统一错误处理（APIException + ErrMsg） | ✅ 完成 | 1489e01 |
-| 中间件层拆分（middleware/） | ✅ 完成 | 6ef8596 |
-| 常量管理统一（PathConstant） | ✅ 完成 | 8a05889 |
-| 导入路径标准化（src.xxx） | ✅ 完成 | 8a05889 |
-| DAO 层重构 | ✅ 完成 | bea5017 |
-| API 路由系统重构 | ✅ 完成 | 3331539 |
-| 数据库模型模块化 | ✅ 完成 | 8ce9224 |
 
 ### 代码规范检查清单
 
@@ -85,6 +69,17 @@
 - [ ] 成功响应：`BaseResponse(message=ErrMsg.OK.msg, data={...})`
 - [ ] 错误响应：`raise APIException(ErrMsg.XXX, e=e)`
 - [ ] 避免返回原始字典
+
+**常量定义检查**：
+- [ ] 常量是否在 `common/constant.py` 中按分类定义
+- [ ] 错误码是否使用 `ErrMsg` 枚举
+
+**数据库操作检查**：
+- [ ] DAO 是否继承 `BaseDAO` 并使用 `self.session`
+
+**项目结构检查**：
+- [ ] 后端根目录是否为 `backend/` 且所有导入使用 `src.xxx` 格式
+- [ ] 前端根目录是否为 `frontend/`
 
 ---
 

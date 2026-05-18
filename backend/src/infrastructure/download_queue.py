@@ -7,10 +7,11 @@ from datetime import datetime
 from typing import Optional, List, Dict
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.common import config, path_constant
 from src.common.constant import TaskStatus
+from src.dao.download_task_dao import DownloadTaskRepository
 from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.downloader import FileInfo, MultiDown
 from src.models.database.yande import YandeData
@@ -28,19 +29,71 @@ class TaskStore:
         file_size: Optional[int] = Field(None, description="总大小")
 
     class DownloadTask(ProgressData):
-        yande_data: Optional[YandeData] = Field(None, description="yande数据")
-        file_name: Optional[str] = Field(..., description="文件名")
+        yande_data: Optional[YandeData] = Field(None, exclude=True, description="yande数据")
+        file_name: Optional[str] = Field(None, description="文件名")
         error_message: Optional[str] = Field(None, description="错误信息")
         started_at: Optional[str] = Field(None, description="开始时间")
         completed_at: Optional[str] = Field(None, description="完成时间")
         created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="创建时间")
-        # TODO sqlalchemy替换为sqlmodel
         model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True, from_attributes=True)
+
+        @field_validator("progress", mode="before")
+        @classmethod
+        def normalize_progress(cls, v):
+            if isinstance(v, int):
+                return v / 100.0
+            return v
+
+        @field_validator("started_at", "completed_at", mode="before")
+        @classmethod
+        def datetime_to_iso(cls, v):
+            if isinstance(v, datetime):
+                return v.isoformat()
+            return v
+
+        @field_validator("created_at", mode="before")
+        @classmethod
+        def created_at_to_iso(cls, v):
+            if isinstance(v, datetime):
+                return v.isoformat()
+            return v
 
 
     def __init__(self):
         self._tasks: Dict[str, TaskStore.DownloadTask] = {}
         self._lock = threading.Lock()
+        self._restore_from_database()
+
+    def _restore_from_database(self):
+        try:
+            with DownloadTaskRepository() as repo:
+                pending_tasks = repo.load_pending_tasks()
+                for task_model in pending_tasks:
+                    task = TaskStore.DownloadTask.model_validate(task_model)
+                    self._tasks[task_model.task_id] = task
+                if pending_tasks:
+                    logger.info(f"Restored {len(pending_tasks)} pending tasks from database")
+        except Exception as e:
+            logger.debug(f"Task restore skipped: {e}")
+
+    def _persist_upsert(self, task_id: str, task_data: dict):
+        try:
+            task_data["task_id"] = task_id
+            if "progress" in task_data and isinstance(task_data["progress"], float):
+                task_data["progress"] = int(task_data["progress"] * 100)
+            if "speed" in task_data and isinstance(task_data["speed"], float):
+                task_data["speed"] = int(task_data["speed"])
+            with DownloadTaskRepository() as repo:
+                repo.upsert(task_data)
+        except Exception as e:
+            logger.debug(f"Task persist upsert skipped: {e}")
+
+    def _persist_delete(self, task_id: str):
+        try:
+            with DownloadTaskRepository() as repo:
+                repo.delete(task_id)
+        except Exception as e:
+            logger.debug(f"Task persist delete skipped: {e}")
 
     def create_task(self, task_id: str, yande_data: YandeData) -> dict:
         with self._lock:
@@ -51,6 +104,15 @@ class TaskStore:
                 file_size=yande_data.file_size
             )
             self._tasks[task_id] = task
+            self._persist_upsert(task_id, {
+                "image_id": yande_data.id,
+                "file_name": task.file_name,
+                "file_size": task.file_size,
+                "status": task.status,
+                "progress": task.progress,
+                "downloaded_size": task.downloaded_size,
+                "speed": task.speed,
+            })
             return task
 
     def get_task(self, task_id: str) -> Optional[TaskStore.DownloadTask]:
@@ -77,12 +139,13 @@ class TaskStore:
                 for key, value in updates.items():
                     if hasattr(task, key):
                         setattr(task, key, value)
-            # TODO 更新数据库：目前只更新内存中的任务状态，后续需要增加数据库更新逻辑 --- IGNORE ---
+            self._persist_upsert(task_id, updates)
 
     def delete_task(self, task_id: str) -> bool:
         with self._lock:
             if task_id in self._tasks:
                 del self._tasks[task_id]
+                self._persist_delete(task_id)
                 return True
             return False
 

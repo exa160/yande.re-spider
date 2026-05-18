@@ -1,79 +1,68 @@
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from src.infrastructure.download_queue import TaskStore
-from src.models.database.yande import YandeData
+from src.common.constant import TaskStatus
 from src.models.response.base_response import BaseResponse, PaginatedResponse
 
 
-class DownloadTaskInfo(TaskStore.DownloadTask):
-    """下载任务信息"""
-    yande_data: Optional[YandeData] = Field(None, exclude=True)
+class ProgressData(BaseModel):
+    task_id: str = Field(..., description="任务ID")
+    status: TaskStatus = Field(TaskStatus.PENDING, description="任务状态")
+    progress: float = Field(0.0, description="进度")
+    downloaded_size: int = Field(0, description="已下载大小")
+    speed: float = Field(0.0, description="下载速度")
+    file_size: Optional[int] = Field(None, description="总大小")
 
 
+class DownloadTaskInfo(ProgressData):
+    file_name: Optional[str] = Field(None, description="文件名")
+    error_message: Optional[str] = Field(None, description="错误信息")
+    started_at: Optional[str] = Field(None, description="开始时间")
+    completed_at: Optional[str] = Field(None, description="完成时间")
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="创建时间")
 
-class ProgressResponse(BaseResponse[TaskStore.ProgressData]):
-    """任务进度响应"""
 
+class ProgressResponse(BaseResponse[ProgressData]):
     ...
 
 
 class DownloadTaskResponse(BaseResponse[DownloadTaskInfo]):
-    """下载任务响应"""
-
     ...
 
 
-
 class TaskListResponse(PaginatedResponse[list[DownloadTaskInfo]]):
-    """任务列表数据"""
     ...
 
 
 class TaskCreatedData(BaseModel):
-    """任务创建数据"""
-
     task_id: str
 
 
 class BatchTaskCreatedData(BaseModel):
-    """批量任务创建数据"""
-
     task_ids: List[str]
 
 
 class CountData(BaseModel):
-    """数量数据"""
-
     count: int
 
 
 class SuccessData(BaseModel):
-    """成功数据"""
-
     success: bool = True
 
 
 class TaskCreatedResponse(BaseResponse[TaskCreatedData]):
-    """任务创建响应"""
-
     ...
 
 
 class BatchTaskCreatedResponse(BaseResponse[BatchTaskCreatedData]):
-    """批量任务创建响应"""
-
     ...
 
 
 class CountResponse(BaseResponse[CountData]):
-    """数量响应"""
-
     ...
 
 
 class SuccessResponse(BaseResponse[SuccessData]):
-    """成功响应"""
-
     ...
