@@ -1,0 +1,17 @@
+.viewer-fade-enter-active,
+.viewer-fade-leave-active {
+  transition: opacity 0s !important;
+}
+.viewer-fade-enter-from,
+.viewer-fade-leave-to {
+  opacity: 0 !important;
+}
+.el-image-viewer__mask {
+  opacity: 0.82 !important;
+}
+
+@media (max-width: 768px) {
+  .el-button+.el-button {
+    margin-left: 0 !important;
+  }
+}

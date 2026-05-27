@@ -3,7 +3,7 @@
     <!-- 顶部工具栏 -->
     <div class="top-toolbar">
       <!-- 搜索框 + 模式按钮 -->
-      <div class="toolbar-left">
+      <div class="toolbar-left" ref="toolbarLeftRef">
         <el-button-group class="mode-buttons">
           <el-button
             :type="querySource === 'yande' ? 'primary' : ''"
@@ -39,23 +39,46 @@
         </el-tooltip>
       </div>
       <!-- 右侧工具按钮 -->
-      <div class="toolbar-right">
-        <el-tooltip content="夜间模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
-          <el-button circle @click="toggleDarkMode">
-            <el-icon v-if="isDarkMode"><Sunny /></el-icon>
-            <el-icon v-else><Moon /></el-icon>
+      <div class="toolbar-right" ref="toolbarRightRef">
+        <!-- 移动端圆点菜单 -->
+        <template v-if="useMobileMenu">
+          <el-button circle class="mobile-menu-btn" @click="mobileMenuExpanded = !mobileMenuExpanded">
+            <span class="menu-dots">···</span>
           </el-button>
-        </el-tooltip>
-        <el-tooltip content="下载管理" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
-          <el-button circle @click="showDownloadDialog = true">
-            <el-icon><Download /></el-icon>
-          </el-button>
-        </el-tooltip>
-        <el-tooltip content="配置" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
-          <el-button circle @click="showConfigDialog = true">
-            <el-icon><Setting /></el-icon>
-          </el-button>
-        </el-tooltip>
+          <transition name="menu-expand">
+            <div v-if="mobileMenuExpanded" class="mobile-expand-menu">
+              <el-button circle @click="toggleDarkMode(); mobileMenuExpanded = false">
+                <el-icon v-if="isDarkMode"><Sunny /></el-icon>
+                <el-icon v-else><Moon /></el-icon>
+              </el-button>
+              <el-button circle @click="showDownloadDialog = true; mobileMenuExpanded = false">
+                <el-icon><Download /></el-icon>
+              </el-button>
+              <el-button circle @click="showConfigDialog = true; mobileMenuExpanded = false">
+                <el-icon><Setting /></el-icon>
+              </el-button>
+            </div>
+          </transition>
+        </template>
+        <!-- 桌面端显示完整按钮 -->
+        <template v-else>
+          <el-tooltip content="夜间模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
+            <el-button circle @click="toggleDarkMode">
+              <el-icon v-if="isDarkMode"><Sunny /></el-icon>
+              <el-icon v-else><Moon /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="下载管理" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
+            <el-button circle @click="showDownloadDialog = true">
+              <el-icon><Download /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="配置" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
+            <el-button circle @click="showConfigDialog = true">
+              <el-icon><Setting /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </template>
       </div>
     </div>
 
@@ -113,11 +136,12 @@
             />
     <!-- 图片预览弹窗 - 自定义浮层 -->
     <teleport to="body">
-      <div
-        v-if="previewVisible && currentImage && !viewerVisible"
-        class="image-preview-overlay"
-        @click.self="previewVisible = false"
-      >
+      <transition name="preview-fade">
+        <div
+          v-if="previewVisible && currentImage && !viewerVisible"
+          class="image-preview-overlay"
+          @click.self="previewVisible = false"
+        >
 <div class="float-image-wrapper" :style="previewContainerStyle">
             <!-- 左侧导航按钮 -->
             <el-button
@@ -244,7 +268,8 @@
             </div>
           </transition>
         </div>
-      </div>
+        </div>
+      </transition>
     </teleport>
 
     <!-- 下载管理对话框 -->
@@ -270,10 +295,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { ElImageViewer } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
@@ -302,6 +327,64 @@ const downloading = ref(false)
 const overlayColorScheme = ref('dark') // 'dark' or 'light'
 const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
 const viewerVisible = ref(false)
+const mobileMenuExpanded = ref(false)
+const mobileMenuActive = ref(false)
+const toolbarLeftRef = ref(null)
+const triggerUpdate = ref(0)
+
+// 右边按钮的估算宽度（固定值，避免反馈循环）
+const RIGHT_BUTTON_WIDTH = 112 // 单个按钮 + gap
+const RIGHT_MOBILE_MENU_WIDTH = 48 // 圆点菜单按钮宽度
+
+// 检测是否需要使用移动端圆点菜单（两边按钮重叠时）
+const useMobileMenu = computed(() => {
+  if (typeof window === 'undefined') return false
+
+  const leftEl = toolbarLeftRef.value
+  if (!leftEl) return false
+
+  void triggerUpdate.value
+
+  // 只测量左边的宽度，右边用固定值估算
+  const getChildrenWidth = (el) => {
+    return Array.from(el.children).reduce((sum, child) => {
+      return sum + child.offsetWidth + 12
+    }, 0)
+  }
+
+  const leftWidth = getChildrenWidth(leftEl)
+  const toolbar = leftEl.closest('.top-toolbar')
+  const containerWidth = toolbar ? toolbar.offsetWidth - 40 : window.innerWidth - 40
+
+  // 滞回区间
+  const threshold = 20
+
+  // 根据当前状态决定使用哪个右边宽度
+  const rightWidth = mobileMenuActive.value ? RIGHT_MOBILE_MENU_WIDTH : RIGHT_BUTTON_WIDTH
+  const totalWidth = leftWidth + rightWidth
+
+  const shouldShow = totalWidth >= containerWidth + threshold
+  const shouldHide = leftWidth + RIGHT_BUTTON_WIDTH < containerWidth - threshold
+
+  if (mobileMenuActive.value) {
+    mobileMenuActive.value = !shouldHide
+  } else {
+    mobileMenuActive.value = shouldShow
+  }
+
+  return mobileMenuActive.value
+})
+
+// 监听窗口大小变化，使用 ResizeObserver 检测 toolbar 宽度变化
+onMounted(() => {
+  const toolbar = document.querySelector('.top-toolbar')
+  if (toolbar) {
+    const resizeObserver = new ResizeObserver(() => {
+      triggerUpdate.value++
+    })
+    resizeObserver.observe(toolbar)
+  }
+})
 
 // 图片导航
 const currentImageIndex = computed(() => {
@@ -869,6 +952,48 @@ html.dark-mode .top-toolbar {
   color: #409EFF;
 }
 
+/* 移动端圆点菜单 */
+.mobile-menu-btn {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.menu-dots {
+  display: inline-block;
+  transform: rotate(90deg);
+  letter-spacing: 2px;
+}
+
+.mobile-expand-menu {
+  position: absolute;
+  top: 100%;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 101;
+}
+
+.mobile-expand-menu .el-button {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.menu-expand-enter-active,
+.menu-expand-leave-active {
+  transition: all 0.2s ease;
+}
+
+.menu-expand-enter-from,
+.menu-expand-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
 .mode-buttons {
   flex-shrink: 0;
 }
@@ -1036,7 +1161,7 @@ html.dark-mode .selection-count {
   right: 0;
   bottom: 0;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1304,6 +1429,16 @@ html.dark-mode .selection-count {
   background: rgba(255, 255, 255, 0.2) !important;
 }
 
+/* 图片预览浮层淡入淡出 */
+.preview-fade-enter-active,
+.preview-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.preview-fade-enter-from,
+.preview-fade-leave-to {
+  opacity: 0;
+}
+
 /* 详情面板过渡动画 */
 .detail-slide-up-enter-active,
 .detail-slide-up-leave-active {
@@ -1324,7 +1459,7 @@ html.dark-mode .float-detail-panel {
 }
 
 html.dark-mode .image-preview-overlay {
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(0, 0, 0, 0.86);
 }
 
 /* 图片自适应浅色/深色文字 */
