@@ -6,7 +6,7 @@
     </div>
 
     <!-- 展开状态 -->
-    <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }">
+    <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }" ref="searchPanelRef">
       <!-- 一级搜索栏 -->
       <div class="search-bar">
         <div class="search-input-wrapper" :class="{ 'has-input-tags': selectedTags.length > 0 || selectedFavorite }">
@@ -18,7 +18,7 @@
                 v-if="selectedFavorite"
                 class="input-tag favorite-tag"
               >
-                ★ {{ selectedFavorite.name }}
+                <span class="input-tag-text" :title="'★ ' + selectedFavorite.name">★ {{ selectedFavorite.name }}</span>
                 <el-icon class="input-tag-close" @click.stop="clearSelectedFavorite"><Close /></el-icon>
               </span>
               <span
@@ -26,7 +26,7 @@
                 :key="tag"
                 class="input-tag"
               >
-                #{{ tag }}
+                <span class="input-tag-text" :title="'#' + tag">#{{ tag }}</span>
                 <el-icon class="input-tag-close" @click.stop="removeInputTag(tag)"><Close /></el-icon>
               </span>
             </div>
@@ -64,7 +64,7 @@
 
         <!-- 收藏夹/Tags 面板 -->
         <transition name="el-fade-in-linear">
-          <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop>
+          <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop ref="favoriteDropdownRef" :style="{ width: favoriteDropdownWidth + 'px' }">
             <!-- 收藏夹内容 -->
             <div v-if="activePanelTab === 'favorites'" class="panel-content">
               <div class="favorite-list">
@@ -401,7 +401,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAllFolders, createFolder, deleteFolder } from '@/api/favorites'
@@ -425,6 +425,35 @@ const subscribeForm = reactive({
   name: '',
   tags: '',
   color: '#409EFF',
+})
+const searchPanelRef = ref(null)
+const favoriteDropdownRef = ref(null)
+const panelWidthTrigger = ref(0)
+
+// 动态宽度：当 search-panel 变窄时，favorite-dropdown 也同步缩小
+const favoriteDropdownWidth = computed(() => {
+  const panel = searchPanelRef.value
+  if (!panel) return 360
+
+  // 引用 trigger 强制依赖响应式变化
+  void panelWidthTrigger.value
+
+  const panelWidth = panel.offsetWidth
+  const minWidth = 280
+  const maxWidth = 360
+
+  return Math.min(maxWidth, Math.max(minWidth, panelWidth))
+})
+
+// 监听 panel 宽度变化
+onMounted(() => {
+  const panel = searchPanelRef.value
+  if (panel) {
+    const resizeObserver = new ResizeObserver(() => {
+      panelWidthTrigger.value++
+    })
+    resizeObserver.observe(panel)
+  }
 })
 
 // 标签浏览相关
@@ -1345,25 +1374,6 @@ html.dark-mode .search-panel {
   overflow: hidden;
 }
 
-/* 标签过长时缩小 */
-.input-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  background: var(--el-color-primary-light-9);
-  border: 1px solid var(--el-color-primary-light-7);
-  border-radius: 4px;
-  font-size: 12px;
-  color: var(--el-color-primary);
-  cursor: default;
-  white-space: nowrap;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1;
-}
-
 .search-input-wrapper :deep(.el-input__wrapper) {
   background: transparent;
   box-shadow: none;
@@ -1396,25 +1406,33 @@ html.dark-mode .search-panel {
   background: var(--el-color-primary-light-9);
   border: 1px solid var(--el-color-primary-light-7);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--el-color-primary);
   cursor: default;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 150px;
   overflow: hidden;
-  text-overflow: ellipsis;
   flex-shrink: 0;
 }
 
+.input-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
 .input-tag-close {
-  font-size: 12px;
+  flex-shrink: 0;
   cursor: pointer;
-  color: var(--el-color-primary-light-3);
-  transition: color 0.2s;
+  padding: 2px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
 }
 
 .input-tag-close:hover {
-  color: var(--el-color-primary-dark-2);
+  background: var(--el-color-primary-light-7);
 }
 
 .search-icon {
