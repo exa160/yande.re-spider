@@ -46,7 +46,42 @@ def get_db_engine():
     # TODO 考虑取消自动建表/迁移，改为手动执行脚本
     Base.metadata.create_all(bind=_cached_engine)
 
+    _auto_migrate(_cached_engine)
+
     return _cached_engine
+
+
+def _auto_migrate(engine) -> None:
+    from sqlalchemy import inspect
+    from loguru import logger
+
+    if not str(engine.url).startswith("sqlite"):
+        return
+
+    inspector = inspect(engine)
+    if "favorite_folders" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("favorite_folders")}
+    desired = [
+        ("schedule_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("schedule_cron", "VARCHAR(64) NOT NULL DEFAULT ''"),
+        ("schedule_mode", "VARCHAR(16) NOT NULL DEFAULT 'last_id'"),
+        ("schedule_max_images", "INTEGER"),
+        ("last_scheduled_at", "DATETIME"),
+        ("last_schedule_status", "VARCHAR(16)"),
+        ("last_schedule_stats", "JSON"),
+    ]
+
+    with engine.begin() as conn:
+        for col_name, col_type in desired:
+            if col_name in existing:
+                continue
+            try:
+                conn.exec_driver_sql(f"ALTER TABLE favorite_folders ADD COLUMN {col_name} {col_type}")
+                logger.info(f"Auto-migrate: ADD COLUMN favorite_folders.{col_name}")
+            except Exception as e:
+                logger.warning(f"Auto-migrate failed for {col_name}: {e}")
 
 
 def engine_change_handler():

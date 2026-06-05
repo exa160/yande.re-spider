@@ -118,3 +118,10 @@ class FavoriteFolder(Base):
     updated_at = Column(
         DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间"
     )
+    schedule_enabled = Column(Boolean, default=False, nullable=False, comment="是否启用调度")
+    schedule_cron = Column(String(64), default="", nullable=False, comment="cron 表达式")
+    schedule_mode = Column(String(16), default="last_id", nullable=False, comment="last_id | max")
+    schedule_max_images = Column(Integer, nullable=True, comment="单次最大下载数（None 用全局默认）")
+    last_scheduled_at = Column(DateTime, nullable=True, comment="上次调度时间")
+    last_schedule_status = Column(String(16), nullable=True, comment="running | success | failed")
+    last_schedule_stats = Column(JSON, nullable=True, comment="上次调度统计 JSON")
