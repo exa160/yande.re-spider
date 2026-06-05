@@ -24,7 +24,7 @@ class FavoritesService:
     """收藏夹服务类"""
 
     @staticmethod
-    def _sync_schedule(folder) -> None:
+    def _sync_schedule(folder, strict: bool = False) -> None:
         if folder.schedule_enabled and folder.schedule_cron:
             try:
                 schedule_manager.register_folder(
@@ -34,6 +34,8 @@ class FavoritesService:
                     max_images=folder.schedule_max_images,
                 )
             except ValueError as e:
+                if strict:
+                    raise
                 logger.warning(f"Failed to register schedule for folder {folder.id}: {e}")
         else:
             schedule_manager.unregister_folder(folder.id)
@@ -113,7 +115,10 @@ class FavoritesService:
             FavoritesService._refresh_local_count(folder_id)
 
         updated = favorite_dao.get_by_id(folder_id)
-        FavoritesService._sync_schedule(updated)
+        schedule_fields_changed = bool(
+            set(update_data) & {"schedule_enabled", "schedule_cron", "schedule_mode", "schedule_max_images"}
+        )
+        FavoritesService._sync_schedule(updated, strict=schedule_fields_changed)
         return FavoriteFolder.model_validate(updated)
 
     @staticmethod

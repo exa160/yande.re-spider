@@ -79,7 +79,10 @@ async def get_folder(folder_id: int) -> BaseResponse:
 @router.put("/{folder_id}", response_model=BaseResponse, summary="更新收藏夹")
 async def update_folder(folder_id: int, folder: FavoriteFolderUpdate) -> BaseResponse:
     """更新收藏夹信息"""
-    updated = FavoritesService.update_folder(folder_id, folder)
+    try:
+        updated = FavoritesService.update_folder(folder_id, folder)
+    except ValueError as e:
+        raise APIException(ErrMsg.SCHEDULE_INVALID_CRON, data={"detail": str(e)}, e=e)
     if not updated:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     return BaseResponse(message="更新成功", data=updated)
