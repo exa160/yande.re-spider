@@ -9,6 +9,7 @@ from src.middleware.downloader import DownloadMiddleware
 from src.middleware.errors import ErrorHandleMiddleware
 from src.middleware.frontend_static import FrontendStaticLoader
 from src.middleware.loggers import LoggerMiddleware
+from src.middleware.scheduler import SchedulerMiddleware
 from src.middleware.session import RequestSessionMiddleware
 
 
@@ -43,6 +44,7 @@ def init_app(app: FastAPI) -> FastAPI:
     work_dir_setup()
     RequestSessionMiddleware.init_app(app)
     DownloadMiddleware.init_app(app)
+    SchedulerMiddleware.init_app(app)
     APILoader.init_app(app)
     LoggerMiddleware.init_app(app, path_constant.log_dir)
     ErrorHandleMiddleware.init_app(app)
