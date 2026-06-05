@@ -144,6 +144,13 @@ class YandeDataRepository(BaseDAO):
         stmt = select(YandeData).filter_by(id=image_id)
         return self.session.execute(stmt).scalar_one_or_none()
 
+    def get_max_id_for_tags(self, tags: str) -> Optional[int]:
+        if not tags or not tags.strip():
+            return None
+        filter_funcs = [self._tag_filter(tags)]
+        stmt = select(func.max(YandeData.id)).filter(*filter_funcs)
+        return self.session.execute(stmt).scalar_one_or_none()
+
     def insert(self, data: dict) -> bool:
         try:
             record = YandeData(**data)
