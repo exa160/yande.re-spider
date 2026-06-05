@@ -26,6 +26,13 @@ class FavoriteFolder(FavoriteFolderBase):
     last_refresh: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    schedule_enabled: bool = False
+    schedule_cron: str = ""
+    schedule_mode: str = "last_id"
+    schedule_max_images: Optional[int] = None
+    last_scheduled_at: Optional[datetime] = None
+    last_schedule_status: Optional[str] = None
+    last_schedule_stats: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,6 +46,27 @@ class FavoriteFolderWithPreview(FavoriteFolder):
 class FavoriteFolderResponse(BaseResponse[FavoriteFolder]):
     """
     查询响应 - 收藏夹详情
+    """
+    ...
+
+
+class FavoriteFoldersResponse(BaseResponse[list[FavoriteFolder]]):
+    """
+    查询响应 - 收藏夹详情列表
+    """
+    ...
+
+
+class FavoriteFolderWithPreviewResponse(BaseResponse[FavoriteFolderWithPreview]):
+    """
+    查询响应 - 带图片预览的收藏夹详情
+    """
+    ...
+
+
+class FavoriteFoldersWithPreviewResponse(BaseResponse[list[FavoriteFolderWithPreview]]):
+    """
+    查询响应 - 带图片预览的收藏夹详情列表
     """
     ...
 

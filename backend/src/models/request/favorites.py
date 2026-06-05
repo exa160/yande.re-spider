@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FavoriteFolderUpdate(BaseModel):
@@ -11,6 +11,18 @@ class FavoriteFolderUpdate(BaseModel):
     color: Optional[str] = None
     icon: Optional[str] = None
     sort_order: Optional[int] = None
+    schedule_enabled: Optional[bool] = None
+    schedule_cron: Optional[str] = Field(None, max_length=64)
+    schedule_mode: Optional[str] = Field(None, max_length=16)
+    schedule_max_images: Optional[int] = Field(None, ge=1)
+
+    @field_validator("schedule_mode")
+    @classmethod
+    def _validate_mode(cls, v):
+        if v is not None and v not in ("last_id", "max"):
+            raise ValueError("schedule_mode must be 'last_id' or 'max'")
+        return v
+
 
 class FavoriteFolderBase(BaseModel):
     """收藏夹基础模型"""
@@ -20,6 +32,17 @@ class FavoriteFolderBase(BaseModel):
     color: str = Field(default="#409EFF", description="展示颜色，hex格式")
     icon: str = Field(default="folder", description="图标标识")
     sort_order: int = Field(default=0, description="排序权重")
+    schedule_enabled: bool = Field(default=False, description="是否启用定时调度")
+    schedule_cron: str = Field(default="", max_length=64, description="cron 表达式")
+    schedule_mode: str = Field(default="last_id", description="last_id | max")
+    schedule_max_images: Optional[int] = Field(default=None, ge=1, description="单次最大下载数（None 用全局默认）")
+
+    @field_validator("schedule_mode")
+    @classmethod
+    def _validate_mode(cls, v):
+        if v not in ("last_id", "max"):
+            raise ValueError("schedule_mode must be 'last_id' or 'max'")
+        return v
 
 
 class FavoriteFolderCreate(FavoriteFolderBase):
