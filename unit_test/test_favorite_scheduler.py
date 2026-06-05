@@ -151,3 +151,41 @@ def test_yande_api_failure_sets_failed_status():
         assert reloaded.last_schedule_status == "failed"
     finally:
         favorite_dao.delete(folder.id)
+
+
+def test_concurrent_folder_limit():
+    from src.common.settings import config
+    from src.services.favorite_scheduler import _schedule_semaphore
+
+    n = config.scheduler.max_concurrent_schedules
+    assert _schedule_semaphore._value == n
+
+
+def test_run_folder_schedule_not_found():
+    from src.services.favorite_scheduler import run_folder_schedule
+    result = asyncio.run(run_folder_schedule(99999999))
+    assert result == {"skipped": True, "reason": "not_found"}
+
+
+def test_run_folder_schedule_pagination_stops_on_empty():
+    folder = favorite_dao.create(
+        name="test_empty",
+        tags="x",
+        schedule_enabled=True,
+        schedule_cron="0 3 * * *",
+    )
+    try:
+        mock_response = MagicMock()
+        mock_response.root = []
+        with patch("src.services.favorite_scheduler.YandeApi") as mock_api:
+            mock_api.return_value.get_ranking.return_value = mock_response
+            with patch("src.services.favorite_scheduler.DownloadService.create_task") as mock_create:
+                from src.services.favorite_scheduler import run_folder_schedule
+                stats = asyncio.run(run_folder_schedule(folder.id))
+
+        assert stats["enqueued"] == 0
+        assert mock_create.call_count == 0
+        reloaded = favorite_dao.get_by_id(folder.id)
+        assert reloaded.last_schedule_status == "success"
+    finally:
+        favorite_dao.delete(folder.id)
