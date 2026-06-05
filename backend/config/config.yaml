@@ -25,3 +25,7 @@ downloader:
   chunk_size: 10240
   split_size: 52428800
   retry_times: 3
+scheduler:
+  max_concurrent_schedules: 2
+  max_images_per_run_default: 200
+  max_pages_per_run: 5
