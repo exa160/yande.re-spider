@@ -24,6 +24,16 @@
             <div class="folder-name">{{ folder.name }}</div>
             <div class="folder-meta">
               <span class="folder-count">{{ folder.local_count || 0 }} 张</span>
+              <el-tag
+                v-if="folder.schedule_enabled"
+                :type="scheduleStatusType(folder.last_schedule_status)"
+                size="small"
+                effect="light"
+                class="schedule-badge"
+              >
+                <el-icon><Clock /></el-icon>
+                {{ formatLastScheduled(folder.last_scheduled_at) }}
+              </el-tag>
             </div>
           </div>
           <div class="folder-actions">
@@ -67,7 +77,7 @@
         <el-form-item label="名称">
           <el-input v-model="form.name" placeholder="收藏夹名称" maxlength="50" />
         </el-form-item>
-        
+
         <el-form-item label="标签">
           <el-input
             v-model="form.tags"
@@ -109,6 +119,39 @@
             </el-option>
           </el-select>
         </el-form-item>
+
+        <el-collapse v-model="scheduleCollapse" class="schedule-collapse">
+          <el-collapse-item title="定时任务（可选）" name="schedule">
+            <el-form-item label="启用调度">
+              <el-switch v-model="form.schedule_enabled" />
+            </el-form-item>
+            <el-form-item label="Cron 表达式" v-if="form.schedule_enabled">
+              <el-input
+                v-model="form.schedule_cron"
+                placeholder="如 '0 3 * * *' 表示每天凌晨 3 点"
+              />
+              <div class="form-tip">
+                5 字段格式：分 时 日 月 周
+                <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
+              </div>
+            </el-form-item>
+            <el-form-item label="拉取模式" v-if="form.schedule_enabled">
+              <el-radio-group v-model="form.schedule_mode">
+                <el-radio value="last_id">增量（仅新图）</el-radio>
+                <el-radio value="max">最大（全部）</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="单次最大数" v-if="form.schedule_enabled">
+              <el-input-number
+                v-model="form.schedule_max_images"
+                :min="1"
+                :max="10000"
+                placeholder="留空使用全局默认"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-collapse-item>
+        </el-collapse>
       </el-form>
 
       <template #footer>
@@ -124,7 +167,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Folder, Edit, Delete, FolderOpened, Star, Collection, Present } from '@element-plus/icons-vue'
+import { Plus, Folder, Edit, Delete, FolderOpened, Star, Collection, Present, Clock } from '@element-plus/icons-vue'
 import { getAllFolders, createFolder, updateFolder, deleteFolder } from '@/api/favorites'
 
 const emit = defineEmits(['select', 'create'])
@@ -134,6 +177,7 @@ const selectedFolder = ref(null)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref(null)
+const scheduleCollapse = ref([])
 
 const form = ref({
   name: '',
@@ -141,6 +185,10 @@ const form = ref({
   color: '#409EFF',
   icon: 'folder',
   sort_order: 0,
+  schedule_enabled: false,
+  schedule_cron: '',
+  schedule_mode: 'last_id',
+  schedule_max_images: null,
 })
 
 const colorOptions = [
@@ -177,6 +225,10 @@ const handleCreate = () => {
     color: '#409EFF',
     icon: 'folder',
     sort_order: folders.value.length,
+    schedule_enabled: false,
+    schedule_cron: '',
+    schedule_mode: 'last_id',
+    schedule_max_images: null,
   }
   dialogVisible.value = true
 }
@@ -190,6 +242,10 @@ const handleEdit = (folder) => {
     color: folder.color,
     icon: folder.icon,
     sort_order: folder.sort_order,
+    schedule_enabled: folder.schedule_enabled || false,
+    schedule_cron: folder.schedule_cron || '',
+    schedule_mode: folder.schedule_mode || 'last_id',
+    schedule_max_images: folder.schedule_max_images,
   }
   dialogVisible.value = true
 }
@@ -243,6 +299,24 @@ const handleSubmit = async () => {
 onMounted(() => {
   loadFolders()
 })
+
+const scheduleStatusType = (status) => {
+  return {
+    success: 'success',
+    failed: 'danger',
+    running: 'warning',
+  }[status] || 'info'
+}
+
+const formatLastScheduled = (dt) => {
+  if (!dt) return '未运行'
+  const d = new Date(dt)
+  const diffMs = Date.now() - d.getTime()
+  if (diffMs < 60000) return '刚刚'
+  if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)} 分钟前`
+  if (diffMs < 86400000) return `${Math.floor(diffMs / 3600000)} 小时前`
+  return d.toLocaleDateString('zh-CN')
+}
 
 defineExpose({
   loadFolders,
@@ -423,5 +497,17 @@ defineExpose({
 .color-option.active {
   border-color: var(--text-primary);
   box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+.schedule-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+}
+.schedule-collapse {
+  margin-top: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
 }
 </style>
