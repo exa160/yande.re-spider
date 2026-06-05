@@ -320,9 +320,27 @@ const formatLastScheduled = (dt) => {
   return d.toLocaleDateString('zh-CN')
 }
 
+const openDialog = (prefill = {}) => {
+  isEdit.value = false
+  editingId.value = null
+  form.value = {
+    name: prefill.name || '',
+    tags: prefill.tags || '',
+    color: prefill.color || '#409EFF',
+    icon: prefill.icon || 'folder',
+    sort_order: folders.value.length,
+    schedule_enabled: prefill.schedule_enabled ?? false,
+    schedule_cron: prefill.schedule_cron || '',
+    schedule_mode: prefill.schedule_mode || 'last_id',
+    schedule_max_images: prefill.schedule_max_images ?? null,
+  }
+  dialogVisible.value = true
+}
+
 defineExpose({
   loadFolders,
   selectedFolder,
+  openDialog,
 })
 </script>
 

@@ -54,6 +54,9 @@
               <el-button circle @click="showDownloadDialog = true; mobileMenuExpanded = false">
                 <el-icon><Download /></el-icon>
               </el-button>
+              <el-button circle @click="favoritePanelRef?.openDialog(); mobileMenuExpanded = false">
+                <el-icon><Folder /></el-icon>
+              </el-button>
               <el-button circle @click="showConfigDialog = true; mobileMenuExpanded = false">
                 <el-icon><Setting /></el-icon>
               </el-button>
@@ -71,6 +74,11 @@
           <el-tooltip content="下载管理" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
             <el-button circle @click="showDownloadDialog = true">
               <el-icon><Download /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="收藏夹" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
+            <el-button circle @click="favoritePanelRef?.openDialog()">
+              <el-icon><Folder /></el-icon>
             </el-button>
           </el-tooltip>
           <el-tooltip content="配置" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
@@ -291,6 +299,8 @@
     >
       <ConfigPanel />
     </el-dialog>
+
+    <FavoritePanel ref="favoritePanelRef" />
   </div>
 </template>
 
@@ -298,11 +308,12 @@
 import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { ElImageViewer } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu } from '@element-plus/icons-vue'
+import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu, Folder } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
+import FavoritePanel from '@/components/FavoritePanel.vue'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import { updateOnlineCount, updateLocalCount, refreshOnlineCount } from '@/api/favorites'
@@ -540,6 +551,7 @@ const isIndeterminate = ref(false)
 // 弹框状态
 const showDownloadDialog = ref(false)
 const showConfigDialog = ref(false)
+const favoritePanelRef = ref(null)
 
 // 夜间模式
 const isDarkMode = ref(localStorage.getItem('dark_mode') === 'true')

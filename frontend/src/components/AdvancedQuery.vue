@@ -174,54 +174,14 @@
                   标签浏览
                 </div>
               </div>
-              <el-button 
-                size="small" 
-                type="primary" 
+              <el-button
+                size="small"
+                type="primary"
                 class="subscribe-btn"
                 @click="subscribeCurrentSearch"
               >
                 订阅当前
               </el-button>
-            </div>
-          </div>
-        </transition>
-
-        <!-- 订阅对话框 - 自定义面板样式 -->
-        <transition name="el-fade-in-linear">
-          <div v-if="subscribeDialogVisible" class="subscribe-panel" @click.stop>
-            <div class="subscribe-header">
-              <span>订阅当前搜索</span>
-              <el-button size="small" text @click="subscribeDialogVisible = false">
-                <el-icon><Close /></el-icon>
-              </el-button>
-            </div>
-            <div class="subscribe-body">
-              <div class="form-item">
-                <label>收藏夹名称</label>
-                <el-input v-model="subscribeForm.name" placeholder="如：高评分图片" size="small" />
-              </div>
-              <div class="form-item">
-                <label>标签</label>
-                <el-input v-model="subscribeForm.tags" type="textarea" :rows="3" readonly size="small" />
-                <div class="form-tip">系统将根据当前搜索条件自动生成标签</div>
-              </div>
-              <div class="form-item">
-                <label>颜色</label>
-                <div class="color-picker">
-                  <div
-                    v-for="color in colorOptions"
-                    :key="color"
-                    class="color-option"
-                    :class="{ active: subscribeForm.color === color }"
-                    :style="{ backgroundColor: color }"
-                    @click="subscribeForm.color = color"
-                  />
-                </div>
-              </div>
-            </div>
-            <div class="subscribe-footer">
-              <el-button size="small" @click="subscribeDialogVisible = false">取消</el-button>
-              <el-button size="small" type="primary" @click="confirmSubscribe">确认订阅</el-button>
             </div>
           </div>
         </transition>
@@ -397,6 +357,8 @@
         </div>
       </el-collapse-transition>
     </div>
+
+    <FavoritePanel ref="favoritePanelRef" />
   </div>
 </template>
 
@@ -406,6 +368,7 @@ import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plu
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAllFolders, createFolder, deleteFolder } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
+import FavoritePanel from '@/components/FavoritePanel.vue'
 
 const props = defineProps({
   sourceMode: {
@@ -420,12 +383,7 @@ const emit = defineEmits(['search'])
 const showFavoritePanel = ref(false)
 const favoriteFolders = ref([])
 const isSubscribing = ref(false)
-const subscribeDialogVisible = ref(false)
-const subscribeForm = reactive({
-  name: '',
-  tags: '',
-  color: '#409EFF',
-})
+const favoritePanelRef = ref(null)
 const searchPanelRef = ref(null)
 const favoriteDropdownRef = ref(null)
 const panelWidthTrigger = ref(0)
@@ -694,36 +652,15 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-// 一键订阅当前搜索
+// 一键订阅当前搜索 — 复用 FavoritePanel 对话框并预填当前条件
 const subscribeCurrentSearch = () => {
-  // 构建当前搜索的 tags 字符串
-  const tagsStr = buildCurrentTagsString()
-  subscribeForm.tags = tagsStr
-  subscribeForm.name = '新建收藏夹'
-  subscribeDialogVisible.value = true
-}
-
-const confirmSubscribe = async () => {
-  if (!subscribeForm.name.trim()) {
-    ElMessage.warning('请输入收藏夹名称')
-    return
-  }
-  try {
-    await createFolder({
-      name: subscribeForm.name,
-      tags: subscribeForm.tags,
-      color: subscribeForm.color,
-      icon: 'folder',
-      sort_order: favoriteFolders.value.length,
-    })
-    ElMessage.success('订阅成功')
-    subscribeDialogVisible.value = false
-    subscribeForm.name = ''
-    subscribeForm.tags = ''
-    loadFavoriteFolders()
-  } catch (error) {
-    ElMessage.error('订阅失败')
-  }
+  if (!favoritePanelRef.value) return
+  favoritePanelRef.value.openDialog({
+    name: '新建收藏夹',
+    tags: buildCurrentTagsString(),
+    color: '#409EFF',
+    icon: 'folder',
+  })
 }
 
 // 构建当前搜索的 tags 字符串
@@ -919,18 +856,6 @@ const parseFavoriteTagsToParts = (tagsStr) => {
            !part.startsWith('date:<=')
   })
 }
-
-// 颜色选项
-const colorOptions = [
-  '#409EFF', // 蓝色
-  '#67C23A', // 绿色
-  '#E6A23C', // 橙色
-  '#F56C6C', // 红色
-  '#909399', // 灰色
-  '#BD35EF', // 紫色
-  '#00BCD4', // 青色
-  '#FF69B4', // 粉色
-]
 
 // 状态
 const collapsed = ref(false)
@@ -2072,46 +1997,4 @@ html.dark-mode .favorite-dropdown {
   line-height: 1.4;
 }
 
-.subscribe-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color);
-}
-
-.subscribe-footer :deep(.el-button) {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-
-.subscribe-footer :deep(.el-button--primary) {
-  background: #409EFF;
-  border-color: #409EFF;
-  color: white;
-}
-
-.color-picker {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.color-option {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.color-option:hover {
-  transform: scale(1.1);
-}
-
-.color-option.active {
-  border-color: var(--text-primary);
-}
 </style>
