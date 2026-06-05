@@ -120,38 +120,41 @@
           </el-select>
         </el-form-item>
 
-        <el-collapse v-model="scheduleCollapse" class="schedule-collapse">
-          <el-collapse-item title="定时任务（可选）" name="schedule">
-            <el-form-item label="启用调度">
-              <el-switch v-model="form.schedule_enabled" />
-            </el-form-item>
-            <el-form-item label="Cron 表达式" v-if="form.schedule_enabled">
-              <el-input
-                v-model="form.schedule_cron"
-                placeholder="如 '0 3 * * *' 表示每天凌晨 3 点"
-              />
-              <div class="form-tip">
-                5 字段格式：分 时 日 月 周
-                <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
-              </div>
-            </el-form-item>
-            <el-form-item label="拉取模式" v-if="form.schedule_enabled">
-              <el-radio-group v-model="form.schedule_mode">
-                <el-radio value="last_id">增量（仅新图）</el-radio>
-                <el-radio value="max">最大（全部）</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="单次最大数" v-if="form.schedule_enabled">
-              <el-input-number
-                v-model="form.schedule_max_images"
-                :min="1"
-                :max="10000"
-                placeholder="留空使用全局默认"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-collapse-item>
-        </el-collapse>
+        <el-form-item label="定时任务">
+          <el-switch
+            v-model="form.schedule_enabled"
+            active-text="启用"
+            inactive-text="关闭"
+          />
+        </el-form-item>
+
+        <template v-if="form.schedule_enabled">
+          <el-form-item label="Cron 表达式">
+            <el-input
+              v-model="form.schedule_cron"
+              placeholder="如 '0 3 * * *' 表示每天凌晨 3 点"
+            />
+            <div class="form-tip">
+              5 字段格式：分 时 日 月 周
+              <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
+            </div>
+          </el-form-item>
+          <el-form-item label="拉取模式">
+            <el-radio-group v-model="form.schedule_mode">
+              <el-radio value="last_id">增量（仅新图）</el-radio>
+              <el-radio value="max">最大（全部）</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="单次最大数">
+            <el-input-number
+              v-model="form.schedule_max_images"
+              :min="1"
+              :max="10000"
+              placeholder="留空使用全局默认"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </template>
       </el-form>
 
       <template #footer>
@@ -177,7 +180,6 @@ const selectedFolder = ref(null)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref(null)
-const scheduleCollapse = ref([])
 
 const form = ref({
   name: '',
@@ -504,10 +506,5 @@ defineExpose({
   align-items: center;
   gap: 2px;
   font-size: 11px;
-}
-.schedule-collapse {
-  margin-top: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
 }
 </style>
