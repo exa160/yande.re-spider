@@ -2,9 +2,12 @@
 收藏夹管理 API 路由
 """
 
+import json
+
 from fastapi import APIRouter
 
 from src.common.constant import ErrMsg
+from src.dao.favorite_dao import favorite_dao
 from src.middleware.errors import APIException
 from src.models.request.favorites import (
     FavoriteFolderCreate,
@@ -158,3 +161,51 @@ async def update_local_count(folder_id: int, count: int) -> BaseResponse:
     if not success:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     return BaseResponse(message="更新成功", data={"local_count": count})
+
+
+@router.post(
+    "/{folder_id}/schedule/trigger",
+    response_model=BaseResponse,
+    summary="手动触发收藏夹调度",
+)
+async def trigger_folder_schedule(folder_id: int) -> BaseResponse:
+    from src.services.favorite_scheduler import run_folder_schedule
+    folder = favorite_dao.get_by_id(folder_id)
+    if not folder:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    if not folder.schedule_enabled:
+        raise APIException(ErrMsg.SCHEDULE_DISABLED)
+    try:
+        stats = await run_folder_schedule(folder_id)
+        return BaseResponse(message="触发成功", data=stats)
+    except Exception as e:
+        raise APIException(ErrMsg.SCHEDULE_TRIGGER_ERROR, e=e)
+
+
+@router.get(
+    "/{folder_id}/schedule/status",
+    response_model=BaseResponse,
+    summary="获取收藏夹调度状态",
+)
+async def get_folder_schedule_status(folder_id: int) -> BaseResponse:
+    folder = favorite_dao.get_by_id(folder_id)
+    if not folder:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    stats = None
+    if folder.last_schedule_stats:
+        try:
+            stats = json.loads(folder.last_schedule_stats) if isinstance(folder.last_schedule_stats, str) else folder.last_schedule_stats
+        except Exception:
+            stats = None
+    return BaseResponse(
+        message=ErrMsg.OK.msg,
+        data={
+            "schedule_enabled": folder.schedule_enabled,
+            "schedule_cron": folder.schedule_cron,
+            "schedule_mode": folder.schedule_mode,
+            "schedule_max_images": folder.schedule_max_images,
+            "last_scheduled_at": folder.last_scheduled_at,
+            "last_schedule_status": folder.last_schedule_status,
+            "last_schedule_stats": stats,
+        },
+    )
