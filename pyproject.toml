@@ -18,6 +18,7 @@ dependencies = [
     "filelock",
     "filecache>=0.81",
     "pillow>=12.2.0",
+    "apscheduler>=3.10,<4.0",
 ]
 
 [dependency-groups]
