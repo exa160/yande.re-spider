@@ -67,34 +67,17 @@
           <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop ref="favoriteDropdownRef" :style="{ width: favoriteDropdownWidth + 'px' }">
             <!-- 收藏夹内容 -->
             <div v-if="activePanelTab === 'favorites'" class="panel-content">
-              <div class="favorite-list">
-                <div
-                  v-for="folder in favoriteFolders"
-                  :key="folder.id"
-                  class="favorite-item"
-                  @click="selectFavorite(folder)"
-                  @mousedown.prevent="handlePressStart(folder, $event)"
-                  @mouseup="handlePressEnd(folder)"
-                  @mousemove="handlePressMove"
-                  @touchstart.passive="handlePressStart(folder, $event)"
-                  @touchend="handlePressEnd(folder)"
-                  @touchmove.passive="handlePressMove"
-                >
-                  <div class="favorite-icon" :style="{ backgroundColor: folder.color }">
-                    <el-icon><Star v-if="folder.icon === 'star'" /><Folder v-else /></el-icon>
-                  </div>
-                  <div class="favorite-info">
-                    <div class="favorite-name">{{ folder.name }}</div>
-                    <div class="favorite-tags">{{ folder.tags || '无标签' }}</div>
-                  </div>
-                  <div class="favorite-count">
-                    {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
-                  </div>
-                </div>
-                <div v-if="favoriteFolders.length === 0" class="favorite-empty">
-                  暂无收藏夹
-                </div>
-              </div>
+              <FavoritePanel
+                ref="favoritePanelRef"
+                :folders="favoriteFolders"
+                :color-options="colorOptions"
+                :source-mode="sourceMode"
+                @select="selectFavorite"
+                @longPress="handleLongPress"
+                @create="handleCreateFolder"
+                @update="handleUpdateFolder"
+                @delete="handleDeleteFolder"
+              />
             </div>
 
             <!-- 标签浏览内容 - 倒装顺序 -->
@@ -107,8 +90,8 @@
                   :class="{ selected: selectedTags.includes(tag.name) }"
                   @click="selectTag(tag)"
                 >
-                  <el-icon 
-                    class="tag-star" 
+                  <el-icon
+                    class="tag-star"
                     :class="{ starred: isTagFavorited(tag.name) }"
                     @click.stop="favoriteTag(tag)"
                   >
@@ -357,8 +340,6 @@
         </div>
       </el-collapse-transition>
     </div>
-
-    <FavoritePanel ref="favoritePanelRef" />
   </div>
 </template>
 
@@ -366,9 +347,9 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAllFolders, createFolder, deleteFolder } from '@/api/favorites'
+import { getAllFolders, createFolder, updateFolder, deleteFolder } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
-import FavoritePanel from '@/components/FavoritePanel.vue'
+import FavoritePanel from './FavoritePanel.vue'
 
 const props = defineProps({
   sourceMode: {
@@ -382,7 +363,6 @@ const emit = defineEmits(['search'])
 // 收藏夹相关
 const showFavoritePanel = ref(false)
 const favoriteFolders = ref([])
-const isSubscribing = ref(false)
 const favoritePanelRef = ref(null)
 const searchPanelRef = ref(null)
 const favoriteDropdownRef = ref(null)
@@ -576,59 +556,6 @@ const loadFavoriteFolders = async () => {
   }
 }
 
-// 长按删除相关
-let pressTimer = null
-let pressTarget = null
-let isLongPress = false
-let pressMoved = false
-let longPressDialogOpen = false // 标记长按弹窗是否打开中
-
-const handlePressStart = (folder, event) => {
-  isLongPress = false
-  pressMoved = false
-  pressTarget = folder
-  pressTimer = setTimeout(() => {
-    isLongPress = true
-    longPressDialogOpen = true
-    ElMessageBox.confirm(`确定删除收藏夹「${folder.name}」？`, '提示', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }).then(async () => {
-      try {
-        await deleteFolder(folder.id)
-        ElMessage.success('已删除')
-        loadFavoriteFolders()
-      } catch (error) {
-        ElMessage.error('删除失败')
-      }
-    }).catch(() => {}).finally(() => {
-      longPressDialogOpen = false
-    })
-  }, 500)
-}
-
-const handlePressMove = () => {
-  pressMoved = true
-  if (pressTimer) {
-    clearTimeout(pressTimer)
-    pressTimer = null
-    pressTarget = null
-  }
-}
-
-const handlePressEnd = (folder) => {
-  if (pressTimer) {
-    clearTimeout(pressTimer)
-    pressTimer = null
-  }
-  if (!isLongPress && !pressMoved && pressTarget && pressTarget.id === folder.id) {
-    selectFavorite(folder)
-  }
-  pressTarget = null
-  pressMoved = false
-}
-
 const toggleFavoritePanel = () => {
   showFavoritePanel.value = !showFavoritePanel.value
   if (showFavoritePanel.value) {
@@ -639,8 +566,45 @@ const toggleFavoritePanel = () => {
   }
 }
 
+const handleLongPress = (folder) => {
+  favoritePanelRef.value?.openEdit(folder)
+}
+
+const handleCreateFolder = async (payload) => {
+  try {
+    await createFolder({
+      ...payload,
+      icon: 'folder',
+      sort_order: favoriteFolders.value.length,
+    })
+    ElMessage.success('订阅成功')
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('订阅失败')
+  }
+}
+
+const handleUpdateFolder = async ({ id, ...payload }) => {
+  try {
+    await updateFolder(id, payload)
+    ElMessage.success('保存成功')
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('保存失败')
+  }
+}
+
+const handleDeleteFolder = async (folder) => {
+  try {
+    await deleteFolder(folder.id)
+    ElMessage.success('已删除')
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('删除失败')
+  }
+}
+
 const handleClickOutside = (e) => {
-  if (longPressDialogOpen) return
   const container = document.querySelector('.advanced-query-container')
   if (container && !container.contains(e.target)) {
     showFavoritePanel.value = false
@@ -652,15 +616,10 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-// 一键订阅当前搜索 — 复用 FavoritePanel 对话框并预填当前条件
+// 一键订阅当前搜索
 const subscribeCurrentSearch = () => {
-  if (!favoritePanelRef.value) return
-  favoritePanelRef.value.openDialog({
-    name: '新建收藏夹',
-    tags: buildCurrentTagsString(),
-    color: '#409EFF',
-    icon: 'folder',
-  })
+  const tagsStr = buildCurrentTagsString()
+  favoritePanelRef.value?.openCreate({ tags: tagsStr })
 }
 
 // 构建当前搜索的 tags 字符串
@@ -856,6 +815,18 @@ const parseFavoriteTagsToParts = (tagsStr) => {
            !part.startsWith('date:<=')
   })
 }
+
+// 颜色选项
+const colorOptions = [
+  '#409EFF', // 蓝色
+  '#67C23A', // 绿色
+  '#E6A23C', // 橙色
+  '#F56C6C', // 红色
+  '#909399', // 灰色
+  '#BD35EF', // 紫色
+  '#00BCD4', // 青色
+  '#FF69B4', // 粉色
+]
 
 // 状态
 const collapsed = ref(false)
@@ -1918,83 +1889,4 @@ html.dark-mode .favorite-dropdown {
   color: var(--text-muted);
   font-size: 13px;
 }
-
-/* 订阅面板 - 自定义样式 */
-.subscribe-panel {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 8px;
-  width: 360px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
-  z-index: 1002;
-}
-
-.subscribe-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.subscribe-header :deep(.el-button) {
-  padding: 4px;
-  color: var(--text-muted);
-}
-
-.subscribe-header :deep(.el-button:hover) {
-  color: var(--text-primary);
-}
-
-.subscribe-body {
-  padding: 16px;
-}
-
-.form-item {
-  margin-bottom: 14px;
-}
-
-.form-item:last-child {
-  margin-bottom: 0;
-}
-
-.form-item label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.form-item :deep(.el-input__wrapper) {
-  background: var(--bg-primary);
-  box-shadow: none;
-  border: 1px solid var(--border-color);
-}
-
-.form-item :deep(.el-input__inner) {
-  color: var(--text-primary);
-}
-
-.form-item :deep(.el-textarea__inner) {
-  background: var(--bg-primary);
-  box-shadow: none;
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  resize: none;
-}
-
-.form-tip {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
 </style>
