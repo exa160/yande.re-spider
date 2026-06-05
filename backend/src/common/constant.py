@@ -140,6 +140,11 @@ class ErrMsg(BaseMsgEnum):
     REFRESH_LOCAL_COUNT_FAILED = ("2001", "Failed to refresh local count.", HTTPStatus.OK)   #  刷新本地数量失败，但不影响主流程，返回 200 并在消息中说明
     FAVORITE_FOLDER_NOT_FOUND = ("2404", "Favorite folder not found.", HTTPStatus.NOT_FOUND)
 
+    SCHEDULE_INVALID_CRON = ("5001", "Invalid cron expression.", HTTPStatus.BAD_REQUEST)
+    SCHEDULE_DISABLED = ("5002", "Schedule is disabled for this folder.", HTTPStatus.BAD_REQUEST)
+    SCHEDULE_TRIGGER_ERROR = ("5003", "Failed to trigger schedule.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    SCHEDULE_STATUS_NOT_FOUND = ("5404", "Schedule status not found.", HTTPStatus.NOT_FOUND)
+
     # 下载任务
     TASK_START_ERROR = ("3001", "Failed to start task.", HTTPStatus.BAD_REQUEST)
     TASK_PAUSE_ERROR = ("3002", "Failed to pause task.", HTTPStatus.BAD_REQUEST)
