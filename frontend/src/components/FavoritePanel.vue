@@ -57,11 +57,14 @@
         <el-form-item label="标签">
           <el-input
             v-model="form.tags"
-            :placeholder="mode === 'create' ? '如：rating:s score:>100' : '收藏夹标签查询字符串'"
+            :placeholder="mode === 'create' ? '从 AdvancedQuery 选择标签后点 订阅当前' : '标签不可编辑'"
             type="textarea"
             :rows="2"
-            :readonly="mode === 'create' && hasInitialTags"
+            readonly
           />
+          <div v-if="mode === 'edit'" class="form-tip">
+            标签查询由 AdvancedQuery 触发；如需修改请新建一个收藏夹。
+          </div>
         </el-form-item>
         <el-form-item label="颜色">
           <div class="color-picker">
@@ -191,7 +194,6 @@ const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete'])
 
 const mode = ref('list')
 const editingFolder = ref(null)
-const hasInitialTags = ref(false)
 
 const form = reactive({
   name: '',
@@ -360,13 +362,11 @@ const resetForm = () => {
   form.schedule_cron = ''
   form.schedule_mode = 'last_id'
   form.schedule_max_images = null
-  hasInitialTags.value = false
 }
 
 const openCreate = (payload = {}) => {
   resetForm()
   editingFolder.value = null
-  hasInitialTags.value = !!payload.tags
   form.tags = payload.tags || ''
   if (payload.name) form.name = payload.name
   if (payload.color) form.color = payload.color
