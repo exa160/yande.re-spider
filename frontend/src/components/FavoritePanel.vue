@@ -1,6 +1,6 @@
 <template>
   <div class="favorite-panel">
-    <div class="folder-list">
+    <div v-if="mode === 'list'" class="folder-list">
       <div
         v-for="folder in folders"
         :key="folder.id"
@@ -42,24 +42,25 @@
       </div>
     </div>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogMode === 'create' ? '新建收藏夹' : '编辑收藏夹'"
-      width="500px"
-      destroy-on-close
-      @close="handleDialogClose"
-    >
-      <el-form :model="form" label-width="80px">
+    <div v-else class="inline-form">
+      <div class="inline-form-header">
+        <el-icon class="form-mode-icon"><Folder v-if="mode === 'create'" /><Edit v-else /></el-icon>
+        <span class="form-mode-title">{{ mode === 'create' ? '新建收藏夹' : '编辑收藏夹' }}</span>
+        <el-button text size="small" class="back-btn" @click="cancelForm">
+          <el-icon><ArrowLeft /></el-icon> 返回
+        </el-button>
+      </div>
+      <el-form :model="form" label-width="80px" class="form-body" size="small">
         <el-form-item label="名称">
           <el-input v-model="form.name" placeholder="收藏夹名称" maxlength="50" />
         </el-form-item>
         <el-form-item label="标签">
           <el-input
             v-model="form.tags"
-            :placeholder="dialogMode === 'create' ? '如：rating:s score:>100' : '收藏夹标签查询字符串'"
+            :placeholder="mode === 'create' ? '如：rating:s score:>100' : '收藏夹标签查询字符串'"
             type="textarea"
-            :rows="3"
-            :readonly="dialogMode === 'create' && !!initialTags"
+            :rows="2"
+            :readonly="mode === 'create' && hasInitialTags"
           />
         </el-form-item>
         <el-form-item label="颜色">
@@ -82,70 +83,61 @@
           />
         </el-form-item>
         <template v-if="form.schedule_enabled">
-          <el-form-item label="Cron 表达式">
+          <el-form-item label="Cron">
             <el-input
               v-model="form.schedule_cron"
               placeholder="如 '0 3 * * *' 表示每天凌晨 3 点"
             />
             <div class="form-tip">
-              5 字段格式：分 时 日 月 周
+              5 字段：分 时 日 月 周 ·
               <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
             </div>
           </el-form-item>
-          <el-form-item label="拉取模式">
-            <el-radio-group v-model="form.schedule_mode">
-              <el-radio value="last_id">增量（仅新图）</el-radio>
-              <el-radio value="max">最大（全部）</el-radio>
+          <el-form-item label="模式">
+            <el-radio-group v-model="form.schedule_mode" size="small">
+              <el-radio value="last_id">增量</el-radio>
+              <el-radio value="max">最大</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="单次最大数">
+          <el-form-item label="单次上限">
             <el-input-number
               v-model="form.schedule_max_images"
               :min="1"
               :max="10000"
-              placeholder="留空使用全局默认"
-              style="width: 100%"
+              placeholder="留空用全局默认"
+              size="small"
             />
           </el-form-item>
         </template>
       </el-form>
-      <template #footer>
-        <el-button
-          v-if="dialogMode === 'edit'"
-          type="danger"
-          plain
-          @click="handleDeleteClick"
+      <div class="inline-form-footer">
+        <el-popconfirm
+          v-if="mode === 'edit'"
+          title="确定删除该收藏夹？"
+          confirm-button-text="删除"
+          cancel-button-text="取消"
+          @confirm="handleDeleteConfirm"
         >
-          删除
+          <template #reference>
+            <el-button size="small" type="danger" plain>
+              <el-icon><Delete /></el-icon> 删除
+            </el-button>
+          </template>
+        </el-popconfirm>
+        <div class="footer-spacer" />
+        <el-button size="small" @click="cancelForm">取消</el-button>
+        <el-button size="small" type="primary" @click="handleSubmit">
+          {{ mode === 'create' ? '创建' : '保存' }}
         </el-button>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">
-          {{ dialogMode === 'create' ? '创建' : '保存' }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog
-      v-model="deleteConfirmVisible"
-      title="删除收藏夹"
-      width="360px"
-      center
-    >
-      <div style="text-align: center; padding: 12px 0;">
-        确定删除收藏夹「{{ deletingFolder?.name }}」？
       </div>
-      <template #footer>
-        <el-button @click="deleteConfirmVisible = false">取消</el-button>
-        <el-button type="danger" @click="handleDeleteConfirm">删除</el-button>
-      </template>
-    </el-dialog>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Clock, Folder, FolderOpened, Star } from '@element-plus/icons-vue'
+import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, Star } from '@element-plus/icons-vue'
 
 const props = defineProps({
   folders: { type: Array, required: true },
@@ -155,12 +147,9 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete'])
 
-const dialogVisible = ref(false)
-const dialogMode = ref('create')
+const mode = ref('list')
 const editingFolder = ref(null)
-const deletingFolder = ref(null)
-const deleteConfirmVisible = ref(false)
-const initialTags = ref('')
+const hasInitialTags = ref(false)
 
 const form = reactive({
   name: '',
@@ -190,6 +179,7 @@ const resetPressState = () => {
 }
 
 const handlePressStart = (folder, event) => {
+  if (mode.value !== 'list') return
   resetPressState()
   pressTarget = folder
   pressMoved = false
@@ -230,7 +220,7 @@ const handlePressStart = (folder, event) => {
   }, LONG_PRESS_MS)
 }
 
-const handlePressEnd = (folder) => {
+const handlePressEnd = () => {
   if (pressTimer) {
     clearTimeout(pressTimer)
     pressTimer = null
@@ -242,13 +232,11 @@ const handleSelect = (folder) => {
   emit('select', folder)
 }
 
-const scheduleStatusType = (status) => {
-  return {
-    success: 'success',
-    failed: 'danger',
-    running: 'warning',
-  }[status] || 'info'
-}
+const scheduleStatusType = (status) => ({
+  success: 'success',
+  failed: 'danger',
+  running: 'warning',
+}[status] || 'info')
 
 const formatLastScheduled = (dt) => {
   if (!dt) return '未运行'
@@ -268,21 +256,21 @@ const resetForm = () => {
   form.schedule_cron = ''
   form.schedule_mode = 'last_id'
   form.schedule_max_images = null
+  hasInitialTags.value = false
 }
 
 const openCreate = (payload = {}) => {
-  dialogMode.value = 'create'
-  editingFolder.value = null
-  initialTags.value = payload.tags || ''
   resetForm()
+  editingFolder.value = null
+  hasInitialTags.value = !!payload.tags
   form.tags = payload.tags || ''
   if (payload.name) form.name = payload.name
   if (payload.color) form.color = payload.color
-  dialogVisible.value = true
+  mode.value = 'create'
 }
 
 const openEdit = (folder) => {
-  dialogMode.value = 'edit'
+  resetForm()
   editingFolder.value = folder
   form.name = folder.name
   form.tags = folder.tags || ''
@@ -291,34 +279,20 @@ const openEdit = (folder) => {
   form.schedule_cron = folder.schedule_cron || ''
   form.schedule_mode = folder.schedule_mode || 'last_id'
   form.schedule_max_images = folder.schedule_max_images
-  dialogVisible.value = true
+  mode.value = 'edit'
 }
 
-const openDeleteConfirm = (folder) => {
-  deletingFolder.value = folder
-  deleteConfirmVisible.value = true
-}
-
-const handleDeleteClick = () => {
-  if (editingFolder.value) {
-    deleteConfirmVisible.value = false
-    dialogVisible.value = false
-    deletingFolder.value = editingFolder.value
-    deleteConfirmVisible.value = true
-  }
+const cancelForm = () => {
+  mode.value = 'list'
+  editingFolder.value = null
+  resetForm()
 }
 
 const handleDeleteConfirm = () => {
-  if (deletingFolder.value) {
-    emit('delete', deletingFolder.value)
+  if (editingFolder.value) {
+    emit('delete', editingFolder.value)
   }
-  deleteConfirmVisible.value = false
-  deletingFolder.value = null
-}
-
-const handleDialogClose = () => {
-  editingFolder.value = null
-  resetForm()
+  cancelForm()
 }
 
 const handleSubmit = () => {
@@ -339,15 +313,15 @@ const handleSubmit = () => {
     schedule_mode: form.schedule_mode,
     schedule_max_images: form.schedule_max_images,
   }
-  if (dialogMode.value === 'create') {
+  if (mode.value === 'create') {
     emit('create', payload)
   } else if (editingFolder.value) {
     emit('update', { id: editingFolder.value.id, ...payload })
   }
-  dialogVisible.value = false
+  mode.value = 'list'
 }
 
-defineExpose({ openCreate, openEdit, openDeleteConfirm })
+defineExpose({ openCreate, openEdit, cancelForm })
 </script>
 
 <style scoped>
@@ -454,6 +428,54 @@ defineExpose({ openCreate, openEdit, openDeleteConfirm })
   font-size: 12px;
 }
 
+.inline-form {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 12px;
+  gap: 4px;
+}
+
+.inline-form-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border-color, #ebeef5);
+  margin-bottom: 8px;
+}
+
+.form-mode-icon {
+  font-size: 16px;
+  color: var(--el-color-primary);
+}
+
+.form-mode-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.back-btn {
+  font-size: 12px;
+}
+
+.form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-body :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
+.form-body :deep(.el-form-item__label) {
+  font-size: 12px;
+  padding-right: 8px;
+  color: var(--text-secondary);
+}
+
 .color-picker {
   display: flex;
   gap: 6px;
@@ -461,8 +483,8 @@ defineExpose({ openCreate, openEdit, openDeleteConfirm })
 }
 
 .color-option {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 4px;
   cursor: pointer;
   border: 2px solid transparent;
@@ -481,7 +503,20 @@ defineExpose({ openCreate, openEdit, openDeleteConfirm })
 .form-tip {
   font-size: 11px;
   color: var(--text-muted, #999);
-  margin-top: 4px;
-  line-height: 1.4;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.inline-form-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border-color, #ebeef5);
+}
+
+.footer-spacer {
+  flex: 1;
 }
 </style>
