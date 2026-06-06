@@ -83,7 +83,46 @@
           />
         </el-form-item>
         <template v-if="form.schedule_enabled">
-          <el-form-item label="Cron">
+          <el-form-item label="频率">
+            <el-radio-group v-model="form.schedule_freq" size="small">
+              <el-radio value="daily">每天</el-radio>
+              <el-radio value="weekly">每周</el-radio>
+              <el-radio value="monthly">每月</el-radio>
+              <el-radio value="custom">自定义</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="时间">
+            <el-time-picker
+              v-model="form.schedule_time"
+              format="HH:mm"
+              value-format="HH:mm"
+              placeholder="选择时间"
+              size="small"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item v-if="form.schedule_freq === 'weekly'" label="星期">
+            <el-checkbox-group v-model="form.schedule_weekdays" size="small">
+              <el-checkbox :value="1">一</el-checkbox>
+              <el-checkbox :value="2">二</el-checkbox>
+              <el-checkbox :value="3">三</el-checkbox>
+              <el-checkbox :value="4">四</el-checkbox>
+              <el-checkbox :value="5">五</el-checkbox>
+              <el-checkbox :value="6">六</el-checkbox>
+              <el-checkbox :value="0">日</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+          <el-form-item v-if="form.schedule_freq === 'monthly'" label="日期">
+            <el-input-number
+              v-model="form.schedule_day"
+              :min="1"
+              :max="31"
+              size="small"
+              style="width: 100%"
+            />
+            <div class="form-tip">1-31 号</div>
+          </el-form-item>
+          <el-form-item v-if="form.schedule_freq === 'custom'" label="Cron">
             <el-input
               v-model="form.schedule_cron"
               placeholder="如 '0 3 * * *' 表示每天凌晨 3 点"
@@ -92,6 +131,9 @@
               5 字段：分 时 日 月 周 ·
               <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
             </div>
+          </el-form-item>
+          <el-form-item v-if="form.schedule_freq !== 'custom'" label="预览">
+            <code class="cron-preview">{{ effectiveCron }}</code>
           </el-form-item>
           <el-form-item label="模式">
             <el-radio-group v-model="form.schedule_mode" size="small">
@@ -135,7 +177,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, Star } from '@element-plus/icons-vue'
 
@@ -156,10 +198,68 @@ const form = reactive({
   tags: '',
   color: '#409EFF',
   schedule_enabled: false,
+  schedule_freq: 'daily',
+  schedule_time: '03:00',
+  schedule_weekdays: [1, 2, 3, 4, 5],
+  schedule_day: 1,
   schedule_cron: '',
   schedule_mode: 'last_id',
   schedule_max_images: null,
 })
+
+const pad2 = (n) => String(n).padStart(2, '0')
+
+const effectiveCron = computed(() => {
+  const [hh = '0', mm = '0'] = (form.schedule_time || '00:00').split(':')
+  const m = pad2(parseInt(mm, 10) || 0)
+  const h = pad2(parseInt(hh, 10) || 0)
+  if (form.schedule_freq === 'daily') return `${m} ${h} * * *`
+  if (form.schedule_freq === 'weekly') {
+    const days = (form.schedule_weekdays || []).slice().sort()
+    return `${m} ${h} * * ${days.length ? days.join(',') : '*'}`
+  }
+  if (form.schedule_freq === 'monthly') {
+    const d = Math.max(1, Math.min(31, parseInt(form.schedule_day, 10) || 1))
+    return `${m} ${h} ${d} * *`
+  }
+  return form.schedule_cron || ''
+})
+
+const parseCron = (cron) => {
+  if (!cron) {
+    return { freq: 'daily', time: '03:00', weekdays: [1, 2, 3, 4, 5], day: 1, cron: '' }
+  }
+  const parts = cron.trim().split(/\s+/)
+  if (parts.length !== 5) {
+    return { freq: 'custom', time: '03:00', weekdays: [1, 2, 3, 4, 5], day: 1, cron }
+  }
+  const [mm, hh, dom, , dow] = parts
+  const isStar = (s) => s === '*' || s === '?'
+  const isWeekdayList = /^[0-6](,[0-6])*$/.test(dow)
+  const isDomNum = /^[0-9]+$/.test(dom)
+  const isDomList = /^[0-9]+(,[0-9]+)*$/.test(dom)
+
+  let freq = 'custom'
+  let weekdays = []
+  let day = 1
+  if (isStar(dom) && isStar(dow)) {
+    freq = 'daily'
+  } else if (isStar(dom) && isWeekdayList) {
+    freq = 'weekly'
+    weekdays = dow.split(',').map((s) => parseInt(s, 10))
+  } else if ((isDomNum || isDomList) && isStar(dow)) {
+    freq = 'monthly'
+    day = parseInt(dom.split(',')[0], 10) || 1
+  }
+
+  return {
+    freq,
+    time: `${pad2(parseInt(hh, 10) || 0)}:${pad2(parseInt(mm, 10) || 0)}`,
+    weekdays: weekdays.length ? weekdays : [1, 2, 3, 4, 5],
+    day,
+    cron,
+  }
+}
 
 const LONG_PRESS_MS = 700
 let pressTimer = null
@@ -253,6 +353,10 @@ const resetForm = () => {
   form.tags = ''
   form.color = '#409EFF'
   form.schedule_enabled = false
+  form.schedule_freq = 'daily'
+  form.schedule_time = '03:00'
+  form.schedule_weekdays = [1, 2, 3, 4, 5]
+  form.schedule_day = 1
   form.schedule_cron = ''
   form.schedule_mode = 'last_id'
   form.schedule_max_images = null
@@ -276,9 +380,14 @@ const openEdit = (folder) => {
   form.tags = folder.tags || ''
   form.color = folder.color
   form.schedule_enabled = folder.schedule_enabled || false
-  form.schedule_cron = folder.schedule_cron || ''
   form.schedule_mode = folder.schedule_mode || 'last_id'
   form.schedule_max_images = folder.schedule_max_images
+  const parsed = parseCron(folder.schedule_cron || '')
+  form.schedule_freq = parsed.freq
+  form.schedule_time = parsed.time
+  form.schedule_weekdays = parsed.weekdays
+  form.schedule_day = parsed.day
+  form.schedule_cron = parsed.cron
   mode.value = 'edit'
 }
 
@@ -300,8 +409,9 @@ const handleSubmit = () => {
     ElMessage.warning('请输入收藏夹名称')
     return
   }
-  if (form.schedule_enabled && !form.schedule_cron.trim()) {
-    ElMessage.warning('启用调度时必须填写 Cron 表达式')
+  const cronExpr = effectiveCron.value
+  if (form.schedule_enabled && !cronExpr.trim()) {
+    ElMessage.warning('启用调度时必须配置时间')
     return
   }
   const payload = {
@@ -309,7 +419,7 @@ const handleSubmit = () => {
     tags: form.tags,
     color: form.color,
     schedule_enabled: form.schedule_enabled,
-    schedule_cron: form.schedule_cron,
+    schedule_cron: cronExpr,
     schedule_mode: form.schedule_mode,
     schedule_max_images: form.schedule_max_images,
   }
@@ -505,6 +615,16 @@ defineExpose({ openCreate, openEdit, cancelForm })
   color: var(--text-muted, #999);
   margin-top: 2px;
   line-height: 1.3;
+}
+
+.cron-preview {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
+  border-radius: 4px;
+  color: var(--el-color-primary);
 }
 
 .inline-form-footer {
