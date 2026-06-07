@@ -21,9 +21,6 @@
           <div class="folder-tags">{{ folder.tags || '无标签' }}</div>
         </div>
         <div class="folder-meta">
-          <span class="folder-count">
-            {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
-          </span>
           <el-tag
             v-if="folder.schedule_enabled"
             :type="scheduleStatusType(folder.last_schedule_status)"
@@ -34,6 +31,9 @@
             <el-icon><Clock /></el-icon>
             {{ formatLastScheduled(folder.last_scheduled_at) }}
           </el-tag>
+          <span class="folder-count">
+            {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
+          </span>
         </div>
       </div>
       <div v-if="folders.length === 0" class="empty-state">
@@ -55,15 +55,20 @@
           <el-input v-model="form.name" placeholder="收藏夹名称" maxlength="50" />
         </el-form-item>
         <el-form-item label="标签">
-          <el-input
-            v-model="form.tags"
-            :placeholder="mode === 'create' ? '从 AdvancedQuery 选择标签后点 订阅当前' : '标签不可编辑'"
-            type="textarea"
-            :rows="2"
-            readonly
-          />
-          <div v-if="mode === 'edit'" class="form-tip">
-            标签查询由 AdvancedQuery 触发；如需修改请新建一个收藏夹。
+          <div class="tags-display">
+            <template v-if="parsedFormTags.length">
+              <el-tag
+                v-for="tag in parsedFormTags"
+                :key="tag"
+                size="small"
+                effect="plain"
+                type="info"
+                class="tag-chip"
+              >
+                {{ tag }}
+              </el-tag>
+            </template>
+            <span v-else class="empty-tags">无标签</span>
           </div>
         </el-form-item>
         <el-form-item label="颜色">
@@ -210,6 +215,11 @@ const form = reactive({
 })
 
 const pad2 = (n) => String(n).padStart(2, '0')
+
+const parsedFormTags = computed(() => {
+  if (!form.tags) return []
+  return form.tags.split(/\s+/).filter(Boolean)
+})
 
 const effectiveCron = computed(() => {
   const [hh = '0', mm = '0'] = (form.schedule_time || '00:00').split(':')
@@ -625,6 +635,25 @@ defineExpose({ openCreate, openEdit, cancelForm })
   background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
   border-radius: 4px;
   color: var(--el-color-primary);
+}
+
+.tags-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 24px;
+}
+
+.tag-chip {
+  margin: 0;
+  cursor: default;
+}
+
+.empty-tags {
+  font-size: 12px;
+  color: var(--text-muted, #999);
+  font-style: italic;
 }
 
 .inline-form-footer {
