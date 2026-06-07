@@ -606,10 +606,11 @@ const handleDeleteFolder = async (folder) => {
 
 const handleClickOutside = (e) => {
   const container = document.querySelector('.advanced-query-container')
-  if (container && !container.contains(e.target)) {
-    showFavoritePanel.value = false
-    document.removeEventListener('click', handleClickOutside)
-  }
+  if (!container) return
+  if (container.contains(e.target)) return
+  if (e.target.closest('.el-popper')) return
+  showFavoritePanel.value = false
+  document.removeEventListener('click', handleClickOutside)
 }
 
 onUnmounted(() => {
