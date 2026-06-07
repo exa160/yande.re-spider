@@ -98,6 +98,7 @@ async def run_folder_schedule(folder_id: int) -> dict:
                     stats["new_images"] += 1
                     try:
                         with YandeDataRepository() as repo:
+                            # TODO 查询优化，需要批量查询避免数据库连接数开销
                             existing = repo.get_by_id(item.id)
                             repo.upsert(item)
                             should_enqueue = existing is None or not existing.down_flag
@@ -116,6 +117,8 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 if stop:
                     break
                 page += 1
+                # TODO 临时解决方案，后续多任务使用队列获取访问api防止并发导致api超限
+                time.sleep(10)
 
             stats["pages_fetched"] = page
             stats["duration_sec"] = round(time.monotonic() - start, 2)
