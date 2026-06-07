@@ -92,14 +92,14 @@
         </el-form-item>
         <template v-if="form.schedule_enabled">
           <el-form-item label="频率">
-            <el-radio-group v-model="form.schedule_freq" size="small">
+            <el-radio-group v-model="form.schedule_freq" size="small" class="freq-group">
               <el-radio value="daily">每天</el-radio>
               <el-radio value="weekly">每周</el-radio>
               <el-radio value="monthly">每月</el-radio>
               <el-radio value="custom">自定义</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="时间">
+          <el-form-item v-if="form.schedule_freq !== 'custom'" label="时间">
             <el-time-picker
               v-model="form.schedule_time"
               format="HH:mm"
@@ -139,9 +139,6 @@
               5 字段：分 时 日 月 周 ·
               <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
             </div>
-          </el-form-item>
-          <el-form-item v-if="form.schedule_freq !== 'custom'" label="预览">
-            <code class="cron-preview">{{ effectiveCron }}</code>
           </el-form-item>
           <el-form-item label="模式">
             <el-radio-group v-model="form.schedule_mode" size="small">
@@ -635,6 +632,13 @@ defineExpose({ openCreate, openEdit, cancelForm })
   background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
   border-radius: 4px;
   color: var(--el-color-primary);
+}
+
+.freq-group :deep(.el-radio) {
+  margin-right: 8px;
+}
+.freq-group :deep(.el-radio:last-child) {
+  margin-right: 0;
 }
 
 .tags-display {
