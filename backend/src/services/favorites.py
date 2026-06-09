@@ -9,7 +9,7 @@ from typing import List, Optional
 from loguru import logger
 
 from src.common.constant import ErrMsg, Rating
-from src.dao.favorite_dao import FavoriteDao
+from src.dao.favorite_dao import favorite_dao
 from src.dao.yande_data_dao import YandeDataRepository, SortBy
 from src.infrastructure.scheduler import schedule_manager
 from src.infrastructure.yande_api import YandeApi
@@ -55,8 +55,7 @@ class FavoritesService:
     @staticmethod
     def get_all_folders() -> List[FavoriteFolder]:
         """获取所有收藏夹"""
-        with FavoriteDao() as dao:
-            folders = dao.get_all()
+        folders = favorite_dao.get_all()
         for f in folders:
             f.last_schedule_stats = _decode_stats(f.last_schedule_stats)
         return folders
@@ -64,8 +63,7 @@ class FavoritesService:
     @staticmethod
     def get_folders_with_preview() -> List[FavoriteFolderWithPreview]:
         """获取所有收藏夹及随机预览图片"""
-        with FavoriteDao() as dao:
-            folders = dao.get_all()
+        folders = favorite_dao.get_all()
         return [
             FavoriteFolderWithPreview(
                 id=f.id,
@@ -94,19 +92,18 @@ class FavoritesService:
     @staticmethod
     def create_folder(folder: FavoriteFolderCreate) -> FavoriteFolder:
         """创建收藏夹"""
-        with FavoriteDao() as dao:
-            count = dao.count()
-            new_folder = dao.create(
-                name=folder.name,
-                tags=folder.tags,
-                color=folder.color,
-                icon=folder.icon,
-                sort_order=folder.sort_order if folder.sort_order else count,
-                schedule_enabled=folder.schedule_enabled,
-                schedule_cron=folder.schedule_cron,
-                schedule_mode=folder.schedule_mode,
-                schedule_max_images=folder.schedule_max_images,
-            )
+        count = favorite_dao.count()
+        new_folder = favorite_dao.create(
+            name=folder.name,
+            tags=folder.tags,
+            color=folder.color,
+            icon=folder.icon,
+            sort_order=folder.sort_order if folder.sort_order else count,
+            schedule_enabled=folder.schedule_enabled,
+            schedule_cron=folder.schedule_cron,
+            schedule_mode=folder.schedule_mode,
+            schedule_max_images=folder.schedule_max_images,
+        )
 
         new_folder = FavoritesService._refresh_local_count(new_folder.id)
         FavoritesService._sync_schedule(new_folder)
@@ -127,15 +124,14 @@ class FavoritesService:
     ) -> Optional[FavoriteFolder]:
         """更新收藏夹"""
         update_data = folder.model_dump(exclude_unset=True)
-        with FavoriteDao() as dao:
-            updated = dao.update(folder_id, **update_data)
-            if not updated:
-                return None
+        updated = favorite_dao.update(folder_id, **update_data)
+        if not updated:
+            return None
 
-            if "tags" in update_data:
-                FavoritesService._refresh_local_count(folder_id)
+        if "tags" in update_data:
+            FavoritesService._refresh_local_count(folder_id)
 
-            updated = dao.get_by_id(folder_id)
+        updated = favorite_dao.get_by_id(folder_id)
         schedule_fields_changed = bool(
             set(update_data) & {"schedule_enabled", "schedule_cron", "schedule_mode", "schedule_max_images"}
         )
@@ -147,14 +143,12 @@ class FavoritesService:
     def delete_folder(folder_id: int) -> bool:
         """删除收藏夹"""
         schedule_manager.unregister_folder(folder_id)
-        with FavoriteDao() as dao:
-            return dao.delete(folder_id)
+        return favorite_dao.delete(folder_id)
 
     @staticmethod
     def reorder_folders(folder_ids: List[int]) -> bool:
         """批量更新排序"""
-        with FavoriteDao() as dao:
-            return dao.reorder(folder_ids)
+        return favorite_dao.reorder(folder_ids)
 
     @staticmethod
     def preview_folder(folder_id: int, limit: int = 6) -> Optional[dict]:
@@ -165,8 +159,7 @@ class FavoritesService:
             limit: 预览图片数量
         TODO: 文件夹目录预览图
         """
-        with FavoriteDao() as dao:
-            folder = dao.get_by_id(folder_id)
+        folder = favorite_dao.get_by_id(folder_id)
         if not folder:
             return None
 
@@ -192,19 +185,17 @@ class FavoritesService:
     @staticmethod
     def update_online_count(folder_id: int, count: int) -> bool:
         """更新在线数量"""
-        with FavoriteDao() as dao:
-            folder = dao.get_by_id(folder_id)
-            if not folder:
-                return False
+        folder = favorite_dao.get_by_id(folder_id)
+        if not folder:
+            return False
 
-            dao.update(folder_id, online_count=count, last_refresh=datetime.now())
+        favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
         return True
 
     @staticmethod
     def refresh_online_count(folder_id: int) -> Optional[int]:
-        """从 yande.re XML API 刷新收藏夹的在线图片数量"""
-        with FavoriteDao() as dao:
-            folder = dao.get_by_id(folder_id)
+        """从 yande.re XML API 刷新在线数量"""
+        folder = favorite_dao.get_by_id(folder_id)
         if not folder:
             return None
 
@@ -214,26 +205,23 @@ class FavoritesService:
         if count < 0:
             return None
 
-        with FavoriteDao() as dao:
-            dao.update(folder_id, online_count=count, last_refresh=datetime.now())
+        favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
         return count
 
     @staticmethod
     def update_local_count(folder_id: int, count: int) -> bool:
         """更新本地数量"""
-        with FavoriteDao() as dao:
-            folder = dao.get_by_id(folder_id)
-            if not folder:
-                return False
+        folder = favorite_dao.get_by_id(folder_id)
+        if not folder:
+            return False
 
-            dao.update(folder_id, local_count=count, last_refresh=datetime.now())
+        favorite_dao.update(folder_id, local_count=count, last_refresh=datetime.now())
         return True
 
     @staticmethod
     def _refresh_local_count(folder_id: int):
         """刷新收藏夹的本地图片数量"""
-        with FavoriteDao() as dao:
-            folder = dao.get_by_id(folder_id)
+        folder = favorite_dao.get_by_id(folder_id)
         if not folder:
             return None
         try:
@@ -245,14 +233,12 @@ class FavoritesService:
                     query_params=search_params,
                     downloaded_only=True,
                 )
-            with FavoriteDao() as dao:
-                folder = dao.update(
-                    folder_id, local_count=total, last_refresh=datetime.now()
-                )
+            folder = favorite_dao.update(
+                folder_id, local_count=total, last_refresh=datetime.now()
+            )
             return folder
         except Exception as e:
-            with FavoriteDao() as dao:
-                folder = dao.update(folder_id, last_refresh=datetime.now())
+            folder = favorite_dao.update(folder_id, last_refresh=datetime.now())
             raise APIException[FavoriteFolder](err_msg=ErrMsg.REFRESH_LOCAL_COUNT_FAILED, data=folder, e=e)
 
     @staticmethod
