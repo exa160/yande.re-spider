@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter
 
 from src.common.constant import ErrMsg
-from src.dao.favorite_dao import favorite_dao
+from src.dao.favorite_dao import FavoriteDao
 from src.middleware.errors import APIException
 from src.models.request.favorites import (
     FavoriteFolderCreate,
@@ -173,7 +173,8 @@ async def update_local_count(folder_id: int, count: int) -> BaseResponse:
 )
 async def trigger_folder_schedule(folder_id: int) -> BaseResponse:
     from src.services.favorite_scheduler import run_folder_schedule
-    folder = favorite_dao.get_by_id(folder_id)
+    with FavoriteDao() as dao:
+        folder = dao.get_by_id(folder_id)
     if not folder:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     if not folder.schedule_enabled:
@@ -191,7 +192,8 @@ async def trigger_folder_schedule(folder_id: int) -> BaseResponse:
     summary="获取收藏夹调度状态",
 )
 async def get_folder_schedule_status(folder_id: int) -> BaseResponse:
-    folder = favorite_dao.get_by_id(folder_id)
+    with FavoriteDao() as dao:
+        folder = dao.get_by_id(folder_id)
     if not folder:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     stats = None
