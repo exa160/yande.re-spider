@@ -64,6 +64,14 @@ class FavoriteDao(BaseDAO):
         self.session.delete(folder)
         return True
 
+    def get_scheduled_folders(self) -> List[FavoriteFolder]:
+        """取出所有启用了调度的收藏夹。供 lifespan 和定时任务使用。"""
+        return (
+            self.session.query(FavoriteFolder)
+            .filter(FavoriteFolder.schedule_enabled == True)  # noqa: E712
+            .all()
+        )
+
     def reorder(self, folder_ids: List[int]) -> bool:
         for order, folder_id in enumerate(folder_ids):
             folder = self.session.query(FavoriteFolder).filter(FavoriteFolder.id == folder_id).first()
