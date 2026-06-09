@@ -30,8 +30,9 @@ def get_db_engine():
             database=config.database.schema_name
         )
         _cached_engine = create_engine(url,
-            pool_recycle=3600,          # 每小时回收连接
+            pool_recycle=180,           # 3 分钟回收连接，避免 KILL 之后连接长期处于 stale 状态
             pool_pre_ping=True,         # 自动重连
+            pool_reset_on_return="rollback",  # 连接还池时自动 ROLLBACK，防止 zombie 事务
             echo=False,                 # 生产关闭 SQL 日志
             pool_size=10,              # 连接池大小
             max_overflow=20,           # 连接池溢出时最大创建的连接数
@@ -120,14 +121,16 @@ def _get_session_factory():
 class BaseDAO:
     def __init__(self, session: Session = None):
         self._session = session
+        self.owns_session = session is None
 
     def __enter__(self):
         if self._session is None:
             self._session = _get_session_factory()()
+            self.owns_session = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._session:
+        if self._session and self.owns_session:
             if exc_type is None:
                 self._session.commit()
             else:
