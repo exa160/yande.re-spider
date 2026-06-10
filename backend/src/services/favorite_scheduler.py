@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from datetime import datetime
 from typing import Optional
@@ -125,7 +124,7 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 dao.update(
                     folder_id,
                     last_schedule_status="success",
-                    last_schedule_stats=json.dumps(stats),
+                    last_schedule_stats=stats,
                 )
                 logger.info(
                     f"Folder {folder_id} schedule success: enqueued={stats['enqueued']} "
@@ -139,7 +138,7 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 dao.update(
                     folder_id,
                     last_schedule_status="failed",
-                    last_schedule_stats=json.dumps(stats),
+                    last_schedule_stats=stats,
                 )
                 logger.exception(f"Folder {folder_id} schedule failed")
                 return stats

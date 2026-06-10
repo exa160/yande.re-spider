@@ -2,8 +2,6 @@
 收藏夹管理 API 路由
 """
 
-import json
-
 from fastapi import APIRouter
 
 from src.common.constant import ErrMsg
@@ -194,12 +192,6 @@ async def get_folder_schedule_status(folder_id: int) -> BaseResponse:
     folder = favorite_dao.get_by_id(folder_id)
     if not folder:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
-    stats = None
-    if folder.last_schedule_stats:
-        try:
-            stats = json.loads(folder.last_schedule_stats) if isinstance(folder.last_schedule_stats, str) else folder.last_schedule_stats
-        except Exception:
-            stats = None
     return BaseResponse(
         message=ErrMsg.OK.msg,
         data={
@@ -209,6 +201,6 @@ async def get_folder_schedule_status(folder_id: int) -> BaseResponse:
             "schedule_max_images": folder.schedule_max_images,
             "last_scheduled_at": folder.last_scheduled_at,
             "last_schedule_status": folder.last_schedule_status,
-            "last_schedule_stats": stats,
+            "last_schedule_stats": folder.last_schedule_stats,
         },
     )
