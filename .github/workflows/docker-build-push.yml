@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [ "next" ]
   push:
+    # 监听 PR 合并到 next 触发的事件 (Merge pull request 按钮 / rebase merge / squash merge 都算)
+    branches: [ "next" ]
+    # 监听 semver tag 推送 (v*.*.*)
     tags: [ 'v*.*.*' ]
 jobs:
   build-and-push:
@@ -31,12 +34,16 @@ jobs:
           images: |
             ${{ secrets.DOCKERHUB_USERNAME }}/picture-manager
           tags: |
-            # Generate commit SHA tag (format: git-<short SHA>) only on PR events
+            # PR open/update: 临时验证镜像, 跟 commit SHA 绑定
             type=sha,prefix=git-,enable=${{ github.event_name == 'pull_request' }}
-            # Generate semantic version tags only on tag push
+            # PR merge 到 next: 累积历史 (dev-<sha> 便于回滚到任一 commit)
+            type=sha,prefix=dev-,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next' }}
+            # PR merge 到 next: 浮动指针 (dev 始终指向最新合入 next 的代码)
+            type=raw,value=dev,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next' }}
+            # Tag push (v*.*.*): semver 镜像
             type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
-            # Add 'latest' tag only on tag push
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            # Tag push: 浮动指针 (latest 仅在正式 tag 时绑定, 避免 RC 污染)
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
 
       - name: Build and push Docker images
         uses: docker/build-push-action@v7
