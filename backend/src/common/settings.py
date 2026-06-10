@@ -49,6 +49,12 @@ class DownloaderConfig(ConfigModel):
     retry_times: int = Field(default=3, ge=0, le=50, description='最大重试次数')
 
 
+class SchedulerConfig(ConfigModel):
+    max_concurrent_schedules: int = Field(2, ge=1, le=10, description="同时抓取的收藏夹数")
+    max_images_per_run_default: int = Field(800, ge=1, description="单收藏夹单次拉取上限兜底")
+    max_pages_per_run: int = Field(5, ge=1, le=20, description="单收藏夹单次分页上限兜底")
+
+
 class DatabaseConfig(ConfigModel):
     enable: bool = Field(default=False)
     host: str = Field(default="localhost")
@@ -71,9 +77,10 @@ class Config(ConfigModel):
     database: DatabaseConfig = DatabaseConfig()
     yande_api: ApiConfig = ApiConfig()
     downloader: DownloaderConfig = DownloaderConfig()
+    scheduler: SchedulerConfig = SchedulerConfig()
 
     @ConfigModel.set_frozen_data_
-    def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig):
+    def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig | SchedulerConfig):
         for config_name, config_data in self.__dict__.items():
             logger.info(f"{isinstance(config_model, type(config_data))}， Checking config: {config_name}, type: {type(config_data)}, new type: {type(config_model)}")
             if isinstance(config_model, type(config_data)):

@@ -5,9 +5,12 @@
 from datetime import datetime
 from typing import List, Optional
 
+from loguru import logger
+
 from src.common.constant import ErrMsg, Rating
 from src.dao.favorite_dao import favorite_dao
 from src.dao.yande_data_dao import YandeDataRepository, SortBy
+from src.infrastructure.scheduler import schedule_manager
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
 from src.models.request.favorites import (
@@ -19,6 +22,23 @@ from src.models.response.favorites import FavoriteFolder, FavoriteFolderWithPrev
 
 class FavoritesService:
     """收藏夹服务类"""
+
+    @staticmethod
+    def _sync_schedule(folder, strict: bool = False) -> None:
+        if folder.schedule_enabled and folder.schedule_cron:
+            try:
+                schedule_manager.register_folder(
+                    folder_id=folder.id,
+                    cron=folder.schedule_cron,
+                    mode=folder.schedule_mode or "last_id",
+                    max_images=folder.schedule_max_images,
+                )
+            except ValueError as e:
+                if strict:
+                    raise
+                logger.warning(f"Failed to register schedule for folder {folder.id}: {e}")
+        else:
+            schedule_manager.unregister_folder(folder.id)
 
     @staticmethod
     def get_all_folders() -> List[FavoriteFolder]:
@@ -43,7 +63,14 @@ class FavoritesService:
                 last_refresh=f.last_refresh,
                 created_at=f.created_at,
                 updated_at=f.updated_at,
-                preview_images=[],  # TODO 随机返回固定数量的预览图片，用于文件夹图标预览
+                schedule_enabled=f.schedule_enabled,
+                schedule_cron=f.schedule_cron,
+                schedule_mode=f.schedule_mode,
+                schedule_max_images=f.schedule_max_images,
+                last_scheduled_at=f.last_scheduled_at,
+                last_schedule_status=f.last_schedule_status,
+                last_schedule_stats=f.last_schedule_stats,
+                preview_images=[],
             )
             for f in folders
         ]
@@ -58,17 +85,22 @@ class FavoritesService:
             color=folder.color,
             icon=folder.icon,
             sort_order=folder.sort_order if folder.sort_order else count,
+            schedule_enabled=folder.schedule_enabled,
+            schedule_cron=folder.schedule_cron,
+            schedule_mode=folder.schedule_mode,
+            schedule_max_images=folder.schedule_max_images,
         )
 
-        # 创建时刷新本地数量
         new_folder = FavoritesService._refresh_local_count(new_folder.id)
+        FavoritesService._sync_schedule(new_folder)
         return FavoriteFolder.model_validate(new_folder)
 
     @staticmethod
     def get_folder(folder_id: int) -> Optional[FavoriteFolder]:
         """获取收藏夹详情"""
-        # 访问时刷新本地数量
         folder = FavoritesService._refresh_local_count(folder_id)
+        if folder is None:
+            return None
         return FavoriteFolder.model_validate(folder)
 
     @staticmethod
@@ -81,30 +113,20 @@ class FavoritesService:
         if not updated:
             return None
 
-        # 如果 tags 变化，刷新本地数量
         if "tags" in update_data:
             FavoritesService._refresh_local_count(folder_id)
 
-        # 重新获取最新数据
         updated = favorite_dao.get_by_id(folder_id)
-
-        return FavoriteFolder(
-            id=updated.id,
-            name=updated.name,
-            tags=updated.tags,
-            color=updated.color,
-            icon=updated.icon,
-            sort_order=updated.sort_order,
-            local_count=updated.local_count or 0,
-            online_count=updated.online_count or 0,
-            last_refresh=updated.last_refresh,
-            created_at=updated.created_at,
-            updated_at=updated.updated_at,
+        schedule_fields_changed = bool(
+            set(update_data) & {"schedule_enabled", "schedule_cron", "schedule_mode", "schedule_max_images"}
         )
+        FavoritesService._sync_schedule(updated, strict=schedule_fields_changed)
+        return FavoriteFolder.model_validate(updated)
 
     @staticmethod
     def delete_folder(folder_id: int) -> bool:
         """删除收藏夹"""
+        schedule_manager.unregister_folder(folder_id)
         return favorite_dao.delete(folder_id)
 
     @staticmethod

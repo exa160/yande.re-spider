@@ -14,9 +14,21 @@ class FavoriteDao(BaseDAO):
         color: str = "#409EFF",
         icon: str = "folder",
         sort_order: int = 0,
+        schedule_enabled: bool = False,
+        schedule_cron: str = "",
+        schedule_mode: str = "last_id",
+        schedule_max_images: Optional[int] = None,
     ) -> FavoriteFolder:
         folder = FavoriteFolder(
-            name=name, tags=tags, color=color, icon=icon, sort_order=sort_order
+            name=name,
+            tags=tags,
+            color=color,
+            icon=icon,
+            sort_order=sort_order,
+            schedule_enabled=schedule_enabled,
+            schedule_cron=schedule_cron,
+            schedule_mode=schedule_mode,
+            schedule_max_images=schedule_max_images,
         )
         self.session.add(folder)
         self.session.flush()
@@ -38,7 +50,7 @@ class FavoriteDao(BaseDAO):
             return None
 
         for key, value in kwargs.items():
-            if value is not None and hasattr(folder, key):
+            if hasattr(folder, key):
                 setattr(folder, key, value)
 
         folder.updated_at = datetime.now()
@@ -51,6 +63,14 @@ class FavoriteDao(BaseDAO):
             return False
         self.session.delete(folder)
         return True
+
+    def get_scheduled_folders(self) -> List[FavoriteFolder]:
+        """取出所有启用了调度的收藏夹。供 lifespan 和定时任务使用。"""
+        return (
+            self.session.query(FavoriteFolder)
+            .filter(FavoriteFolder.schedule_enabled == True)  # noqa: E712
+            .all()
+        )
 
     def reorder(self, folder_ids: List[int]) -> bool:
         for order, folder_id in enumerate(folder_ids):
