@@ -1,3 +1,7 @@
+import shutil
+import subprocess
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -19,12 +23,44 @@ class AppConfig(BaseModel):
 
     title: str = "Yande.re Local Picture Manager"
     description: str = "本地图片管理工具，提供图片查询、下载和管理功能"
-    version: str = "1.1.0"
+    version: str = "1.1.4"
     docs_url: str = "/docs"
     redoc_url: str = "/redoc"
 
 
 app_config = AppConfig()
+
+
+def _get_git_sha() -> str:
+    """获取当前 git commit short SHA，启动 banner 用 (git 不可用时返回 'unknown')"""
+    if not shutil.which("git"):
+        return "unknown"
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _print_startup_banner(config: AppConfig) -> None:
+    """打印启动 banner: 版本号 + git SHA + 关键中间件 + 路径"""
+    git_sha = _get_git_sha()
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    logger.info("=" * 66)
+    logger.info(f"  {config.title} v{config.version} (git-{git_sha})")
+    logger.info(f"  Python {py_version}")
+    logger.info("-" * 66)
+    logger.info(f"  Data dir   : {path_constant.data_dir}")
+    logger.info(f"  Download   : {path_constant.download_dir}")
+    logger.info(f"  Log dir    : {path_constant.log_dir}")
+    logger.info(f"  Docs       : {config.docs_url}  |  ReDoc: {config.redoc_url}")
+    logger.info("=" * 66)
 
 
 def work_dir_setup():
@@ -50,6 +86,6 @@ def init_app(app: FastAPI) -> FastAPI:
     ErrorHandleMiddleware.init_app(app)
     FrontendStaticLoader.init_app(app)
 
-    logger.info("FastAPI application initialized successfully")
+    _print_startup_banner(app_config)
 
     return app
