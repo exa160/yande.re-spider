@@ -2,7 +2,6 @@
 收藏夹业务逻辑层
 """
 
-import json
 from datetime import datetime
 from typing import List, Optional
 
@@ -19,17 +18,6 @@ from src.models.request.favorites import (
     FavoriteFolderUpdate,
 )
 from src.models.response.favorites import FavoriteFolder, FavoriteFolderWithPreview
-
-
-def _decode_stats(value):
-    if value is None or isinstance(value, dict):
-        return value
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except (TypeError, ValueError):
-            return None
-    return None
 
 
 class FavoritesService:
@@ -56,8 +44,6 @@ class FavoritesService:
     def get_all_folders() -> List[FavoriteFolder]:
         """获取所有收藏夹"""
         folders = favorite_dao.get_all()
-        for f in folders:
-            f.last_schedule_stats = _decode_stats(f.last_schedule_stats)
         return folders
 
     @staticmethod
@@ -83,7 +69,7 @@ class FavoritesService:
                 schedule_max_images=f.schedule_max_images,
                 last_scheduled_at=f.last_scheduled_at,
                 last_schedule_status=f.last_schedule_status,
-                last_schedule_stats=_decode_stats(f.last_schedule_stats),
+                last_schedule_stats=f.last_schedule_stats,
                 preview_images=[],
             )
             for f in folders
@@ -115,7 +101,6 @@ class FavoritesService:
         folder = FavoritesService._refresh_local_count(folder_id)
         if folder is None:
             return None
-        folder.last_schedule_stats = _decode_stats(folder.last_schedule_stats)
         return FavoriteFolder.model_validate(folder)
 
     @staticmethod
@@ -136,7 +121,6 @@ class FavoritesService:
             set(update_data) & {"schedule_enabled", "schedule_cron", "schedule_mode", "schedule_max_images"}
         )
         FavoritesService._sync_schedule(updated, strict=schedule_fields_changed)
-        updated.last_schedule_stats = _decode_stats(updated.last_schedule_stats)
         return FavoriteFolder.model_validate(updated)
 
     @staticmethod
