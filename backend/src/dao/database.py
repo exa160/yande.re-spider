@@ -2,7 +2,7 @@ import os
 
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import StaticPool
 
 from src.common import config
 from src.common.constant import path_constant
@@ -30,8 +30,9 @@ def get_db_engine():
             database=config.database.schema_name
         )
         _cached_engine = create_engine(url,
-            pool_recycle=3600,          # 每小时回收连接
+            pool_recycle=180,           # 3 分钟回收连接，避免 KILL 之后连接长期处于 stale 状态
             pool_pre_ping=True,         # 自动重连
+            pool_reset_on_return="rollback",  # 连接还池时自动 ROLLBACK，防止 zombie 事务
             echo=False,                 # 生产关闭 SQL 日志
             pool_size=10,              # 连接池大小
             max_overflow=20,           # 连接池溢出时最大创建的连接数
@@ -40,13 +41,62 @@ def get_db_engine():
     else:
         _cached_engine = create_engine(
             f"sqlite:///{path_constant.sqlite_file}",
-            connect_args={"timeout": 30},
-            poolclass=NullPool,
+            connect_args={"timeout": 30, "check_same_thread": False},
+            poolclass=StaticPool,
         )
     # TODO 考虑取消自动建表/迁移，改为手动执行脚本
     Base.metadata.create_all(bind=_cached_engine)
 
+    _auto_migrate(_cached_engine)
+
     return _cached_engine
+
+
+def _auto_migrate(engine) -> None:
+    from sqlalchemy import (
+        Boolean, Column, DateTime, Integer, JSON, String, inspect
+    )
+    from sqlalchemy.schema import CreateColumn
+    from loguru import logger
+
+    inspector = inspect(engine)
+    if "favorite_folders" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("favorite_folders")}
+
+    desired = [
+        Column("schedule_enabled", Boolean, nullable=False, server_default="0"),
+        Column("schedule_cron", String(64), nullable=False, server_default=""),
+        Column(
+            "schedule_mode",
+            String(16),
+            nullable=False,
+            server_default="last_id",
+        ),
+        Column("schedule_max_images", Integer, nullable=True),
+        Column("last_scheduled_at", DateTime, nullable=True),
+        Column("last_schedule_status", String(16), nullable=True),
+        Column("last_schedule_stats", JSON, nullable=True),
+    ]
+
+    dialect = engine.dialect
+    with engine.begin() as conn:
+        for col in desired:
+            if col.name in existing:
+                continue
+            ddl = str(CreateColumn(col).compile(dialect=dialect))
+            try:
+                conn.exec_driver_sql(
+                    f"ALTER TABLE favorite_folders ADD COLUMN {ddl}"
+                )
+                logger.info(
+                    f"Auto-migrate: ADD COLUMN favorite_folders.{col.name}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Auto-migrate failed for {col.name}: {e}"
+                )
 
 
 def engine_change_handler():
@@ -71,14 +121,16 @@ def _get_session_factory():
 class BaseDAO:
     def __init__(self, session: Session = None):
         self._session = session
+        self.owns_session = session is None
 
     def __enter__(self):
         if self._session is None:
             self._session = _get_session_factory()()
+            self.owns_session = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._session:
+        if self._session and self.owns_session:
             if exc_type is None:
                 self._session.commit()
             else:

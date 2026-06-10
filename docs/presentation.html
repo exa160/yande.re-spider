@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yande.re Spider Next - Modern Image Download Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        .presentation {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 80px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 50px 60px;
+            max-width: 900px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .slide-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+
+        .slide-subtitle {
+            font-size: 1.5rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 40px;
+        }
+
+        .slide-slogan {
+            font-size: 2rem;
+            color: #fff;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-top: 30px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 28px 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.3);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+
+        .feature-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .feature-desc {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.5;
+        }
+
+        .tech-stack {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+
+        .tech-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .tech-logo {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .tech-name {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .highlight-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 600;
+        }
+
+        .nav-hint {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .nav-hint span {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .key {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .slide-indicator {
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dot.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transform: scale(1.2);
+        }
+
+        .slide-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: center;
+            gap: 60px;
+            margin-top: 40px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 8px;
+        }
+
+        .benefit-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 30px;
+            text-align: left;
+        }
+
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .benefit-icon {
+            font-size: 1.5rem;
+        }
+
+        .benefit-text {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .cta-section {
+            margin-top: 40px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 16px 48px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50px;
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
+        }
+
+        .author-info {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .slide.active .glass-card {
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        @media (max-width: 768px) {
+            .slide {
+                padding: 30px 20px;
+            }
+
+            .glass-card {
+                padding: 30px 25px;
+            }
+
+            .slide-title {
+                font-size: 2.2rem;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tech-stack {
+                gap: 20px;
+            }
+
+            .benefit-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation">
+        <!-- Slide 1: 封面 -->
+        <div class="slide active" data-slide="1">
+            <div class="glass-card">
+                <div class="slide-content">
+                    <h1 class="slide-title">Yande.re Spider Next</h1>
+                    <p class="slide-subtitle">Modern Image Download Manager</p>
+                    <p class="slide-slogan">
+                        专为 <span class="highlight-text">yande.re</span> 打造的<br>
+                        图片批量下载与管理工具
+                    </p>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <div class="stat-value">Vue 3</div>
+                            <div class="stat-label">前端框架</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">FastAPI</div>
+                            <div class="stat-label">后端框架</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">SQLite</div>
+                            <div class="stat-label">本地存储</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 2: 核心功能 -->
+        <div class="slide" data-slide="2">
+            <div class="glass-card">
+                <h2 class="slide-title">核心功能</h2>
+                <p class="slide-subtitle">强大的图片管理能力</p>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🖼️</div>
+                        <div class="feature-title">瀑布流图库</div>
+                        <div class="feature-desc">标签筛选、评分过滤、分辨率筛选、高级搜索</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <div class="feature-title">批量下载</div>
+                        <div class="feature-desc">多线程下载、断点续传、MD5智能去重</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📁</div>
+                        <div class="feature-title">收藏夹管理</div>
+                        <div class="feature-desc">标签收藏夹、本地统计、在线数量同步</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💾</div>
+                        <div class="feature-title">本地图片库</div>
+                        <div class="feature-desc">预览图+原图分离存储、SQLite索引</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <div class="feature-title">数据缓存</div>
+                        <div class="feature-desc">数据库缓存、相同ID不重复下载</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📱</div>
+                        <div class="feature-title">省流模式</div>
+                        <div class="feature-desc">NSFW友好模式、移动端适配</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: 技术架构 -->
+        <div class="slide" data-slide="3">
+            <div class="glass-card">
+                <h2 class="slide-title">技术架构</h2>
+                <p class="slide-subtitle">现代化技术栈组合</p>
+                <div class="tech-stack">
+                    <div class="tech-item">
+                        <div class="tech-logo">V3</div>
+                        <div class="tech-name">Vue 3</div>
+                    </div>
+                    <div class="tech-item">
+                        <div class="tech-logo">EP</div>
+                        <div class="tech-name">Element Plus</div>
+                    </div>
+                    <div class="tech-item">
+                        <div class="tech-logo">FA</div>
+                        <div class="tech-name">FastAPI</div>
+                    </div>
+                    <div class="tech-item">
+                        <div class="tech-logo">P2</div>
+                        <div class="tech-name">Pydantic v2</div>
+                    </div>
+                    <div class="tech-item">
+                        <div class="tech-logo">SA</div>
+                        <div class="tech-name">SQLAlchemy</div>
+                    </div>
+                    <div class="tech-item">
+                        <div class="tech-logo">DB</div>
+                        <div class="tech-name">MariaDB/SQLite</div>
+                    </div>
+                </div>
+                <div class="feature-grid" style="margin-top: 40px;">
+                    <div class="feature-card">
+                        <div class="feature-title">三层架构</div>
+                        <div class="feature-desc">表现层 / 业务逻辑层 / 数据访问层</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-title">自动化路由</div>
+                        <div class="feature-desc">APILoader 自动发现注册路由</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-title">中间件体系</div>
+                        <div class="feature-desc">错误处理、日志、会话、下载器</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 4: 项目优势 -->
+        <div class="slide" data-slide="4">
+            <div class="glass-card">
+                <h2 class="slide-title">为什么选择我们</h2>
+                <p class="slide-subtitle">专为高效体验而设计</p>
+                <div class="benefit-list">
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✅</span>
+                        <span class="benefit-text">开箱即用，Docker 一键部署</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✅</span>
+                        <span class="benefit-text">断点续传，下载中断无忧</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✅</span>
+                        <span class="benefit-text">MD5 去重，节省磁盘空间</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✅</span>
+                        <span class="benefit-text">NSFW 模式，保护隐私</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✅</span>
+                        <span class="benefit-text">本地优先，离线可用</span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">✅</span>
+                        <span class="benefit-text">移动端适配，随时管理</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 5: 快速开始 -->
+        <div class="slide" data-slide="5">
+            <div class="glass-card">
+                <h2 class="slide-title">快速开始</h2>
+                <p class="slide-subtitle">简单几步，开始使用</p>
+                <div class="benefit-list" style="grid-template-columns: 1fr;">
+                    <div class="benefit-item">
+                        <span class="benefit-icon">1</span>
+                        <span class="benefit-text">克隆项目: <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;">git clone ...</code></span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">2</span>
+                        <span class="benefit-text">启动服务: <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;">docker compose up</code></span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">3</span>
+                        <span class="benefit-text">访问前端: <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;">http://localhost:3000</code></span>
+                    </div>
+                    <div class="benefit-item">
+                        <span class="benefit-icon">4</span>
+                        <span class="benefit-text">开始探索 yande.re 的精彩世界！</span>
+                    </div>
+                </div>
+                <div class="cta-section">
+                    <a href="https://github.com/your-repo" class="cta-button">View on GitHub</a>
+                </div>
+                <div class="author-info">
+                    MIT License · Open Source · 欢迎 Star ⭐
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="nav-hint">
+        <span><span class="key">←</span> <span class="key">→</span> 切换幻灯片</span>
+        <span>或点击底部指示器</span>
+    </div>
+
+    <div class="slide-indicator">
+        <div class="dot active" data-goto="1"></div>
+        <div class="dot" data-goto="2"></div>
+        <div class="dot" data-goto="3"></div>
+        <div class="dot" data-goto="4"></div>
+        <div class="dot" data-goto="5"></div>
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        const dots = document.querySelectorAll('.dot');
+        let currentSlide = 1;
+        const totalSlides = slides.length;
+
+        function goToSlide(n) {
+            if (n < 1) n = 1;
+            if (n > totalSlides) n = totalSlides;
+
+            slides.forEach(slide => slide.classList.remove('active'));
+            dots.forEach(dot => dot.classList.remove('active'));
+
+            document.querySelector(`[data-slide="${n}"]`).classList.add('active');
+            document.querySelector(`[data-goto="${n}"]`).classList.add('active');
+
+            currentSlide = n;
+        }
+
+        function nextSlide() {
+            goToSlide(currentSlide + 1);
+        }
+
+        function prevSlide() {
+            goToSlide(currentSlide - 1);
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+
+        // Click navigation
+        dots.forEach(dot => {
+            dot.addEventListener('click', () => {
+                goToSlide(parseInt(dot.dataset.goto));
+            });
+        });
+
+        // Touch support
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            if (touchStartX - touchEndX > 50) {
+                nextSlide();
+            } else if (touchEndX - touchStartX > 50) {
+                prevSlide();
+            }
+        });
+    </script>
+</body>
+</html>

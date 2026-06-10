@@ -19,7 +19,11 @@ dependencies = [
     "filelock",
     "filecache>=0.81",
     "pillow>=12.2.0",
+    "apscheduler>=3.10,<4.0",
 ]
 
 [dependency-groups]
-dev = []
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+]

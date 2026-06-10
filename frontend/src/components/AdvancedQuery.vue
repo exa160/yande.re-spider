@@ -6,7 +6,7 @@
     </div>
 
     <!-- 展开状态 -->
-    <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }">
+    <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }" ref="searchPanelRef">
       <!-- 一级搜索栏 -->
       <div class="search-bar">
         <div class="search-input-wrapper" :class="{ 'has-input-tags': selectedTags.length > 0 || selectedFavorite }">
@@ -18,7 +18,7 @@
                 v-if="selectedFavorite"
                 class="input-tag favorite-tag"
               >
-                ★ {{ selectedFavorite.name }}
+                <span class="input-tag-text" :title="'★ ' + selectedFavorite.name">★ {{ selectedFavorite.name }}</span>
                 <el-icon class="input-tag-close" @click.stop="clearSelectedFavorite"><Close /></el-icon>
               </span>
               <span
@@ -26,7 +26,7 @@
                 :key="tag"
                 class="input-tag"
               >
-                #{{ tag }}
+                <span class="input-tag-text" :title="'#' + tag">#{{ tag }}</span>
                 <el-icon class="input-tag-close" @click.stop="removeInputTag(tag)"><Close /></el-icon>
               </span>
             </div>
@@ -53,37 +53,20 @@
 
         <!-- 收藏夹/Tags 面板 -->
         <transition name="el-fade-in-linear">
-          <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop>
+          <div v-if="showFavoritePanel" class="favorite-dropdown" @click.stop ref="favoriteDropdownRef" :style="{ width: favoriteDropdownWidth + 'px' }">
             <!-- 收藏夹内容 -->
             <div v-if="activePanelTab === 'favorites'" class="panel-content">
-              <div class="favorite-list">
-                <div
-                  v-for="folder in favoriteFolders"
-                  :key="folder.id"
-                  class="favorite-item"
-                  @click="selectFavorite(folder)"
-                  @mousedown.prevent="handlePressStart(folder, $event)"
-                  @mouseup="handlePressEnd(folder)"
-                  @mousemove="handlePressMove"
-                  @touchstart.passive="handlePressStart(folder, $event)"
-                  @touchend="handlePressEnd(folder)"
-                  @touchmove.passive="handlePressMove"
-                >
-                  <div class="favorite-icon" :style="{ backgroundColor: folder.color }">
-                    <el-icon><Star v-if="folder.icon === 'star'" /><Folder v-else /></el-icon>
-                  </div>
-                  <div class="favorite-info">
-                    <div class="favorite-name">{{ folder.name }}</div>
-                    <div class="favorite-tags">{{ folder.tags || '无标签' }}</div>
-                  </div>
-                  <div class="favorite-count">
-                    {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
-                  </div>
-                </div>
-                <div v-if="favoriteFolders.length === 0" class="favorite-empty">
-                  暂无收藏夹
-                </div>
-              </div>
+              <FavoritePanel
+                ref="favoritePanelRef"
+                :folders="favoriteFolders"
+                :color-options="colorOptions"
+                :source-mode="sourceMode"
+                @select="selectFavorite"
+                @longPress="handleLongPress"
+                @create="handleCreateFolder"
+                @update="handleUpdateFolder"
+                @delete="handleDeleteFolder"
+              />
             </div>
 
             <!-- 标签浏览内容 - 倒装顺序 -->
@@ -96,8 +79,8 @@
                   :class="{ selected: selectedTags.includes(tag.name) }"
                   @click="selectTag(tag)"
                 >
-                  <el-icon 
-                    class="tag-star" 
+                  <el-icon
+                    class="tag-star"
                     :class="{ starred: isTagFavorited(tag.name) }"
                     @click.stop="favoriteTag(tag)"
                   >
@@ -163,54 +146,14 @@
                   标签浏览
                 </div>
               </div>
-              <el-button 
-                size="small" 
-                type="primary" 
+              <el-button
+                size="small"
+                type="primary"
                 class="subscribe-btn"
                 @click="subscribeCurrentSearch"
               >
                 订阅当前
               </el-button>
-            </div>
-          </div>
-        </transition>
-
-        <!-- 订阅对话框 - 自定义面板样式 -->
-        <transition name="el-fade-in-linear">
-          <div v-if="subscribeDialogVisible" class="subscribe-panel" @click.stop>
-            <div class="subscribe-header">
-              <span>订阅当前搜索</span>
-              <el-button size="small" text @click="subscribeDialogVisible = false">
-                <el-icon><Close /></el-icon>
-              </el-button>
-            </div>
-            <div class="subscribe-body">
-              <div class="form-item">
-                <label>收藏夹名称</label>
-                <el-input v-model="subscribeForm.name" placeholder="如：高评分图片" size="small" />
-              </div>
-              <div class="form-item">
-                <label>标签</label>
-                <el-input v-model="subscribeForm.tags" type="textarea" :rows="3" readonly size="small" />
-                <div class="form-tip">系统将根据当前搜索条件自动生成标签</div>
-              </div>
-              <div class="form-item">
-                <label>颜色</label>
-                <div class="color-picker">
-                  <div
-                    v-for="color in colorOptions"
-                    :key="color"
-                    class="color-option"
-                    :class="{ active: subscribeForm.color === color }"
-                    :style="{ backgroundColor: color }"
-                    @click="subscribeForm.color = color"
-                  />
-                </div>
-              </div>
-            </div>
-            <div class="subscribe-footer">
-              <el-button size="small" @click="subscribeDialogVisible = false">取消</el-button>
-              <el-button size="small" type="primary" @click="confirmSubscribe">确认订阅</el-button>
             </div>
           </div>
         </transition>
@@ -390,11 +333,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAllFolders, createFolder, deleteFolder } from '@/api/favorites'
+import { getAllFolders, createFolder, updateFolder, deleteFolder } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
+import FavoritePanel from './FavoritePanel.vue'
 
 const props = defineProps({
   sourceMode: {
@@ -408,12 +352,35 @@ const emit = defineEmits(['search'])
 // 收藏夹相关
 const showFavoritePanel = ref(false)
 const favoriteFolders = ref([])
-const isSubscribing = ref(false)
-const subscribeDialogVisible = ref(false)
-const subscribeForm = reactive({
-  name: '',
-  tags: '',
-  color: '#409EFF',
+const favoritePanelRef = ref(null)
+const searchPanelRef = ref(null)
+const favoriteDropdownRef = ref(null)
+const panelWidthTrigger = ref(0)
+
+// 动态宽度：当 search-panel 变窄时，favorite-dropdown 也同步缩小
+const favoriteDropdownWidth = computed(() => {
+  const panel = searchPanelRef.value
+  if (!panel) return 360
+
+  // 引用 trigger 强制依赖响应式变化
+  void panelWidthTrigger.value
+
+  const panelWidth = panel.offsetWidth
+  const minWidth = 280
+  const maxWidth = 360
+
+  return Math.min(maxWidth, Math.max(minWidth, panelWidth))
+})
+
+// 监听 panel 宽度变化
+onMounted(() => {
+  const panel = searchPanelRef.value
+  if (panel) {
+    const resizeObserver = new ResizeObserver(() => {
+      panelWidthTrigger.value++
+    })
+    resizeObserver.observe(panel)
+  }
 })
 
 // 标签浏览相关
@@ -578,59 +545,6 @@ const loadFavoriteFolders = async () => {
   }
 }
 
-// 长按删除相关
-let pressTimer = null
-let pressTarget = null
-let isLongPress = false
-let pressMoved = false
-let longPressDialogOpen = false // 标记长按弹窗是否打开中
-
-const handlePressStart = (folder, event) => {
-  isLongPress = false
-  pressMoved = false
-  pressTarget = folder
-  pressTimer = setTimeout(() => {
-    isLongPress = true
-    longPressDialogOpen = true
-    ElMessageBox.confirm(`确定删除收藏夹「${folder.name}」？`, '提示', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }).then(async () => {
-      try {
-        await deleteFolder(folder.id)
-        ElMessage.success('已删除')
-        loadFavoriteFolders()
-      } catch (error) {
-        ElMessage.error('删除失败')
-      }
-    }).catch(() => {}).finally(() => {
-      longPressDialogOpen = false
-    })
-  }, 500)
-}
-
-const handlePressMove = () => {
-  pressMoved = true
-  if (pressTimer) {
-    clearTimeout(pressTimer)
-    pressTimer = null
-    pressTarget = null
-  }
-}
-
-const handlePressEnd = (folder) => {
-  if (pressTimer) {
-    clearTimeout(pressTimer)
-    pressTimer = null
-  }
-  if (!isLongPress && !pressMoved && pressTarget && pressTarget.id === folder.id) {
-    selectFavorite(folder)
-  }
-  pressTarget = null
-  pressMoved = false
-}
-
 const toggleFavoritePanel = () => {
   showFavoritePanel.value = !showFavoritePanel.value
   if (showFavoritePanel.value) {
@@ -641,13 +555,51 @@ const toggleFavoritePanel = () => {
   }
 }
 
-const handleClickOutside = (e) => {
-  if (longPressDialogOpen) return
-  const container = document.querySelector('.advanced-query-container')
-  if (container && !container.contains(e.target)) {
-    showFavoritePanel.value = false
-    document.removeEventListener('click', handleClickOutside)
+const handleLongPress = (folder) => {
+  favoritePanelRef.value?.openEdit(folder)
+}
+
+const handleCreateFolder = async (payload) => {
+  try {
+    await createFolder({
+      ...payload,
+      icon: 'folder',
+      sort_order: favoriteFolders.value.length,
+    })
+    ElMessage.success('订阅成功')
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('订阅失败')
   }
+}
+
+const handleUpdateFolder = async ({ id, ...payload }) => {
+  try {
+    await updateFolder(id, payload)
+    ElMessage.success('保存成功')
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('保存失败')
+  }
+}
+
+const handleDeleteFolder = async (folder) => {
+  try {
+    await deleteFolder(folder.id)
+    ElMessage.success('已删除')
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('删除失败')
+  }
+}
+
+const handleClickOutside = (e) => {
+  const container = document.querySelector('.advanced-query-container')
+  if (!container) return
+  if (container.contains(e.target)) return
+  if (e.target.closest('.el-popper')) return
+  showFavoritePanel.value = false
+  document.removeEventListener('click', handleClickOutside)
 }
 
 onUnmounted(() => {
@@ -656,34 +608,8 @@ onUnmounted(() => {
 
 // 一键订阅当前搜索
 const subscribeCurrentSearch = () => {
-  // 构建当前搜索的 tags 字符串
   const tagsStr = buildCurrentTagsString()
-  subscribeForm.tags = tagsStr
-  subscribeForm.name = '新建收藏夹'
-  subscribeDialogVisible.value = true
-}
-
-const confirmSubscribe = async () => {
-  if (!subscribeForm.name.trim()) {
-    ElMessage.warning('请输入收藏夹名称')
-    return
-  }
-  try {
-    await createFolder({
-      name: subscribeForm.name,
-      tags: subscribeForm.tags,
-      color: subscribeForm.color,
-      icon: 'folder',
-      sort_order: favoriteFolders.value.length,
-    })
-    ElMessage.success('订阅成功')
-    subscribeDialogVisible.value = false
-    subscribeForm.name = ''
-    subscribeForm.tags = ''
-    loadFavoriteFolders()
-  } catch (error) {
-    ElMessage.error('订阅失败')
-  }
+  favoritePanelRef.value?.openCreate({ tags: tagsStr })
 }
 
 // 构建当前搜索的 tags 字符串
@@ -1334,25 +1260,6 @@ html.dark-mode .search-panel {
   overflow: hidden;
 }
 
-/* 标签过长时缩小 */
-.input-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  background: var(--el-color-primary-light-9);
-  border: 1px solid var(--el-color-primary-light-7);
-  border-radius: 4px;
-  font-size: 12px;
-  color: var(--el-color-primary);
-  cursor: default;
-  white-space: nowrap;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1;
-}
-
 .search-input-wrapper :deep(.el-input__wrapper) {
   background: transparent;
   box-shadow: none;
@@ -1385,25 +1292,33 @@ html.dark-mode .search-panel {
   background: var(--el-color-primary-light-9);
   border: 1px solid var(--el-color-primary-light-7);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--el-color-primary);
   cursor: default;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 150px;
   overflow: hidden;
-  text-overflow: ellipsis;
   flex-shrink: 0;
 }
 
+.input-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
 .input-tag-close {
-  font-size: 12px;
+  flex-shrink: 0;
   cursor: pointer;
-  color: var(--el-color-primary-light-3);
-  transition: color 0.2s;
+  padding: 2px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
 }
 
 .input-tag-close:hover {
-  color: var(--el-color-primary-dark-2);
+  background: var(--el-color-primary-light-7);
 }
 
 .search-icon {
@@ -1963,126 +1878,5 @@ html.dark-mode .favorite-dropdown {
   padding: 24px 16px;
   color: var(--text-muted);
   font-size: 13px;
-}
-
-/* 订阅面板 - 自定义样式 */
-.subscribe-panel {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 8px;
-  width: 360px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
-  z-index: 1002;
-}
-
-.subscribe-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.subscribe-header :deep(.el-button) {
-  padding: 4px;
-  color: var(--text-muted);
-}
-
-.subscribe-header :deep(.el-button:hover) {
-  color: var(--text-primary);
-}
-
-.subscribe-body {
-  padding: 16px;
-}
-
-.form-item {
-  margin-bottom: 14px;
-}
-
-.form-item:last-child {
-  margin-bottom: 0;
-}
-
-.form-item label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.form-item :deep(.el-input__wrapper) {
-  background: var(--bg-primary);
-  box-shadow: none;
-  border: 1px solid var(--border-color);
-}
-
-.form-item :deep(.el-input__inner) {
-  color: var(--text-primary);
-}
-
-.form-item :deep(.el-textarea__inner) {
-  background: var(--bg-primary);
-  box-shadow: none;
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  resize: none;
-}
-
-.form-tip {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
-.subscribe-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color);
-}
-
-.subscribe-footer :deep(.el-button) {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-
-.subscribe-footer :deep(.el-button--primary) {
-  background: #409EFF;
-  border-color: #409EFF;
-  color: white;
-}
-
-.color-picker {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.color-option {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.color-option:hover {
-  transform: scale(1.1);
-}
-
-.color-option.active {
-  border-color: var(--text-primary);
 }
 </style>

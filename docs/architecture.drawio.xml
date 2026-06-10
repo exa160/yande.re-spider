@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="192.168.100.222">
+  <diagram id="ot3UWylKaoNXf9p8YOcP" name="第 1 页">
+    <mxGraphModel dx="1375" dy="1079" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" value="Yande.re Spider 架构方案图" vertex="1">
+          <mxGeometry height="40" width="400" x="300" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="presentation" parent="1" style="rounded=1;fillColor=#E3F2FD;strokeColor=#1976D2;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="表示层&#xa;(Presentation Layer)" vertex="1">
+          <mxGeometry height="80" width="720" x="40" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="vue" parent="1" style="rounded=1;fillColor=#FFFFFF;strokeColor=#1976D2;align=left;spacingLeft=10;spacingTop=5;fontSize=10;" value="Vue.js 3 + Element Plus&#xa;• 图库展示组件&#xa;• 下载管理组件&#xa;• 配置管理组件" vertex="1">
+          <mxGeometry height="45" width="180" x="60" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="electron" parent="1" style="rounded=1;fillColor=#FFFFFF;strokeColor=#1976D2;align=left;spacingLeft=10;spacingTop=5;fontSize=10;" value="Electron 桌面客户端&#xa;(远期规划)" vertex="1">
+          <mxGeometry height="45" width="180" x="260" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="mobile" parent="1" style="rounded=1;fillColor=#FFFFFF;strokeColor=#1976D2;align=left;spacingLeft=10;spacingTop=5;fontSize=10;" value="移动端响应式&#xa;(远期规划)" vertex="1">
+          <mxGeometry height="45" width="180" x="460" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="http" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="HTTP / WebSocket">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="400" y="160" as="sourcePoint" />
+            <mxPoint x="400" y="190" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="api-layer" parent="1" style="rounded=1;fillColor=#E8F5E9;strokeColor=#388E3C;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="API 层&#xa;(API Layer)" vertex="1">
+          <mxGeometry height="100" width="720" x="40" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="apiloader" parent="1" style="rounded=1;fillColor=#C8E6C9;strokeColor=#388E3C;align=center;spacingTop=5;fontSize=10;fontStyle=1;" value="APILoader&#xa;自动路由注册" vertex="1">
+          <mxGeometry height="60" width="100" x="60" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="routes" parent="1" style="rounded=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=5;spacingTop=5;fontSize=9;" value="API Routes (api/v1/)&#xa;├─ gallery.py&#xa;├─ download.py&#xa;├─ query.py&#xa;├─ favorites.py&#xa;├─ config.py&#xa;└─ tag_cache.py" vertex="1">
+          <mxGeometry height="60" width="140" x="180" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="request-models" parent="1" style="rounded=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=5;spacingTop=5;fontSize=9;" value="Request Models&#xa;(models/request/)&#xa;Pydantic DTO" vertex="1">
+          <mxGeometry height="60" width="130" x="340" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="response-models" parent="1" style="rounded=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=5;spacingTop=5;fontSize=9;" value="Response Models&#xa;(models/response/)&#xa;BaseResponse DTO" vertex="1">
+          <mxGeometry height="60" width="130" x="490" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="error-handling" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#D32F2F;align=left;spacingLeft=5;spacingTop=5;fontSize=9;" value="Error Handling&#xa;APIException + ErrMsg" vertex="1">
+          <mxGeometry height="60" width="100" x="640" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="service-layer" parent="1" style="rounded=1;fillColor=#FFF3E0;strokeColor=#F57C00;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="Service 层&#xa;(Business Logic Layer)" vertex="1">
+          <mxGeometry height="90" width="720" x="40" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="gallery-service" parent="1" style="rounded=1;fillColor=#FFE0B2;strokeColor=#F57C00;align=center;spacingTop=8;fontSize=10;" value="GalleryService&#xa;图库展示" vertex="1">
+          <mxGeometry height="50" width="100" x="60" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="download-service" parent="1" style="rounded=1;fillColor=#FFE0B2;strokeColor=#F57C00;align=center;spacingTop=8;fontSize=10;" value="DownloadService&#xa;下载管理" vertex="1">
+          <mxGeometry height="50" width="100" x="180" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="favorites-service" parent="1" style="rounded=1;fillColor=#FFE0B2;strokeColor=#F57C00;align=center;spacingTop=8;fontSize=10;" value="FavoritesService&#xa;收藏管理" vertex="1">
+          <mxGeometry height="50" width="100" x="300" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="config-service" parent="1" style="rounded=1;fillColor=#FFE0B2;strokeColor=#F57C00;align=center;spacingTop=8;fontSize=10;" value="ConfigService&#xa;配置管理" vertex="1">
+          <mxGeometry height="50" width="100" x="420" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="tagcache-service" parent="1" style="rounded=1;fillColor=#FFE0B2;strokeColor=#F57C00;align=center;spacingTop=8;fontSize=10;" value="TagCacheService&#xa;标签缓存" vertex="1">
+          <mxGeometry height="50" width="100" x="540" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="service-note" parent="1" style="rounded=1;fillColor=#FFF8E1;strokeColor=#FBC02D;align=left;spacingLeft=5;spacingTop=5;fontSize=9;strokeWidth=1;" value="业务逻辑编排&#xa;调用 DAO / Infrastructure 层" vertex="1">
+          <mxGeometry height="50" width="80" x="660" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="dao-layer" parent="1" style="rounded=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="DAO 层&#xa;(Data Access Layer)" vertex="1">
+          <mxGeometry height="90" width="340" x="40" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="basedao" parent="1" style="rounded=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;align=center;spacingTop=8;fontSize=10;" value="BaseDAO&#xa;Session管理" vertex="1">
+          <mxGeometry height="50" width="80" x="60" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="yande-dao" parent="1" style="rounded=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;align=center;spacingTop=8;fontSize=10;" value="YandeDataRepository&#xa;图片数据访问" vertex="1">
+          <mxGeometry height="50" width="100" x="160" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="tag-dao" parent="1" style="rounded=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;align=center;spacingTop=8;fontSize=10;" value="TagDAO&#xa;标签访问" vertex="1">
+          <mxGeometry height="50" width="80" x="280" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="infra-layer" parent="1" style="rounded=1;fillColor=#ECEFF1;strokeColor=#455A64;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="Infrastructure 层&#xa;(External Services)" vertex="1">
+          <mxGeometry height="90" width="340" x="420" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="yande-api" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;spacingTop=8;fontSize=10;" value="YandeApi&#xa;Yande API客户端" vertex="1">
+          <mxGeometry height="50" width="90" x="440" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="downloader" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;spacingTop=8;fontSize=10;" value="Downloader&#xa;分段下载器" vertex="1">
+          <mxGeometry height="50" width="90" x="550" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="image-cache" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;spacingTop=8;fontSize=10;" value="ImageCache&#xa;图片缓存" vertex="1">
+          <mxGeometry height="50" width="80" x="660" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="middleware-layer" parent="1" style="rounded=1;fillColor=#FFEBEE;strokeColor=#C62828;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="Middleware 层&#xa;(横切关注点)" vertex="1">
+          <mxGeometry height="70" width="720" x="40" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="cors" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#C62828;align=center;fontSize=9;" value="CORSMiddleware" vertex="1">
+          <mxGeometry height="30" width="90" x="60" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="session-mw" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#C62828;align=center;fontSize=9;" value="RequestSessionMiddleware" vertex="1">
+          <mxGeometry height="30" width="120" x="170" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="logger-mw" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#C62828;align=center;fontSize=9;" value="LoggerMiddleware" vertex="1">
+          <mxGeometry height="30" width="90" x="310" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="error-mw" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#C62828;align=center;fontSize=9;" value="ErrorHandleMiddleware" vertex="1">
+          <mxGeometry height="30" width="110" x="420" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="download-mw" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#C62828;align=center;fontSize=9;" value="DownloadMiddleware" vertex="1">
+          <mxGeometry height="30" width="100" x="550" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="frontend-mw" parent="1" style="rounded=1;fillColor=#FFCDD2;strokeColor=#C62828;align=center;fontSize=9;" value="FrontendStaticLoader" vertex="1">
+          <mxGeometry height="30" width="80" x="670" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="infra-bottom" parent="1" style="rounded=1;fillColor=#ECEFF1;strokeColor=#455A64;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="基础设施 (Infrastructure)" vertex="1">
+          <mxGeometry height="70" width="720" x="40" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="database" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;fontSize=9;" value="Database&#xa;MariaDB / SQLite&#xa;SQLAlchemy ORM" vertex="1">
+          <mxGeometry height="40" width="100" x="60" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="filesystem" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;fontSize=9;" value="File System&#xa;本地文件存储&#xa;预览图/原图" vertex="1">
+          <mxGeometry height="40" width="100" x="200" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="yande-re" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;fontSize=9;" value="Yande.re API&#xa;外部API服务" vertex="1">
+          <mxGeometry height="40" width="100" x="340" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="proxy" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;fontSize=9;" value="Proxy&#xa;代理配置" vertex="1">
+          <mxGeometry height="40" width="80" x="480" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="loguru" parent="1" style="rounded=1;fillColor=#CFD8DC;strokeColor=#455A64;align=center;fontSize=9;" value="Loguru&#xa;日志系统" vertex="1">
+          <mxGeometry height="40" width="80" x="600" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="common-layer" parent="1" style="rounded=1;fillColor=#E0F7FA;strokeColor=#00838F;fontSize=12;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=10;" value="Common 层 (共享常量/配置)" vertex="1">
+          <mxGeometry height="60" width="720" x="40" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="constant" parent="1" style="rounded=1;fillColor=#B2EBF2;strokeColor=#00838F;align=center;fontSize=9;" value="constant.py&#xa;ErrMsg / RouterMap&#xa;PathConstant" vertex="1">
+          <mxGeometry height="30" width="100" x="60" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="settings" parent="1" style="rounded=1;fillColor=#B2EBF2;strokeColor=#00838F;align=center;fontSize=9;" value="settings.py&#xa;Pydantic Config" vertex="1">
+          <mxGeometry height="30" width="90" x="180" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="utils" parent="1" style="rounded=1;fillColor=#B2EBF2;strokeColor=#00838F;align=center;fontSize=9;" value="utils.py&#xa;工具函数" vertex="1">
+          <mxGeometry height="30" width="80" x="290" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="models" parent="1" style="rounded=1;fillColor=#B2EBF2;strokeColor=#00838F;align=center;fontSize=9;" value="models/yande.py&#xa;YandePostData" vertex="1">
+          <mxGeometry height="30" width="100" x="400" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="db-models" parent="1" style="rounded=1;fillColor=#B2EBF2;strokeColor=#00838F;align=center;fontSize=9;" value="models/database/&#xa;SQLAlchemy Models" vertex="1">
+          <mxGeometry height="30" width="110" x="520" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="config" parent="1" style="rounded=1;fillColor=#B2EBF2;strokeColor=#00838F;align=center;fontSize=9;" value="common/config&#xa;应用配置" vertex="1">
+          <mxGeometry height="30" width="80" x="660" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow1" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;dashed=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="400" y="290" as="sourcePoint" />
+            <mxPoint x="400" y="310" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow2" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;dashed=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="400" y="420" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow3" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;dashed=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="400" y="510" as="sourcePoint" />
+            <mxPoint x="400" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow4" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;dashed=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="400" y="600" as="sourcePoint" />
+            <mxPoint x="400" y="620" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow5" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;dashed=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="400" y="690" as="sourcePoint" />
+            <mxPoint x="400" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" parent="1" style="rounded=1;fillColor=#FAFAFA;strokeColor=#666666;fontSize=11;fontStyle=1;align=left;spacingLeft=5;spacingTop=5;" value="图例" vertex="1">
+          <mxGeometry height="50" width="720" x="40" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="legend1" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#666666;dashed=0;" value="调用关系">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="60" y="820" as="sourcePoint" />
+            <mxPoint x="120" y="820" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend2" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#7B1FA2;dashed=1;" value="数据访问">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="220" y="820" as="sourcePoint" />
+            <mxPoint x="300" y="820" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend3" edge="1" parent="1" style="endArrow=classic;html=1;strokeColor=#455A64;dashed=1;" value="基础设施依赖">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="420" y="820" as="sourcePoint" />
+            <mxPoint x="530" y="820" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-note" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;" value="✓ = 同步调用    ⟳ = 异步调用" vertex="1">
+          <mxGeometry height="20" width="200" x="560" y="810" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

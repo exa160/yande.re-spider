@@ -59,6 +59,14 @@ export function refreshOnlineCount(folderId) {
   return api.post(`/favorites/${folderId}/refresh-online`)
 }
 
+export function triggerFolderSchedule(folderId) {
+  return api.post(`/favorites/${folderId}/schedule/trigger`)
+}
+
+export function getFolderScheduleStatus(folderId) {
+  return api.get(`/favorites/${folderId}/schedule/status`)
+}
+
 export default {
   getAllFolders,
   getFolder,
@@ -70,4 +78,6 @@ export default {
   updateOnlineCount,
   updateLocalCount,
   refreshOnlineCount,
+  triggerFolderSchedule,
+  getFolderScheduleStatus,
 }
