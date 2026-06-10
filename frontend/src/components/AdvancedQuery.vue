@@ -66,6 +66,7 @@
                 @create="handleCreateFolder"
                 @update="handleUpdateFolder"
                 @delete="handleDeleteFolder"
+                @mode-change="handleFavoriteModeChange"
               />
             </div>
 
@@ -130,8 +131,8 @@
               </div>
             </div>
 
-            <!-- 面板头部 - 移到最下方 -->
-            <div class="panel-header">
+            <!-- 面板头部 - 移到最下方; inline-form (创建/编辑) 时隐藏 -->
+            <div v-if="!isFavoriteInlineForm" class="panel-header">
               <div class="segmented-control">
                 <div
                   :class="['segment-item', { active: activePanelTab === 'favorites' }]"
@@ -356,6 +357,9 @@ const favoritePanelRef = ref(null)
 const searchPanelRef = ref(null)
 const favoriteDropdownRef = ref(null)
 const panelWidthTrigger = ref(0)
+// 收藏夹子组件当前模式 ('list' | 'create' | 'edit'), inline-form 时隐藏 panel-header
+const favoritePanelMode = ref('list')
+const isFavoriteInlineForm = computed(() => favoritePanelMode.value !== 'list')
 
 // 动态宽度：当 search-panel 变窄时，favorite-dropdown 也同步缩小
 const favoriteDropdownWidth = computed(() => {
@@ -557,6 +561,10 @@ const toggleFavoritePanel = () => {
 
 const handleLongPress = (folder) => {
   favoritePanelRef.value?.openEdit(folder)
+}
+
+const handleFavoriteModeChange = (newMode) => {
+  favoritePanelMode.value = newMode
 }
 
 const handleCreateFolder = async (payload) => {

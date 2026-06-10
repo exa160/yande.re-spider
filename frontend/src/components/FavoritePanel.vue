@@ -182,7 +182,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, Star } from '@element-plus/icons-vue'
 
@@ -192,10 +192,13 @@ const props = defineProps({
   sourceMode: { type: String, default: 'local' },
 })
 
-const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete'])
+const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'mode-change'])
 
 const mode = ref('list')
 const editingFolder = ref(null)
+
+// 通知父组件 mode 变化 (父组件用此隐藏 panel-header 等装饰性头部)
+watch(mode, (newMode) => emit('mode-change', newMode), { immediate: true })
 
 const form = reactive({
   name: '',
