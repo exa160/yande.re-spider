@@ -133,7 +133,7 @@
       <div v-show="activeMenu === 'about'" class="config-section about-section">
         <div class="about-content">
           <div class="about-title">Yande.re Local Picture Manager</div>
-          <div class="about-version">Version 1.1.4</div>
+          <div class="about-version">Version {{ appVersion }}</div>
           <div class="about-desc">Yande.re 本地图片管理工具</div>
           <div class="about-links">
             <a href="https://github.com/exa160/yande.re-spider" target="_blank" class="github-link">
@@ -222,6 +222,9 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
+
+// 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
+const appVersion = __APP_VERSION__
 
 const apiConfig = ref({
   retry_times: 3,
