@@ -140,10 +140,13 @@ class BaseDAO:
 
     @property
     def session(self) -> Session:
-        if self._session is None:
-            try:
-                from src.middleware.session import RequestSessionMiddleware
-                self._session = RequestSessionMiddleware.get_session()
-            except Exception:
-                self._session = _get_session_factory()()
-        return self._session
+        # 显式构造时优先 (with FavoriteDao(s) as dao:)
+        if self._session is not None:
+            return self._session
+        # 单例路径: 每次从 ContextVar 拿当前请求 session
+        # 禁止缓存! 缓存会导致下次请求拿到已 close 的旧 session
+        try:
+            from src.middleware.session import RequestSessionMiddleware
+            return RequestSessionMiddleware.get_session()
+        except Exception:
+            return _get_session_factory()()
