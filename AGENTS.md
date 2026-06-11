@@ -24,6 +24,7 @@
 | 抛出错误 | `raise APIException(ErrMsg.XXX, e=e)` |
 | 新增 DAO | 继承 `BaseDAO`，使用 `self.session` 操作数据库 |
 | 配置常量 | 在 `common/constant.py` 中定义 `PathConstant`、`ErrMsg` 等 |
+| **升级版本** | **改 3 处 version 源**（`package.json` + `pyproject.toml` + `AppConfig.version`）→ commit → tag → `gh release create` → `gh issue create` → `gh pr create --base next`（详见 [docs/release.md](docs/release.md)）|
 
 ---
 
@@ -41,6 +42,7 @@
 | [docs/constants.md](docs/constants.md) | PathConstant、TaskStatus 等常量定义 |
 | [docs/design.md](docs/design.md) | 架构设计详解 |
 | [docs/tasks.md](docs/tasks.md) | 开发任务追踪 |
+| [docs/release.md](docs/release.md) | **版本升级流程**（三处 version 源 + 启动 banner + Vite 注入 + GH Release + Issue + PR）|
 
 ---
 
