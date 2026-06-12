@@ -410,6 +410,7 @@ async def run_download_async(task_id: str):
                     "yande_data": None,
                     "status": TaskStatus.COMPLETED,
                     "progress": 1.0,
+                    "downloaded_size": file_size,
                     "completed_at": datetime.now().isoformat(),
                 },
             )
