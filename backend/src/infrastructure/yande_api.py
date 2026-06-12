@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field, model_validator
 from src.common import config
 from src.common.constant import Rating, yande_constant
 from src.common.utils import get_proxy
-from src.models.yande import YandePostData, YandeSearchTags
+from src.models.request.yande import YandeSearchTags
+from src.models.response.yande import YandePostData
 
 
 def _with_retry(method):

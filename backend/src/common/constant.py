@@ -21,6 +21,7 @@ class DatabaseTableNameConstant(ConstantModel):
     yande_artist: str = "yande_artists"
     tag_local_stats: str = "tag_local_stats"
     favorite_folder: str = "favorite_folders"
+    download_task: str = "download_tasks"
 
 
 
