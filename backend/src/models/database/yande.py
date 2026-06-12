@@ -1,10 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, Boolean, Text, DateTime, String, JSON
+from sqlalchemy import Column, Integer, Boolean, Text, DateTime, Float, String, JSON, text
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import Enum
 
-from src.common.constant import Rating, table_constant
+from src.common.constant import Rating, TaskStatus, table_constant
 
 
 class Base(DeclarativeBase):
@@ -125,3 +125,30 @@ class FavoriteFolder(Base):
     last_scheduled_at = Column(DateTime, nullable=True, comment="上次调度时间")
     last_schedule_status = Column(String(16), nullable=True, comment="running | success | failed")
     last_schedule_stats = Column(JSON, nullable=True, comment="上次调度统计 JSON")
+
+
+class DownloadTask(Base):
+    """下载任务持久化记录"""
+    __tablename__ = table_constant.download_task
+
+    task_id = Column(String(36), primary_key=True, comment="任务 UUID v4")
+    image_id = Column(Integer, index=True, nullable=False, comment="yande 图片 ID")
+    file_name = Column(String(256), nullable=False, comment="文件名")
+    file_size = Column(Integer, nullable=True, comment="文件总大小（字节）")
+    downloaded_size = Column(Integer, default=0, comment="已下载大小（字节）")
+    progress = Column(Float, default=0.0, comment="进度 0-1")
+    speed = Column(Float, default=0.0, comment="下载速度（bytes/s）")
+    status = Column(
+        Enum(TaskStatus, values_callable=lambda x: [e.value for e in x]),
+        index=True, nullable=False, comment="任务状态",
+    )
+    error_message = Column(Text, nullable=True, comment="错误信息")
+    started_at = Column(DateTime, nullable=True, comment="开始时间")
+    completed_at = Column(DateTime, nullable=True, comment="完成时间")
+    created_at = Column(DateTime, nullable=False, index=True, comment="创建时间")
+    updated_at = Column(
+        DateTime, nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=datetime.now,
+        comment="更新时间",
+    )
