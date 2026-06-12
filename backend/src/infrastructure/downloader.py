@@ -111,9 +111,10 @@ class MultiDown:
                         chunk_size=config.downloader.chunk_size
                     ):
                         if chunk:
-                            chunk_len = len(chunk) / 1024 / 1024
+                            # 单位统一：progress_callback 接收字节数，避免浮点累加误差
+                            chunk_len = len(chunk)
                             content_data.append(chunk)
-                            current_start += len(chunk)
+                            current_start += chunk_len
                             if progress_callback:
                                 progress_callback(chunk_len)
 
