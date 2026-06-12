@@ -7,20 +7,17 @@ from src.dao.favorite_dao import FavoriteDao
 from src.infrastructure.scheduler import schedule_manager
 
 
-class SchedulerMiddleware:
+class SchedulerLifecycle:
     @staticmethod
-    def init_app(app: FastAPI):
-        @asynccontextmanager
-        async def lifespan(app: FastAPI):
-            schedule_manager.start()
-            SchedulerMiddleware._reload_schedules()
-            try:
-                yield
-            finally:
-                schedule_manager.shutdown(wait=False)
-                logger.info("Scheduler stopped")
-
-        app.router.lifespan_context = lifespan
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        schedule_manager.start()
+        SchedulerLifecycle._reload_schedules()
+        try:
+            yield
+        finally:
+            schedule_manager.shutdown(wait=False)
+            logger.info("Scheduler stopped")
 
     @staticmethod
     def _reload_schedules() -> None:
