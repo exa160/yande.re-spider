@@ -18,7 +18,7 @@ from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
 from src.models.database.yande import YandeData
 from src.models.request.gallery import GalleryLoadRequest
-from src.models.yande import YandeSearchTags
+from src.models.request.yande import YandeSearchTags
 
 
 class GalleryService:

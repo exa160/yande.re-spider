@@ -16,7 +16,32 @@ from src.infrastructure.downloader import FileInfo, MultiDown
 from src.models.database.yande import YandeData
 
 
+# 终态集合：完成后从内存清除，DB 永久保留用于历史查询
+_TERMINAL_STATUS = {
+    TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED,
+}
+
+
+def _coerce_db_value(field: str, value):
+    """Pydantic 字符串时间 → ORM datetime 转换"""
+    if field in ("started_at", "completed_at") and isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return value
+
+
 class TaskStore:
+    """下载任务存储（内存缓存活跃任务 + DB 持久化终态）
+
+    设计原则：
+    - 活跃任务（pending/downloading/paused）在内存中，UI 实时读取
+    - DB 写入仅在状态变化时触发，进度上报不落 DB
+    - 终态任务从内存清除，DB 永久保留用于历史查询
+    - 进程启动时从 DB 恢复 pending/paused 任务到内存
+    """
+
     class ProgressData(BaseModel):
         """任务进度数据"""
 
@@ -42,49 +67,161 @@ class TaskStore:
         self._tasks: Dict[str, TaskStore.DownloadTask] = {}
         self._lock = threading.Lock()
 
+    def load_from_db(self) -> int:
+        """进程启动时恢复活跃任务到内存缓存
+
+        步骤：
+        1. 崩溃恢复：把上次崩溃时残留的 downloading 任务改为 pending
+        2. 拉取 pending/paused 任务到内存缓存
+        """
+        from src.dao.download_task_dao import download_task_dao
+
+        # 1. 崩溃恢复
+        with download_task_dao as dao:
+            recovered = dao.recover_downloading_tasks()
+
+        # 2. 加载活跃任务
+        with download_task_dao as dao:
+            active = dao.list_active()
+
+        loaded = 0
+        with self._lock:
+            for rec in active:
+                status = (
+                    rec.status
+                    if isinstance(rec.status, TaskStatus)
+                    else TaskStatus(rec.status)
+                )
+                task = TaskStore.DownloadTask(
+                    task_id=rec.task_id,
+                    file_name=rec.file_name,
+                    file_size=rec.file_size,
+                    downloaded_size=rec.downloaded_size or 0,
+                    progress=rec.progress or 0.0,
+                    speed=0.0,
+                    status=status,
+                    error_message=rec.error_message,
+                    started_at=rec.started_at.isoformat() if rec.started_at else None,
+                    completed_at=rec.completed_at.isoformat() if rec.completed_at else None,
+                    created_at=rec.created_at.isoformat() if rec.created_at else "",
+                )
+                self._tasks[rec.task_id] = task
+                loaded += 1
+
+        logger.info(
+            f"TaskStore: 从 DB 恢复 {loaded} 个活跃任务到内存缓存"
+            + (f"（崩溃恢复 {recovered} 个）" if recovered else "")
+        )
+        return loaded
+
     def create_task(self, task_id: str, yande_data: YandeData) -> dict:
+        from src.dao.download_task_dao import download_task_dao
+
+        file_name = f"{yande_data.id}.{yande_data.file_ext or 'jpg'}"
+        file_size = yande_data.file_size
+
+        # 先写 DB
+        with download_task_dao as dao:
+            dao.create(task_id, yande_data.id, file_name, file_size)
+
+        # 再写内存
         with self._lock:
             task = TaskStore.DownloadTask(
                 task_id=task_id,
                 yande_data=yande_data,
-                file_name=f"{yande_data.id}.{yande_data.file_ext}",
-                file_size=yande_data.file_size
+                file_name=file_name,
+                file_size=file_size,
             )
             self._tasks[task_id] = task
             return task
 
     def get_task(self, task_id: str) -> Optional[TaskStore.DownloadTask]:
+        # 内存优先（活跃任务）
         with self._lock:
-            return self._tasks.get(task_id)
+            task = self._tasks.get(task_id)
+            if task:
+                return task
+        # 内存未命中：查 DB（终态/历史任务场景）
+        from src.dao.download_task_dao import download_task_dao
+        with download_task_dao as dao:
+            rec = dao.get_by_id(task_id)
+            if not rec:
+                return None
+            return TaskStore.DownloadTask(
+                task_id=rec.task_id,
+                file_name=rec.file_name,
+                file_size=rec.file_size,
+                downloaded_size=rec.downloaded_size or 0,
+                progress=rec.progress or 0.0,
+                speed=0.0,
+                status=(
+                    rec.status
+                    if isinstance(rec.status, TaskStatus)
+                    else TaskStatus(rec.status)
+                ),
+                error_message=rec.error_message,
+                started_at=rec.started_at.isoformat() if rec.started_at else None,
+                completed_at=rec.completed_at.isoformat() if rec.completed_at else None,
+                created_at=rec.created_at.isoformat() if rec.created_at else "",
+            )
 
     def get_tasks(
         self, status: Optional[TaskStatus] = None, page: int = 1, page_size: int = 20
     ) -> tuple[List[dict], int]:
-        with self._lock:
-            tasks = list(self._tasks.values())
-            if status:
-                tasks = [t for t in tasks if t.status == status]
-            tasks.sort(key=lambda x: x.created_at, reverse=True)
-            total = len(tasks)
-            start = (page - 1) * page_size
-            end = start + page_size
-            return [task.model_dump() for task in tasks[start:end]], total
+        """列表查询统一走 DB（避免内存与 DB 不一致）"""
+        from src.dao.download_task_dao import download_task_dao
+        with download_task_dao as dao:
+            return dao.query(status=status, page=page, page_size=page_size)
 
     def update_task(self, task_id: str, updates: dict):
+        """更新任务：内存立即更新，DB 仅在状态变化时写入
+
+        DB 写入采用"快照"模式：状态变化时把内存中已有进度字段一并落 DB，
+        保证 DB 与内存在该时刻完全一致。
+        """
+        from src.dao.download_task_dao import download_task_dao
+
+        db_payload = None
         with self._lock:
             task = self._tasks.get(task_id)
-            if task:
-                for key, value in updates.items():
-                    if hasattr(task, key):
-                        setattr(task, key, value)
-            # TODO 更新数据库：目前只更新内存中的任务状态，后续需要增加数据库更新逻辑 --- IGNORE ---
+            if not task:
+                # 已从内存清除（终态），DB 已持久化，无需再写
+                return
+
+            # 1. 内存立即更新
+            for key, value in updates.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+
+            # 2. DB 写入条件：本次 updates 包含 status 字段
+            #    （progress_callback 不含 status，所以不会写 DB）
+            if "status" in updates:
+                # 快照：把内存中已有进度字段一并落 DB，保证一致性
+                db_payload = {}
+                for field in (
+                    "status", "error_message", "started_at", "completed_at",
+                    "downloaded_size", "progress", "speed",
+                ):
+                    value = getattr(task, field, None)
+                    if value is not None:
+                        db_payload[field] = _coerce_db_value(field, value)
+
+                # 终态：从内存清除（DB 永久保留）
+                if task.status in _TERMINAL_STATUS:
+                    self._tasks.pop(task_id, None)
+
+        if db_payload:
+            with download_task_dao as dao:
+                dao.update(task_id, **db_payload)
 
     def delete_task(self, task_id: str) -> bool:
+        """删除任务：内存 + DB 双删"""
+        from src.dao.download_task_dao import download_task_dao
         with self._lock:
-            if task_id in self._tasks:
-                del self._tasks[task_id]
-                return True
-            return False
+            removed = self._tasks.pop(task_id, None) is not None
+        with download_task_dao as dao:
+            db_removed = dao.delete(task_id)
+        return removed or db_removed
 
 
 task_store = TaskStore()
@@ -199,14 +336,15 @@ async def run_download_async(task_id: str):
             last_downloaded_size = 0
             download_speed = 0.0
 
-            def progress_callback(chunk_mb: float):
+            def progress_callback(chunk_bytes: int):
+                # 单位统一：所有 size 字段以字节（int）存储，避免浮点累加误差
                 nonlocal \
                     downloaded_size, \
                     last_update_time, \
                     last_downloaded_size, \
                     download_speed
                 current_time = time.time()
-                downloaded_size += chunk_mb
+                downloaded_size += chunk_bytes
                 time_diff = current_time - last_update_time
                 if time_diff >= 0.5:
                     size_diff = downloaded_size - last_downloaded_size
@@ -214,17 +352,13 @@ async def run_download_async(task_id: str):
                     last_downloaded_size = downloaded_size
                     last_update_time = current_time
                     if file_size > 0:
-                        progress = min(
-                            downloaded_size / (file_size / 1024 / 1024), 1.0
-                        )
+                        progress = min(downloaded_size / file_size, 1.0)
                         task_store.update_task(
                             task_id,
                             {
-                                "downloaded_size": int(downloaded_size * 1024 * 1024),
+                                "downloaded_size": downloaded_size,
                                 "progress": progress,
-                                "speed": download_speed
-                                * 1024
-                                * 1024,  # Convert MB/s to bytes/s
+                                "speed": download_speed,
                             },
                         )
             # 在线程池中执行同步下载代码，避免阻塞事件循环
@@ -276,6 +410,7 @@ async def run_download_async(task_id: str):
                     "yande_data": None,
                     "status": TaskStatus.COMPLETED,
                     "progress": 1.0,
+                    "downloaded_size": file_size,
                     "completed_at": datetime.now().isoformat(),
                 },
             )
