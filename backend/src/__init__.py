@@ -9,11 +9,12 @@ from pydantic import BaseModel, ConfigDict
 
 from src.api import APILoader
 from src.common.constant import path_constant
-from src.middleware.downloader import DownloadMiddleware
+from src.lifecycle.download import DownloadLifecycle
+from src.lifecycle.lifespan import LifespanRegistry
+from src.lifecycle.scheduler import SchedulerLifecycle
 from src.middleware.errors import ErrorHandleMiddleware
 from src.middleware.frontend_static import FrontendStaticLoader
 from src.middleware.loggers import LoggerMiddleware
-from src.middleware.scheduler import SchedulerMiddleware
 from src.middleware.session import RequestSessionMiddleware
 
 
@@ -23,7 +24,7 @@ class AppConfig(BaseModel):
 
     title: str = "Yande.re Local Picture Manager"
     description: str = "本地图片管理工具，提供图片查询、下载和管理功能"
-    version: str = "1.1.4"
+    version: str = "1.1.5"
     docs_url: str = "/docs"
     redoc_url: str = "/redoc"
 
@@ -79,12 +80,13 @@ def init_app(app: FastAPI) -> FastAPI:
     )
     work_dir_setup()
     RequestSessionMiddleware.init_app(app)
-    DownloadMiddleware.init_app(app)
-    SchedulerMiddleware.init_app(app)
     APILoader.init_app(app)
     LoggerMiddleware.init_app(app, path_constant.log_dir)
     ErrorHandleMiddleware.init_app(app)
     FrontendStaticLoader.init_app(app)
+    LifespanRegistry.register(DownloadLifecycle.lifespan)
+    LifespanRegistry.register(SchedulerLifecycle.lifespan)
+    LifespanRegistry.init_app(app)
 
     _print_startup_banner(app_config)
 

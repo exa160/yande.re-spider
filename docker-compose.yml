@@ -8,6 +8,8 @@ services:
       - ./data:/app/data
       - ./downloads:/app/downloads
       - ./logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     logging:
       driver: "json-file"
       options:
