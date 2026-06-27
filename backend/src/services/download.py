@@ -69,22 +69,39 @@ class DownloadService:
 
     @staticmethod
     def get_tasks(
-        status: Optional[TaskStatus] = None,
+        status_list: Optional[List[TaskStatus]] = None,
+        sort_by: str = "created_at",
+        order: str = "desc",
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[dict], int]:
         """
-        获取任务列表
+        获取任务列表（多状态过滤 + 排序 + 分页，DB 持久化）
 
         Args:
-            status: 任务状态过滤
+            status_list: 状态过滤列表；None/[] 表示所有
+            sort_by: 排序字段（created_at/updated_at/completed_at/progress）
+            order: 'asc' | 'desc'
             page: 页码
             page_size: 每页数量
 
         Returns:
             (任务列表, 总数)
         """
-        return task_store.get_tasks(status, page, page_size)
+        from src.dao.download_task_dao import download_task_dao
+        return download_task_dao.query_tasks(
+            status_list=status_list,
+            sort_by=sort_by,
+            order=order,
+            page=page,
+            page_size=page_size,
+        )
+
+    @staticmethod
+    def get_status_counts() -> dict:
+        """获取各状态任务数量（DB GROUP BY）"""
+        from src.dao.download_task_dao import download_task_dao
+        return download_task_dao.count_by_status()
 
     @staticmethod
     def get_task(task_id: str) -> Optional[TaskStore.DownloadTask]:

@@ -130,6 +130,55 @@ class DownloadTaskDao(BaseDAO):
         )
         return [self._to_dict(r) for r in records], total
 
+    def count_by_status(self) -> dict:
+        """按 status 统计任务数（单 SQL GROUP BY），缺失状态为 0"""
+        rows = self.session.query(
+            DownloadTask.status,
+            func.count(DownloadTask.task_id)
+        ).group_by(DownloadTask.status).all()
+
+        result = {s.value: 0 for s in TaskStatus}
+        for status_val, count in rows:
+            key = status_val.value if hasattr(status_val, "value") else status_val
+            result[key] = count
+        return result
+
+    def query_tasks(
+        self,
+        status_list: Optional[List[TaskStatus]] = None,
+        sort_by: str = "created_at",
+        order: str = "desc",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Tuple[List[dict], int]:
+        """分页查询任务（多状态过滤 + 排序 + 分页）。"""
+        allowed_sort = {"created_at", "updated_at", "completed_at", "progress"}
+        if sort_by not in allowed_sort:
+            raise ValueError(f"Invalid sort_by: {sort_by}. Must be one of {allowed_sort}")
+        if order not in ("asc", "desc"):
+            raise ValueError(f"Invalid order: {order}. Must be 'asc' or 'desc'")
+
+        stmt = select(DownloadTask)
+        count_stmt = select(func.count()).select_from(DownloadTask)
+
+        if status_list:
+            status_values = [s.value if hasattr(s, "value") else s for s in status_list]
+            stmt = stmt.filter(DownloadTask.status.in_(status_values))
+            count_stmt = count_stmt.filter(DownloadTask.status.in_(status_values))
+
+        total = self.session.execute(count_stmt).scalar() or 0
+
+        sort_col = getattr(DownloadTask, sort_by)
+        if order == "asc":
+            stmt = stmt.order_by(sort_col.asc())
+        else:
+            stmt = stmt.order_by(sort_col.desc())
+
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        records = self.session.execute(stmt).scalars().all()
+
+        return [self._to_dict(r) for r in records], total
+
     @staticmethod
     def _to_dict(record: DownloadTask) -> dict:
         """ORM → API dict（与 TaskStore.DownloadTask.model_dump 字段对齐）"""
