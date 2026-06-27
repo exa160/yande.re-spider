@@ -77,3 +77,20 @@ class SuccessResponse(BaseResponse[SuccessData]):
     """成功响应"""
 
     ...
+
+
+class TaskStatusCount(BaseModel):
+    """各状态任务计数"""
+
+    pending: int = Field(0, description="等待中任务数")
+    downloading: int = Field(0, description="下载中任务数")
+    paused: int = Field(0, description="已暂停任务数")
+    completed: int = Field(0, description="已完成任务数")
+    failed: int = Field(0, description="失败任务数")
+    cancelled: int = Field(0, description="已取消任务数")
+
+
+class TaskStatusCountResponse(BaseResponse[TaskStatusCount]):
+    """任务状态计数响应"""
+
+    ...
