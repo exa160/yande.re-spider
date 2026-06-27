@@ -111,7 +111,7 @@ class YandeDataRepository(BaseDAO):
             "max_file_size": lambda v: YandeData.file_size <= v * 1024,
             "author": lambda v: YandeData.author.contains(v),
         }
-        if query_params.rating and len(query_params.rating) == len(Rating):
+        if query_params.rating and len(query_params.rating) == len(Rating) or len(query_params.rating) == 0:
             query_params.rating = None  # 全部评分不需要过滤
         if downloaded_only is not None:
             filter_funcs.append(YandeData.down_flag == downloaded_only)
