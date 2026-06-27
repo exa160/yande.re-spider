@@ -2,7 +2,7 @@
 下载管理相关API路由
 """
 
-from typing import Optional, List
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Query
 
@@ -18,6 +18,7 @@ from src.models.response.download import (
     TaskCreatedData,
     BatchTaskCreatedResponse,
     BatchTaskCreatedData,
+    TaskStatusCountResponse,
 )
 from src.services.download import DownloadService
 
@@ -58,19 +59,45 @@ async def create_batch_download_tasks(
 
 @router.get("/tasks", response_model=TaskListResponse, summary="获取任务列表")
 async def get_download_tasks(
-    status: Optional[TaskStatus] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[List[TaskStatus]] = Query(None, description="任务状态过滤（多值）"),
+    sort_by: Literal["created_at", "updated_at", "completed_at", "progress"] = Query(
+        "created_at", description="排序字段"
+    ),
+    order: Literal["asc", "desc"] = Query("desc", description="排序方向"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
 ) -> TaskListResponse:
-    """获取下载任务列表（支持状态过滤和分页）"""
+    """获取下载任务列表（支持多状态过滤、排序、分页）"""
     try:
-        tasks, total = DownloadService.get_tasks(status, page, page_size)
+        tasks, total = DownloadService.get_tasks(
+            status_list=status,
+            sort_by=sort_by,
+            order=order,
+            page=page,
+            page_size=page_size,
+        )
         return TaskListResponse(
             total=total,
             page=page,
             page_size=page_size,
             data=tasks
         )
+    except ValueError as e:
+        raise APIException(ErrMsg.PARAM_ERROR, data={"detail": str(e)})
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+
+@router.get(
+    "/tasks/count",
+    response_model=TaskStatusCountResponse,
+    summary="获取各状态任务计数",
+)
+async def get_task_status_counts() -> TaskStatusCountResponse:
+    """获取各状态任务数量（单次 SQL GROUP BY）"""
+    try:
+        counts = DownloadService.get_status_counts()
+        return TaskStatusCountResponse(message=ErrMsg.OK.msg, data=counts)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
