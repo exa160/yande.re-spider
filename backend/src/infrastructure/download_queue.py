@@ -135,6 +135,37 @@ class TaskStore:
             self._tasks[task_id] = task
             return task
 
+    def recreate_task(self, task_id: str, yande_data: YandeData) -> "TaskStore.DownloadTask":
+        """重建内存中的 cancelled 任务（用于重试）。
+
+        cancelled 任务被 TaskStore.update_task 的终态清理逻辑移出 self._tasks，
+        而 get_task 的 DB fallback 路径不会携带 yande_data。重试时调用本方法
+        把 yande_data 重新注入内存，使 worker 能正常执行下载。
+
+        不写 DB — DB 中 task 记录已存在；只重建内存缓存。
+        """
+        with self._lock:
+            task = TaskStore.DownloadTask(
+                task_id=task_id,
+                yande_data=yande_data,
+                file_name=f"{yande_data.id}.{yande_data.file_ext or 'jpg'}",
+                file_size=yande_data.file_size,
+                # 进度字段保持默认（0），cancelled 重试语义：从头下载
+            )
+            self._tasks[task_id] = task
+            return task
+
+    def get_pending_task_ids(self) -> List[str]:
+        """返回内存中所有 PENDING 状态的 task_id（lifecycle 重启恢复时使用）
+
+        PAUSED 任务不返回 — 用户显式暂停的，重启不应偷偷启动。
+        """
+        with self._lock:
+            return [
+                tid for tid, t in self._tasks.items()
+                if t.status == TaskStatus.PENDING
+            ]
+
     def get_task(self, task_id: str) -> Optional[TaskStore.DownloadTask]:
         # 内存优先（活跃任务）
         with self._lock:
