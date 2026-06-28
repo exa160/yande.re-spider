@@ -1,8 +1,8 @@
 name: Docker Image CI
 
 on:
-  pull_request:
-    branches: [ "next" ]
+#  pull_request:
+#    branches: [ "next" ]
   push:
     # 监听 PR 合并到 next 触发的事件 (Merge pull request 按钮 / rebase merge / squash merge 都算)
     branches: [ "next" ]
@@ -35,7 +35,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/picture-manager
           tags: |
             # PR open/update: 临时验证镜像, 跟 commit SHA 绑定
-            type=sha,prefix=git-,enable=${{ github.event_name == 'pull_request' }}
+#            type=sha,prefix=git-,enable=${{ github.event_name == 'pull_request' }}
             # PR merge 到 next: 累积历史 (dev-<sha> 便于回滚到任一 commit)
             type=sha,prefix=dev-,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next' }}
             # PR merge 到 next: 浮动指针 (dev 始终指向最新合入 next 的代码)
