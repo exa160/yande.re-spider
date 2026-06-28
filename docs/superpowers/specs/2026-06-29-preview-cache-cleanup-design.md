@@ -55,10 +55,12 @@
 
 ## 3. 架构概览
 
+> **实施说明（2026-06-29）**：原 spec §4.1 端点路径 `/api/v1/cache/preview/cleanup` 不可实现 —— 项目使用 APILoader 根据路由文件位置自动注入 `/api/v1/gallery/` 前缀（`backend/src/api/__init__.py:48-60`），项目内所有路由均遵循 `/api/v1/<模块名>/...` 命名约定。实际注册路径为 **`/api/v1/gallery/cache/preview/cleanup`**。本节及后续 curl 示例已同步更新。
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Client                                             │
-│  POST /api/v1/cache/preview/cleanup                 │
+│  POST /api/v1/gallery/cache/preview/cleanup                 │
 │  Body: { mode: 'clean_local_previews' |             │
 │          'clean_all_previews',                      │
 │         dry_run: true }                             │
@@ -100,7 +102,7 @@
 | 项目 | 值 |
 |---|---|
 | 方法 | `POST` |
-| 路径 | `/api/v1/cache/preview/cleanup` |
+| 路径 | `/api/v1/gallery/cache/preview/cleanup` |
 | 请求模型 | `CleanupPreviewsRequest` |
 | 响应模型 | `CleanupPreviewsResponse` |
 
@@ -436,12 +438,12 @@ async def cleanup_previews(request: CleanupPreviewsRequest) -> CleanupPreviewsRe
 
 ```bash
 # 评估模式（推荐每次清理前先跑）
-curl -X POST http://localhost:8000/api/v1/cache/preview/cleanup \
+curl -X POST http://localhost:8000/api/v1/gallery/cache/preview/cleanup \
   -H "Content-Type: application/json" \
   -d '{"mode": "clean_local_previews", "dry_run": true}'
 
 # 确认无误后真删
-curl -X POST http://localhost:8000/api/v1/cache/preview/cleanup \
+curl -X POST http://localhost:8000/api/v1/gallery/cache/preview/cleanup \
   -H "Content-Type: application/json" \
   -d '{"mode": "clean_local_previews", "dry_run": false}'
 ```
@@ -480,7 +482,7 @@ curl -X POST http://localhost:8000/api/v1/cache/preview/cleanup \
 
 ## 11. 验收标准
 
-- [ ] `POST /api/v1/cache/preview/cleanup` 端点存在，请求/响应模型定义完整
+- [ ] `POST /api/v1/gallery/cache/preview/cleanup` 端点存在，请求/响应模型定义完整
 - [ ] `mode=clean_local_previews, dry_run=true` 时文件系统 0 改动
 - [ ] `mode=clean_local_previews, dry_run=false` 仅删 down_flag=True 对应 preview
 - [ ] `mode=clean_all_previews, dry_run=false` 清空整个 previews/ 目录（隐藏文件除外）
