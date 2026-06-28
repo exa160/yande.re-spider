@@ -78,6 +78,7 @@ def _auto_migrate(engine) -> None:
         Column("last_scheduled_at", DateTime, nullable=True),
         Column("last_schedule_status", String(16), nullable=True),
         Column("last_schedule_stats", JSON, nullable=True),
+        Column("last_synced_id", Integer, nullable=True),
     ]
 
     dialect = engine.dialect
