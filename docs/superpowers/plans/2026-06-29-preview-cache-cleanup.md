@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 增加 `POST /api/v1/cache/preview/cleanup` 端点，支持按"局部清理（仅清有原图可再生的 preview）"或"全量清理"两种策略删除 `downloads/previews/` 下的缩略图，内置 `dry_run` 评估模式（默认 True），命中/删除/释放字节数实时返回。
+**Goal:** 增加 `POST /api/v1/gallery/cache/preview/cleanup` 端点，支持按"局部清理（仅清有原图可再生的 preview）"或"全量清理"两种策略删除 `downloads/previews/` 下的缩略图，内置 `dry_run` 评估模式（默认 True），命中/删除/释放字节数实时返回。
 
 **Architecture:** 单端点 + mode 参数；Service 层组合 DAO（按 `down_flag=True` 取 ID 集合）与 ImageCache（遍历目录、逐个 unlink）；ImageCache 新增 `list_preview_files()` / `safe_unlink()` 两个工具方法；DAO 新增 `get_downloaded_ids()` 一次性查询；测试用 `tmp_path` + `monkeypatch` 隔离真实 `downloads/`。
 
@@ -742,7 +742,7 @@ cd /home/exa160/opencode/yande.re-spider-next-dev && git add backend/src/service
 新建 `unit_test/api/v1/test_preview_cleanup_routes.py`：
 
 ```python
-"""测试 POST /api/v1/cache/preview/cleanup 端点的请求校验 + dry_run + 真删行为"""
+"""测试 POST /api/v1/gallery/cache/preview/cleanup 端点的请求校验 + dry_run + 真删行为"""
 import sys
 from pathlib import Path
 
@@ -805,7 +805,7 @@ def test_cleanup_local_dry_run_endpoint(client, tmp_previews):
     _mk_image(tmp_previews, "200.jpg")
 
     resp = client.post(
-        "/api/v1/cache/preview/cleanup",
+        "/api/v1/gallery/cache/preview/cleanup",
         json={"mode": "clean_local_previews", "dry_run": True},
     )
 
@@ -825,7 +825,7 @@ def test_cleanup_local_real_delete_endpoint(client, tmp_previews):
     _mk_image(tmp_previews, "999.jpg")  # 不在 down_flag 中
 
     resp = client.post(
-        "/api/v1/cache/preview/cleanup",
+        "/api/v1/gallery/cache/preview/cleanup",
         json={"mode": "clean_local_previews", "dry_run": False},
     )
 
@@ -842,7 +842,7 @@ def test_cleanup_all_endpoint(client, tmp_previews):
     _mk_image(tmp_previews, ".DS_Store")
 
     resp = client.post(
-        "/api/v1/cache/preview/cleanup",
+        "/api/v1/gallery/cache/preview/cleanup",
         json={"mode": "clean_all_previews", "dry_run": False},
     )
 
@@ -859,7 +859,7 @@ def test_cleanup_dry_run_defaults_to_true(client, tmp_previews):
     _mk_image(tmp_previews, "1.jpg")
 
     resp = client.post(
-        "/api/v1/cache/preview/cleanup",
+        "/api/v1/gallery/cache/preview/cleanup",
         json={"mode": "clean_all_previews"},  # 不传 dry_run
     )
 
@@ -872,7 +872,7 @@ def test_cleanup_dry_run_defaults_to_true(client, tmp_previews):
 
 def test_cleanup_invalid_mode_returns_422(client):
     resp = client.post(
-        "/api/v1/cache/preview/cleanup",
+        "/api/v1/gallery/cache/preview/cleanup",
         json={"mode": "invalid_mode", "dry_run": True},
     )
     assert resp.status_code == 422
@@ -1006,7 +1006,7 @@ sleep 3
 调用评估模式：
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/cache/preview/cleanup \
+curl -s -X POST http://localhost:8000/api/v1/gallery/cache/preview/cleanup \
   -H "Content-Type: application/json" \
   -d '{"mode": "clean_local_previews", "dry_run": true}' | python3 -m json.tool
 ```
@@ -1041,7 +1041,7 @@ cd /home/exa160/opencode/yande.re-spider-next-dev && git diff b7271d3 HEAD --sta
 
 ## 验收标准（与 spec §11 对齐）
 
-- [x] `POST /api/v1/cache/preview/cleanup` 端点存在，请求/响应模型完整
+- [x] `POST /api/v1/gallery/cache/preview/cleanup` 端点存在，请求/响应模型完整
 - [x] `mode=clean_local_previews, dry_run=true` 时文件系统 0 改动
 - [x] `mode=clean_local_previews, dry_run=false` 仅删 down_flag=True 对应 preview
 - [x] `mode=clean_all_previews, dry_run=false` 清空整个 previews/ 目录（隐藏文件除外）
