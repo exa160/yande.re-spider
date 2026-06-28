@@ -130,13 +130,31 @@ class DownloadService:
         task = task_store.get_task(task_id)
         if not task:
             return False, "任务不存在"
+
+        # CANCELLED 任务：内存已被终态清理，需要重建（带 yande_data）
+        if task.status == TaskStatus.CANCELLED:
+            from src.dao.download_task_dao import download_task_dao
+            from src.dao.yande_data_dao import YandeDataRepository
+            with download_task_dao as dao:
+                rec = dao.get_by_id(task_id)
+            if not rec:
+                return False, "任务记录不存在"
+            with YandeDataRepository() as repo:
+                yande_data = repo.get_by_id(rec.image_id)
+            if not yande_data:
+                return False, "图片元数据已丢失，无法重试"
+            task_store.recreate_task(task_id, yande_data)
+
         if task.status not in [
             TaskStatus.PENDING,
             TaskStatus.PAUSED,
             TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
         ]:
             return False, "任务无法启动"
 
+        # 先改 status=PENDING 再 add_task，worker 拿起来时短路检查（run_download_async
+        # 的 CANCELLED 短路）会自动放行，不会被误判为 cancelled 而跳过
         task_store.update_task(task_id, {"status": TaskStatus.PENDING})
         await download_queue.add_task(task_id)
         return True, "任务已启动"
