@@ -65,6 +65,12 @@
                 @click="onCardAction({action:'start', task})"
               >重试</el-button>
               <el-button
+                v-if="task.status === 'cancelled'"
+                type="primary"
+                size="small"
+                @click="onCardAction({action:'start', task})"
+              >重试</el-button>
+              <el-button
                 v-if="task.status === 'downloading'"
                 type="warning"
                 size="small"
@@ -76,10 +82,13 @@
                 size="small"
                 @click="onCardAction({action:'resume', task})"
               >恢复</el-button>
+              <!-- TODO 取消功能暂未开放：worker 在下载期间无 stop signal（F bug），
+                   取消后状态会被强制覆盖为 COMPLETED。等修复后再启用。 -->
               <el-button
                 v-if="['pending', 'downloading', 'paused'].includes(task.status)"
                 size="small"
-                @click="onCardAction({action:'cancel', task})"
+                disabled
+                title="取消功能暂未开放"
               >取消</el-button>
               <el-button
                 type="danger"
@@ -153,6 +162,13 @@
                 @click="onCardAction({action:'start', task:row})"
               >重试</el-button>
               <el-button
+                v-if="row.status === 'cancelled'"
+                type="primary"
+                size="small"
+                link
+                @click="onCardAction({action:'start', task:row})"
+              >重试</el-button>
+              <el-button
                 v-if="row.status === 'downloading'"
                 type="warning"
                 size="small"
@@ -166,11 +182,14 @@
                 link
                 @click="onCardAction({action:'resume', task:row})"
               >恢复</el-button>
+              <!-- TODO 取消功能暂未开放：worker 在下载期间无 stop signal（F bug），
+                   取消后状态会被强制覆盖为 COMPLETED。等修复后再启用。 -->
               <el-button
                 v-if="['pending', 'downloading', 'paused'].includes(row.status)"
                 size="small"
                 link
-                @click="onCardAction({action:'cancel', task:row})"
+                disabled
+                title="取消功能暂未开放"
               >取消</el-button>
               <el-button
                 type="danger"
