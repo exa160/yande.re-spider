@@ -8,7 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]) + "/backend")
 import pytest
 
 from src.common.constant import CleanupMode
+from src.common.constant import ErrMsg
 from src.dao.yande_data_dao import YandeDataRepository
+from src.middleware.errors import APIException
 from src.models.database.yande import YandeData
 from src.services.gallery import GalleryService
 
@@ -143,8 +145,15 @@ def test_cleanup_local_with_missing_dir_returns_empty(tmp_path, monkeypatch):
         mode=CleanupMode.CLEAN_LOCAL_PREVIEWS,
         dry_run=True,
     )
-    assert result["matched"] == 0
-    assert result["deleted"] == 0
+    assert result == {
+        "mode": "clean_local_previews",
+        "dry_run": True,
+        "matched": 0,
+        "deleted": 0,
+        "failed": 0,
+        "total_bytes": 0,
+        "duration_ms": 0,
+    }
 
 
 def test_cleanup_local_continues_when_single_unlink_fails(tmp_previews, monkeypatch):
@@ -172,3 +181,48 @@ def test_cleanup_local_continues_when_single_unlink_fails(tmp_previews, monkeypa
     assert result["matched"] == 3
     assert result["deleted"] == 2
     assert result["failed"] == 1
+
+
+def test_cleanup_local_db_error_raises_api_exception(tmp_previews, monkeypatch):
+    """DB 查询失败时抛 APIException(ErrMsg.QUERY_ERROR)，spec §6 契约"""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _broken_repo():
+        raise RuntimeError("simulated DB connection failure")
+        yield  # unreachable, 仅用于满足 contextmanager 装饰器
+
+    monkeypatch.setattr("src.services.gallery.YandeDataRepository", _broken_repo)
+
+    with pytest.raises(APIException) as exc_info:
+        GalleryService.cleanup_previews(
+            mode=CleanupMode.CLEAN_LOCAL_PREVIEWS,
+            dry_run=True,
+        )
+
+    assert exc_info.value.err_code == ErrMsg.QUERY_ERROR.code
+
+
+def test_cleanup_local_skips_files_with_stat_oserror(tmp_previews, monkeypatch):
+    """stat() 抛 OSError 的文件被跳过，matched 不变（filter 在 stat 之前）"""
+    _seed_db([100, 200])
+    _mk_image(tmp_previews, "100.jpg")
+    _mk_image(tmp_previews, "200.jpg")
+
+    original_stat = Path.stat
+
+    def _selective_stat(self, *args, **kwargs):
+        if "200" in self.name:
+            raise OSError("simulated stat failure")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr("pathlib.Path.stat", _selective_stat)
+
+    result = GalleryService.cleanup_previews(
+        mode=CleanupMode.CLEAN_LOCAL_PREVIEWS,
+        dry_run=True,
+    )
+
+    assert result["matched"] == 2
+    assert result["total_bytes"] == 100
+    assert result["dry_run"] is True
