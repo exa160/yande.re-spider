@@ -22,6 +22,16 @@ from src.dao.yande_data_dao import YandeDataRepository
 from src.models.database.yande import YandeData
 
 
+def _assert_base_ok(resp):
+    """Lock BaseResponse top-level shape (code/message/data envelope)"""
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == "0000"
+    assert body["message"] == "OK."
+    assert "data" in body
+    return True
+
+
 def _make_fake_path_constant(previews_dir, originals_dir):
     """构造 path_constant fake，绕过 frozen 限制"""
     return type("FakePathConstant", (), {
@@ -91,7 +101,7 @@ def test_cleanup_local_dry_run_endpoint(client, tmp_previews):
         json={"mode": "clean_local_previews", "dry_run": True},
     )
 
-    assert resp.status_code == 200
+    assert _assert_base_ok(resp)
     data = resp.json()["data"]
     assert data["mode"] == "clean_local_previews"
     assert data["dry_run"] is True
@@ -111,7 +121,7 @@ def test_cleanup_local_real_delete_endpoint(client, tmp_previews):
         json={"mode": "clean_local_previews", "dry_run": False},
     )
 
-    assert resp.status_code == 200
+    assert _assert_base_ok(resp)
     data = resp.json()["data"]
     assert data["deleted"] == 1
     assert not p.exists()
@@ -128,7 +138,7 @@ def test_cleanup_all_endpoint(client, tmp_previews):
         json={"mode": "clean_all_previews", "dry_run": False},
     )
 
-    assert resp.status_code == 200
+    assert _assert_base_ok(resp)
     data = resp.json()["data"]
     assert data["matched"] == 2
     assert data["deleted"] == 2
@@ -145,7 +155,7 @@ def test_cleanup_dry_run_defaults_to_true(client, tmp_previews):
         json={"mode": "clean_all_previews"},  # 不传 dry_run
     )
 
-    assert resp.status_code == 200
+    assert _assert_base_ok(resp)
     data = resp.json()["data"]
     assert data["dry_run"] is True
     assert data["deleted"] == 0
