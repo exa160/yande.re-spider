@@ -51,8 +51,8 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 if not raw_tags:
                     raise ValueError("folder has no tags configured")
 
-                last_id: Optional[int] = None
-                if folder.schedule_mode == "last_id":
+                last_id: Optional[int] = folder.last_synced_id
+                if last_id is None and folder.schedule_mode == "last_id":
                     with YandeDataRepository() as repo:
                         last_id = repo.get_max_id_for_tags(raw_tags)
 
@@ -70,6 +70,7 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 enqueued_count = 0
                 page = 1
                 stop = False
+                processed_max_id: Optional[int] = None
 
                 while page <= max_pages and enqueued_count < max_images:
                     try:
@@ -96,6 +97,8 @@ async def run_folder_schedule(folder_id: int) -> dict:
                             break
 
                         stats["new_images"] += 1
+                        if processed_max_id is None or item.id > processed_max_id:
+                            processed_max_id = item.id
                         try:
                             with YandeDataRepository() as repo:
                                 # TODO 查询优化，需要批量查询避免数据库连接数开销
@@ -121,14 +124,17 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 stats["pages_fetched"] = page
                 stats["duration_sec"] = round(time.monotonic() - start, 2)
 
-                dao.update(
-                    folder_id,
-                    last_schedule_status="success",
-                    last_schedule_stats=stats,
-                )
+                update_kwargs = {
+                    "last_schedule_status": "success",
+                    "last_schedule_stats": stats,
+                }
+                if processed_max_id is not None:
+                    update_kwargs["last_synced_id"] = processed_max_id
+                dao.update(folder_id, **update_kwargs)
                 logger.info(
                     f"Folder {folder_id} schedule success: enqueued={stats['enqueued']} "
                     f"pages={stats['pages_fetched']} duration={stats['duration_sec']}s"
+                    f" last_synced_id={update_kwargs.get('last_synced_id')}"
                 )
                 return stats
 
