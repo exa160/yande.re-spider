@@ -80,6 +80,10 @@ class FavoriteDao(BaseDAO):
                 folder.updated_at = datetime.now()
         return True
 
+    def reset_last_synced_id(self, folder_id: int, new_value: Optional[int] = None) -> Optional[FavoriteFolder]:
+        """重置 last_synced_id，new_value=None 时清空（下次回到首次行为）。"""
+        return self.update(folder_id, last_synced_id=new_value)
+
     def count(self) -> int:
         return self.session.query(FavoriteFolder).count()
 
