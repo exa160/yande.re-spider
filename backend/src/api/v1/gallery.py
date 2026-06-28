@@ -7,13 +7,15 @@ from typing import List
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 
-from src.common.constant import ErrMsg
+from src.common.constant import CleanupMode, ErrMsg
 from src.middleware.errors import APIException
-from src.models.request.gallery import GalleryLoadRequest
+from src.models.request.gallery import CleanupPreviewsRequest, GalleryLoadRequest
 from src.models.response.base_response import BaseResponse
 from src.models.response.gallery import (
-    ImageDetail,
+    CleanupPreviewsResponse,
+    CleanupResult,
     GalleryLoadResponse,
+    ImageDetail,
     ImageDetailResponse,
 )
 from src.services.gallery import GalleryService
@@ -127,3 +129,26 @@ async def get_original_image(filename: str):
     if original_path.exists():
         return FileResponse(str(original_path))
     raise APIException(ErrMsg.NOT_FOUND)
+
+
+@router.post(
+    "/cache/preview/cleanup",
+    response_model=CleanupPreviewsResponse,
+    summary="清理 preview 缩略图缓存",
+)
+async def cleanup_previews(request: CleanupPreviewsRequest) -> CleanupPreviewsResponse:
+    """清理 preview 缩略图（支持评估模式 dry_run）"""
+    try:
+        result = await asyncio.to_thread(
+            GalleryService.cleanup_previews,
+            mode=request.mode,
+            dry_run=request.dry_run,
+        )
+        return CleanupPreviewsResponse(
+            message=ErrMsg.OK.msg,
+            data=CleanupResult(**result),
+        )
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(ErrMsg.CLEANUP_PREVIEW_ERROR, e=e)
