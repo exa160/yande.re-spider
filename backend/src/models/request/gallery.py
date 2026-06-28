@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
-from src.common.constant import Rating
+from src.common.constant import CleanupMode, Rating
 from src.dao.yande_data_dao import SortBy, SortOrder
 
 
@@ -47,4 +47,20 @@ class GalleryLoadRequest(BaseModel):
     parent_none: bool = Field(False, description="无父贴: parent:none")
     source: Optional[str] = Field(
         "local", description="数据源: yande=在线, local=本地数据库"
+    )
+
+
+class CleanupPreviewsRequest(BaseModel):
+    """预览图清理请求"""
+
+    mode: CleanupMode = Field(
+        ...,
+        description=(
+            "clean_local_previews: 仅清有原图可再生的 preview；"
+            "clean_all_previews: 清空整个 previews/ 目录"
+        ),
+    )
+    dry_run: bool = Field(
+        True,
+        description="True 时仅评估不删除；False 时执行实际删除",
     )

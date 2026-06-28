@@ -63,3 +63,21 @@ class ImageDetailResponse(BaseResponse[ImageDetail]):
     """图片详情响应"""
 
     ...
+
+
+class CleanupResult(BaseModel):
+    """清理结果"""
+
+    mode: str = Field(..., description="实际执行的清理模式")
+    dry_run: bool = Field(..., description="是否为评估模式")
+    matched: int = Field(..., description="命中文件数")
+    deleted: int = Field(..., description="实际删除文件数（dry_run 时为 0）")
+    failed: int = Field(..., description="删除失败文件数（权限/占用）")
+    total_bytes: int = Field(..., description="命中文件总字节数")
+    duration_ms: int = Field(..., description="处理耗时（毫秒）")
+
+
+class CleanupPreviewsResponse(BaseResponse[CleanupResult]):
+    """预览图清理响应"""
+
+    ...
