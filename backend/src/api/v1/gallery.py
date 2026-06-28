@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 
-from src.common.constant import CleanupMode, ErrMsg
+from src.common.constant import ErrMsg
 from src.middleware.errors import APIException
 from src.models.request.gallery import CleanupPreviewsRequest, GalleryLoadRequest
 from src.models.response.base_response import BaseResponse
