@@ -70,7 +70,7 @@ class CleanupResult(BaseModel):
 
     mode: str = Field(..., description="实际执行的清理模式")
     dry_run: bool = Field(..., description="是否为评估模式")
-    matched: int = Field(..., description="命中文件数")
+    matched: int = Field(..., description="命中文件数（dry_run 时也是这个数）")
     deleted: int = Field(..., description="实际删除文件数（dry_run 时为 0）")
     failed: int = Field(..., description="删除失败文件数（权限/占用）")
     total_bytes: int = Field(..., description="命中文件总字节数")
