@@ -10,6 +10,7 @@ from src.middleware.errors import APIException
 from src.models.request.favorites import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
+    LastSyncedIdResetRequest,
     ReorderRequest,
 )
 from src.models.response.base_response import BaseResponse
@@ -204,3 +205,25 @@ async def get_folder_schedule_status(folder_id: int) -> FolderScheduleStatusResp
         message=ErrMsg.OK.msg,
         data=FolderScheduleStatusData.model_validate(folder),
     )
+
+
+@router.post(
+    "/{folder_id}/schedule/reset-sync",
+    response_model=FavoriteFolderResponse,
+    summary="重置 last_synced_id 同步游标",
+)
+async def reset_last_synced_id(
+    folder_id: int,
+    request: LastSyncedIdResetRequest = LastSyncedIdResetRequest(),
+) -> FavoriteFolderResponse:
+    """重置增量调度游标：value=null 清空（首次行为），value=整数 设为该值"""
+    folder = favorite_dao.get_by_id(folder_id)
+    if not folder:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    try:
+        updated = favorite_dao.reset_last_synced_id(folder_id, request.value)
+    except ValueError as e:
+        raise APIException(ErrMsg.SCHEDULE_INVALID_RESET, data={"detail": str(e)}, e=e)
+    if not updated:
+        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
+    return FavoriteFolderResponse(message="同步游标已重置", data=updated)
