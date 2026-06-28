@@ -125,6 +125,10 @@ class FavoriteFolder(Base):
     last_scheduled_at = Column(DateTime, nullable=True, comment="上次调度时间")
     last_schedule_status = Column(String(16), nullable=True, comment="running | success | failed")
     last_schedule_stats = Column(JSON, nullable=True, comment="上次调度统计 JSON")
+    last_synced_id = Column(
+        Integer, nullable=True, default=None,
+        comment="上次调度实际同步到的最大图片ID；NULL=未初始化，与 down_flag 解耦避免被其他接口干扰",
+    )
 
 
 class DownloadTask(Base):
