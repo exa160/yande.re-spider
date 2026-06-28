@@ -67,6 +67,11 @@ export function getFolderScheduleStatus(folderId) {
   return api.get(`/favorites/${folderId}/schedule/status`)
 }
 
+// 重置 last_synced_id：value=null 清空，value=整数 设为该值
+export function resetFolderSync(folderId, value = null) {
+  return api.post(`/favorites/${folderId}/schedule/reset-sync`, { value })
+}
+
 export default {
   getAllFolders,
   getFolder,
@@ -80,4 +85,5 @@ export default {
   refreshOnlineCount,
   triggerFolderSchedule,
   getFolderScheduleStatus,
+  resetFolderSync,
 }

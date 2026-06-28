@@ -66,6 +66,7 @@
                 @create="handleCreateFolder"
                 @update="handleUpdateFolder"
                 @delete="handleDeleteFolder"
+                @reset-sync="handleResetFolderSync"
                 @mode-change="handleFavoriteModeChange"
               />
             </div>
@@ -337,7 +338,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAllFolders, createFolder, updateFolder, deleteFolder } from '@/api/favorites'
+import { getAllFolders, createFolder, updateFolder, deleteFolder, resetFolderSync } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
 import FavoritePanel from './FavoritePanel.vue'
 
@@ -598,6 +599,16 @@ const handleDeleteFolder = async (folder) => {
     await loadFavoriteFolders()
   } catch (error) {
     ElMessage.error('删除失败')
+  }
+}
+
+const handleResetFolderSync = async (folder) => {
+  try {
+    await resetFolderSync(folder.id, null)
+    ElMessage.success(`已重置「${folder.name}」同步游标`)
+    await loadFavoriteFolders()
+  } catch (error) {
+    ElMessage.error('重置同步游标失败')
   }
 }
 
