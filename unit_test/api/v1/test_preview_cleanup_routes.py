@@ -17,7 +17,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src import init_app, app_config
-from src.common.constant import CleanupMode
 from src.dao.yande_data_dao import YandeDataRepository
 from src.models.database.yande import YandeData
 
