@@ -201,6 +201,7 @@ def test_cleanup_local_db_error_raises_api_exception(tmp_previews, monkeypatch):
         )
 
     assert exc_info.value.err_code == ErrMsg.QUERY_ERROR.code
+    assert "simulated DB connection failure" in exc_info.value.err_msg
 
 
 def test_cleanup_local_skips_files_with_stat_oserror(tmp_previews, monkeypatch):
