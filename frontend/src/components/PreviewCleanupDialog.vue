@@ -21,6 +21,7 @@
           type="primary"
           size="large"
           :loading="evaluating"
+          :disabled="evaluating"
           class="action-btn"
           @click="handleEvaluate('clean_local_previews')"
         >
@@ -31,6 +32,7 @@
           type="warning"
           size="large"
           :loading="evaluating"
+          :disabled="evaluating"
           class="action-btn"
           @click="handleEvaluate('clean_all_previews')"
         >
@@ -115,7 +117,7 @@
         <el-button
           type="danger"
           :loading="cleaning"
-          :disabled="(evalResult?.matched ?? 0) === 0"
+          :disabled="cleaning || (evalResult?.matched ?? 0) === 0"
           @click="handleConfirmClean"
         >
           确认清理
@@ -192,6 +194,7 @@ function handleClose(visible) {
 }
 
 async function handleEvaluate(mode) {
+  if (evaluating.value || cleaning.value) return  // NEW GUARD
   selectedMode.value = mode
   evaluating.value = true
   error.value = null
@@ -207,6 +210,7 @@ async function handleEvaluate(mode) {
 }
 
 async function handleConfirmClean() {
+  if (cleaning.value || evaluating.value) return  // NEW GUARD
   if (!selectedMode.value) return
   cleaning.value = true
   error.value = null
@@ -343,19 +347,19 @@ function formatDuration(ms) {
 }
 
 /* 暗色模式适配 */
-:deep(.dark) .stat-card {
+:deep(html.dark-mode) .stat-card {
   background: #1a1a2e;
 }
 
-:deep(.dark) .stat-card.success {
+:deep(html.dark-mode) .stat-card.success {
   background: #1a2e1a;
 }
 
-:deep(.dark) .stat-card.failed {
+:deep(html.dark-mode) .stat-card.failed {
   background: #2e1a1a;
 }
 
-:deep(.dark) .state-desc {
+:deep(html.dark-mode) .state-desc {
   color: #c0c4cc;
 }
 
