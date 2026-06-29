@@ -347,25 +347,25 @@ function formatDuration(ms) {
 }
 
 /* 暗色模式适配 */
-:deep(html.dark-mode) .stat-card {
+html.dark-mode .stat-card {
   background: #1a1a2e;
 }
 
-:deep(html.dark-mode) .stat-card.success {
+html.dark-mode .stat-card.success {
   background: #1a2e1a;
 }
 
-:deep(html.dark-mode) .stat-card.failed {
+html.dark-mode .stat-card.failed {
   background: #2e1a1a;
 }
 
-:deep(html.dark-mode) .state-desc {
+html.dark-mode .state-desc {
   color: #c0c4cc;
 }
 
 /* 移动端 */
 @media screen and (max-width: 768px) {
-  :deep(.el-dialog) {
+  :global(.el-dialog) {
     width: 90vw !important;
   }
 
