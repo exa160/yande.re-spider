@@ -5,6 +5,7 @@
 from datetime import datetime
 from typing import Optional, List
 
+from loguru import logger
 from pydantic import (
     BaseModel, ConfigDict, Field,
     FieldSerializationInfo, field_serializer, field_validator
@@ -22,7 +23,10 @@ class ImageDetail(BaseModel):
     tags: List[str] = Field(description="图片标签列表")
     width: int = Field(description="图片宽度")
     height: int = Field(description="图片高度")
-    rating: Rating = Field(description="图片评级，如 S/R18")
+    rating: Optional[Rating] = Field(
+        default=None,
+        description="图片评级（s=Safe, q=Questionable, e=Explicit）",
+    )
     file_url: str = Field(description="图片文件URL，仅返回本地路径")
     preview_url: str = Field(description="预览图URL，仅返回本地路径")
     file_size: int = Field(description="文件大小，单位字节")
@@ -34,6 +38,19 @@ class ImageDetail(BaseModel):
     down_flag: bool = Field(description="是否已下载")
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('rating', mode='before')
+    @classmethod
+    def coerce_rating(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, Rating):
+            return v
+        try:
+            return Rating(v)
+        except ValueError:
+            logger.warning(f"Unknown rating value: {v!r}, defaulting to Rating.R15 (q)")
+            return Rating.R15
 
     @field_validator('tags', mode='before')
     def normalize_tags(cls, v):
