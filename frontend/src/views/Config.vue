@@ -211,27 +211,12 @@
               </el-button>
             </div>
 
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">预览图清理</div>
-                <div class="refresh-params">
-                  <span class="param-tip">删除 downloads/previews/ 下的缩略图缓存</span>
-                </div>
-              </div>
-              <el-button
-                type="warning"
-                size="small"
-                @click="showCleanupDialog = true"
-              >
-                打开清理
-              </el-button>
             </div>
-          </div>
+
+          <PreviewCleanupPanel />
         </div>
       </div>
     </div>
-
-    <PreviewCleanupDialog v-model="showCleanupDialog" />
   </div>
 </template>
 
@@ -240,7 +225,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
-import PreviewCleanupDialog from '@/components/PreviewCleanupDialog.vue'
+import PreviewCleanupPanel from '@/components/PreviewCleanupPanel.vue'
 
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
@@ -281,9 +266,6 @@ const refreshingTags = ref(false)
 const refreshingArtists = ref(false)
 const refreshTagsParams = ref({ after_id: 0 })
 const refreshArtistsParams = ref({ page: 1, limit: 100, max_pages: 10 })
-
-// 预览图清理弹窗
-const showCleanupDialog = ref(false)
 
 // 长按定时器
 const LONG_PRESS_DURATION = 500
