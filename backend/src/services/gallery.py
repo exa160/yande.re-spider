@@ -2,6 +2,7 @@
 图库业务逻辑层
 """
 
+import time
 from typing import List, Optional
 
 import requests
@@ -9,6 +10,7 @@ from loguru import logger
 from PIL import Image
 
 
+from src.common.constant import CleanupMode
 from src.common.constant import ErrMsg
 from src.common.constant import path_constant
 from src.common.utils import get_error_type_from_exception
@@ -232,3 +234,94 @@ class GalleryService:
             return GalleryService.generate_preview(image_id, actual_file_ext)
 
         return None
+
+    @staticmethod
+    def cleanup_previews(mode: CleanupMode, dry_run: bool) -> dict:
+        """清理 preview 缩略图
+
+        Args:
+            mode: 清理模式（CLEAN_LOCAL_PREVIEWS 仅删 down_flag=True 的；
+                  CLEAN_ALL_PREVIEWS 清空整个 previews/ 目录）
+            dry_run: True 仅评估不删除，False 实际删除
+
+        Returns:
+            dict: 包含 mode / dry_run / matched / deleted / failed /
+                  total_bytes / duration_ms 的结果
+
+        Raises:
+            APIException: 数据库查询失败时（仅 CLEAN_LOCAL_PREVIEWS 模式）
+        """
+        cache = ImageCache()
+        previews_dir = path_constant.previews_dir
+        start = time.monotonic()
+
+        if not previews_dir.exists():
+            return _empty_cleanup_result(mode, dry_run)
+
+        all_previews = cache.list_preview_files()
+
+        if mode == CleanupMode.CLEAN_LOCAL_PREVIEWS:
+            try:
+                with YandeDataRepository() as repo:
+                    downloaded_ids = repo.get_downloaded_ids()
+            except Exception as e:
+                raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+            targets = []
+            for p in all_previews:
+                image_id = GalleryService._parse_image_id(p.name)
+                if image_id is not None and image_id in downloaded_ids:
+                    targets.append(p)
+        else:
+            targets = all_previews
+
+        matched = len(targets)
+        total_bytes = 0
+        for p in targets:
+            try:
+                total_bytes += p.stat().st_size
+            except OSError:
+                continue
+
+        deleted, failed = 0, 0
+        if not dry_run:
+            for p in targets:
+                if cache.safe_unlink(p):
+                    deleted += 1
+                else:
+                    failed += 1
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return {
+            "mode": mode.value,
+            "dry_run": dry_run,
+            "matched": matched,
+            "deleted": deleted,
+            "failed": failed,
+            "total_bytes": total_bytes,
+            "duration_ms": duration_ms,
+        }
+
+    @staticmethod
+    def _parse_image_id(filename: str) -> Optional[int]:
+        """从 preview 文件名解析 image_id。约定：{id}.{ext}"""
+        if filename.startswith("."):
+            return None
+        stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+        try:
+            return int(stem)
+        except ValueError:
+            return None
+
+
+def _empty_cleanup_result(mode: CleanupMode, dry_run: bool) -> dict:
+    """previews 目录不存在时的零结果"""
+    return {
+        "mode": mode.value,
+        "dry_run": dry_run,
+        "matched": 0,
+        "deleted": 0,
+        "failed": 0,
+        "total_bytes": 0,
+        "duration_ms": 0,
+    }
