@@ -211,12 +211,37 @@
               </el-button>
             </div>
 
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">预览图清理</div>
+                <div class="refresh-params">
+                  <span class="param-tip">删除 downloads/previews/ 下的缩略图缓存</span>
+                </div>
+              </div>
+              <div class="cleanup-buttons">
+                <el-button
+                  type="primary"
+                  size="small"
+                  @click="openCleanupDialog('clean_local_previews')"
+                >
+                  本地清理
+                </el-button>
+                <el-button
+                  type="warning"
+                  size="small"
+                  @click="openCleanupDialog('clean_all_previews')"
+                >
+                  全量清理
+                </el-button>
+              </div>
             </div>
 
-          <PreviewCleanupPanel />
+          </div>
         </div>
       </div>
     </div>
+
+    <PreviewCleanupDialog v-model="showCleanupDialog" :mode="selectedCleanupMode" />
   </div>
 </template>
 
@@ -225,7 +250,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
-import PreviewCleanupPanel from '@/components/PreviewCleanupPanel.vue'
+import PreviewCleanupDialog from '@/components/PreviewCleanupDialog.vue'
 
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
@@ -258,6 +283,13 @@ const saving = ref(false)
 const activeMenu = ref('api')
 const testing = ref(false)
 const tamperDetected = ref(false)
+const showCleanupDialog = ref(false)
+const selectedCleanupMode = ref(null)
+
+function openCleanupDialog(mode) {
+  selectedCleanupMode.value = mode
+  showCleanupDialog.value = true
+}
 
 // 高级功能 - 缓存更新
 const tagStats = ref({ total: 0, max_id: 0 })
@@ -870,6 +902,24 @@ onUnmounted(() => {
 
   .refresh-item .el-button {
     width: 100%;
+  }
+}
+</style>
+
+<style scoped>
+.cleanup-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media screen and (max-width: 768px) {
+  .cleanup-buttons {
+    width: 100%;
+  }
+
+  .cleanup-buttons .el-button {
+    flex: 1;
   }
 }
 </style>
