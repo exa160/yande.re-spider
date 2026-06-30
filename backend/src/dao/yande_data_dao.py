@@ -171,6 +171,16 @@ class YandeDataRepository(BaseDAO):
         stmt = select(YandeData.id).filter_by(id=image_id, down_flag=True)
         return self.session.execute(stmt).scalar_one_or_none() is not None
 
+    def get_downloaded_ids(self) -> set[int]:
+        """查询所有已下载原图的 image_id（单次 SQL，仅取 id 字段）
+
+        Returns:
+            set[int]: down_flag=True 的 image_id 集合
+        """
+        stmt = select(YandeData.id).where(YandeData.down_flag.is_(True))
+        rows = self.session.execute(stmt).scalars().all()
+        return set(rows)
+
     def get_file_ext(self, image_id: int) -> Optional[str]:
         """只查询 file_ext，轻量级方法"""
         stmt = select(YandeData.file_ext).filter_by(id=image_id)

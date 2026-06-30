@@ -199,10 +199,38 @@ class TaskStore:
     def get_tasks(
         self, status: Optional[TaskStatus] = None, page: int = 1, page_size: int = 20
     ) -> tuple[List[dict], int]:
-        """列表查询统一走 DB（避免内存与 DB 不一致）"""
+        """列表查询：DB 为主，活跃任务用内存实时进度覆盖
+
+        背景：commit 38914a3 把 list 查询改为只走 DB，导致 downloading 任务的
+        progress/speed/downloaded_size 永远 stale（progress_callback 只更新内存）。
+        修复策略：DB 提供完整记录（含终态），内存提供活跃任务实时进度。
+        终态任务（completed/failed/cancelled）不在内存中，DB 值已是权威。
+        """
         from src.dao.download_task_dao import download_task_dao
         with download_task_dao as dao:
-            return dao.query(status=status, page=page, page_size=page_size)
+            db_tasks, db_total = dao.query(
+                status=status, page=page, page_size=page_size
+            )
+
+        # 仅当查询涉及活跃状态时合并内存进度
+        ACTIVE_STATUSES = {TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.PAUSED}
+        query_active = status is None or status in ACTIVE_STATUSES
+
+        if query_active:
+            with self._lock:
+                overrides = {
+                    t.task_id: {
+                        "progress": t.progress,
+                        "speed": t.speed,
+                        "downloaded_size": t.downloaded_size,
+                    }
+                    for t in self._tasks.values()
+                }
+            for task_dict in db_tasks:
+                if task_dict["task_id"] in overrides:
+                    task_dict.update(overrides[task_dict["task_id"]])
+
+        return db_tasks, db_total
 
     def update_task(self, task_id: str, updates: dict):
         """更新任务：内存立即更新，DB 仅在状态变化时写入
