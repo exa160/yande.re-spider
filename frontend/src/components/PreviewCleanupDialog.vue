@@ -8,42 +8,8 @@
     :show-close="canClose"
     @update:model-value="handleClose"
   >
-    <!-- 状态 ① 初始 -->
-    <div v-if="currentState === 'idle'" class="state-content">
-      <p class="state-desc">
-        删除 <code>downloads/previews/</code> 下的缩略图缓存。先点击按钮评估，再二次确认执行。
-      </p>
-      <el-alert type="warning" :closable="false" show-icon class="state-alert">
-        本地清理会释放几百 MB ~ 几 GB；全量清理会丢失所有未下载原图的预览。
-      </el-alert>
-      <div class="button-row">
-        <el-button
-          type="primary"
-          size="large"
-          :loading="evaluating"
-          :disabled="evaluating"
-          class="action-btn"
-          @click="handleEvaluate('clean_local_previews')"
-        >
-          <div class="btn-title">本地清理</div>
-          <div class="btn-subtitle">仅清有原图可再生的</div>
-        </el-button>
-        <el-button
-          type="warning"
-          size="large"
-          :loading="evaluating"
-          :disabled="evaluating"
-          class="action-btn"
-          @click="handleEvaluate('clean_all_previews')"
-        >
-          <div class="btn-title">全量清理</div>
-          <div class="btn-subtitle">清空整个 previews/</div>
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 状态 ② 评估完成 / 清理中 -->
-    <div v-else-if="currentState === 'evaluated' || currentState === 'cleaning'" class="state-content">
+    <div v-if="currentState === 'evaluated' || currentState === 'cleaning'" class="state-content">
+      <p class="state-desc">{{ modeSubtitle }}</p>
       <h4 class="state-h4">清理信息</h4>
       <div class="stat-grid">
         <div class="stat-card">
@@ -68,7 +34,6 @@
       </el-alert>
     </div>
 
-    <!-- 状态 ③ 清理完成 -->
     <div v-else-if="currentState === 'done'" class="state-content">
       <h4 class="state-h4 done-title">✓ 清理完成</h4>
       <div class="stat-grid">
@@ -91,7 +56,6 @@
       </div>
     </div>
 
-    <!-- 错误条 -->
     <el-alert
       v-if="error"
       type="error"
@@ -103,15 +67,8 @@
     </el-alert>
 
     <template #footer>
-      <!-- 状态 ①: 取消 -->
-      <el-button
-        v-if="currentState === 'idle'"
-        @click="handleClose(false)"
-      >
-        取消
-      </el-button>
+      <span v-if="currentState === 'evaluating'"></span>
 
-      <!-- 状态 ②: 取消 + 确认清理 -->
       <template v-else-if="currentState === 'evaluated' || currentState === 'cleaning'">
         <el-button :disabled="cleaning" @click="handleClose(false)">取消</el-button>
         <el-button
@@ -124,7 +81,6 @@
         </el-button>
       </template>
 
-      <!-- 状态 ③: 关闭 -->
       <el-button v-else type="primary" @click="handleClose(false)">关闭</el-button>
     </template>
   </el-dialog>
@@ -132,90 +88,89 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
 import { cleanupPreviews } from '@/api'
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
+  mode: { type: String, default: null },
 })
 
 const emit = defineEmits(['update:modelValue'])
 
-// 状态机
-const currentState = ref('idle')  // 'idle' | 'evaluated' | 'cleaning' | 'done'
-const evaluating = ref(false)
+const currentState = ref('idle')
 const cleaning = ref(false)
 const error = ref(null)
-const selectedMode = ref(null)
 const evalResult = ref(null)
 const cleanResult = ref(null)
 
-// 计算属性
 const dialogTitle = computed(() => {
-  if (currentState.value === 'done') return '预览图清理'
+  if (props.mode === 'clean_local_previews') return '本地清理预览图'
+  if (props.mode === 'clean_all_previews') return '全量清理预览图'
   return '预览图清理'
 })
 
-const canClose = computed(() => {
-  // 评估中 / 清理中禁止关闭弹窗
-  return !evaluating.value && !cleaning.value
-})
-
 const modeLabel = computed(() => {
-  return selectedMode.value === 'clean_local_previews' ? '本地清理' : '全量清理'
+  return props.mode === 'clean_local_previews' ? '本地清理' : '全量清理'
 })
 
-// 监听 modelValue：关闭时重置状态
-watch(() => props.modelValue, (visible) => {
+const modeSubtitle = computed(() => {
+  if (props.mode === 'clean_local_previews') {
+    return '仅删除 downloads/previews/ 中已下载的文件，删除后下次访问会自动重新生成。'
+  }
+  if (props.mode === 'clean_all_previews') {
+    return '清空整个 downloads/previews/ 目录，所有未下载原图的预览都会丢失。'
+  }
+  return ''
+})
+
+const canClose = computed(() => {
+  return currentState.value !== 'cleaning'
+})
+
+watch(() => [props.modelValue, props.mode], ([visible, newMode]) => {
+  if (visible && newMode && currentState.value === 'idle') {
+    runEvaluate(newMode)
+  }
   if (!visible) {
-    // 延迟重置，避免动画期间闪烁
     setTimeout(() => {
-      if (!props.modelValue) {
-        resetState()
-      }
+      if (!props.modelValue) resetState()
     }, 300)
   }
 })
 
 function resetState() {
   currentState.value = 'idle'
-  evaluating.value = false
   cleaning.value = false
   error.value = null
-  selectedMode.value = null
   evalResult.value = null
   cleanResult.value = null
 }
 
 function handleClose(visible) {
-  if (!canClose.value && visible === false) {
-    return  // 拒绝关闭
-  }
+  if (!canClose.value && visible === false) return
   emit('update:modelValue', visible)
 }
 
-async function handleEvaluate(mode) {
-  if (evaluating.value || cleaning.value) return  // NEW GUARD
-  selectedMode.value = mode
-  evaluating.value = true
+async function runEvaluate(selectedMode) {
+  currentState.value = 'evaluating'
   error.value = null
   try {
-    const resp = await cleanupPreviews(mode, true)
+    const resp = await cleanupPreviews(selectedMode, true)
     evalResult.value = resp.data
     currentState.value = 'evaluated'
   } catch (e) {
     error.value = `评估失败：${e.message || '未知错误'}`
-  } finally {
-    evaluating.value = false
+    currentState.value = 'evaluated'
   }
 }
 
 async function handleConfirmClean() {
-  if (cleaning.value || evaluating.value) return  // NEW GUARD
-  if (!selectedMode.value) return
+  if (!props.mode) return
   cleaning.value = true
   error.value = null
   try {
-    const resp = await cleanupPreviews(selectedMode.value, false)
+    const resp = await cleanupPreviews(props.mode, false)
     cleanResult.value = resp.data
     currentState.value = 'done'
   } catch (e) {
@@ -225,7 +180,6 @@ async function handleConfirmClean() {
   }
 }
 
-// 工具函数
 function formatNumber(n) {
   if (n == null) return '0'
   return Number(n).toLocaleString('en-US')
@@ -259,18 +213,11 @@ function formatDuration(ms) {
   margin: 0 0 12px 0;
 }
 
-.state-desc code {
-  background: var(--bg-primary, #f5f7fa);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
 .state-h4 {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary, #303133);
-  margin: 0 0 16px 0;
+  margin: 16px 0 12px 0;
 }
 
 .state-h4.done-title {
@@ -281,35 +228,19 @@ function formatDuration(ms) {
   margin: 12px 0;
 }
 
-.button-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.action-btn {
-  height: auto !important;
-  padding: 16px 12px !important;
-  white-space: normal;
-  line-height: 1.4;
-}
-
-.btn-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.btn-subtitle {
-  font-size: 11px;
-  opacity: 0.85;
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 0;
+  color: var(--text-secondary, #606266);
+  font-size: 13px;
 }
 
 .stat-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 4px;
 }
 
@@ -346,7 +277,6 @@ function formatDuration(ms) {
   font-size: 15px;
 }
 
-/* 暗色模式适配 */
 html.dark-mode .stat-card {
   background: #1a1a2e;
 }
@@ -363,7 +293,6 @@ html.dark-mode .state-desc {
   color: #c0c4cc;
 }
 
-/* 移动端 */
 @media screen and (max-width: 768px) {
   :global(.el-dialog) {
     width: 90vw !important;
