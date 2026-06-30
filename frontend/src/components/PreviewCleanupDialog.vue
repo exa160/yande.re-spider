@@ -121,20 +121,20 @@ const evalResult = ref(null)
 const cleanResult = ref(null)
 
 const dialogTitle = computed(() => {
-  if (mode.value === 'clean_local_previews') return '本地清理预览图'
-  if (mode.value === 'clean_all_previews') return '全量清理预览图'
+  if (props.mode === 'clean_local_previews') return '本地清理预览图'
+  if (props.mode === 'clean_all_previews') return '全量清理预览图'
   return '预览图清理'
 })
 
 const modeLabel = computed(() => {
-  return mode.value === 'clean_local_previews' ? '本地清理' : '全量清理'
+  return props.mode === 'clean_local_previews' ? '本地清理' : '全量清理'
 })
 
 const modeSubtitle = computed(() => {
-  if (mode.value === 'clean_local_previews') {
+  if (props.mode === 'clean_local_previews') {
     return '仅删除 downloads/previews/ 中对应 yande_data down_flag=True（原图已下载）的文件，删除后下次访问会自动重新生成。'
   }
-  if (mode.value === 'clean_all_previews') {
+  if (props.mode === 'clean_all_previews') {
     return '清空整个 downloads/previews/ 目录，所有未下载原图的预览都会丢失。'
   }
   return ''
