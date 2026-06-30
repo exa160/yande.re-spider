@@ -44,3 +44,10 @@ class TestImageDetailRating:
 
     def test_unknown_rating_defaults_to_r15(self):
         assert _make_detail(rating="x").rating == Rating.R15
+
+    def test_json_serialization_with_none_rating(self):
+        detail = _make_detail(rating=None)
+        body = detail.model_dump()
+        assert body["rating"] is None
+        json_str = detail.model_dump_json()
+        assert '"rating":null' in json_str

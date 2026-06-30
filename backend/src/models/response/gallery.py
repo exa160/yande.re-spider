@@ -67,8 +67,10 @@ class ImageDetail(BaseModel):
         return check_local_file(self.id, self.file_ext, info.field_name.split('_')[0])
     
     @field_serializer('rating')
-    def serialize_rating(self, v: Rating) -> str:
-        return v.display   # 输出 "Safe"/"Questionable"/"Explicit"
+    def serialize_rating(self, v: Optional[Rating]) -> Optional[str]:
+        if v is None:
+            return None
+        return v.display
 
 
 class GalleryLoadResponse(PaginatedResponse[List[ImageDetail]]):
