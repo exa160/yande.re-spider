@@ -909,17 +909,17 @@ onUnmounted(() => {
 <style scoped>
 .cleanup-buttons {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  flex-wrap: wrap;
+}
+
+.cleanup-buttons .el-button {
+  margin-left: 0;
 }
 
 @media screen and (max-width: 768px) {
   .cleanup-buttons {
     width: 100%;
-  }
-
-  .cleanup-buttons .el-button {
-    flex: 1;
   }
 }
 </style>
