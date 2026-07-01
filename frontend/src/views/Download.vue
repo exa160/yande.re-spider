@@ -48,6 +48,14 @@
               </span>
               <span v-if="task.speed" class="card-speed">{{ formatSpeed(task.speed) }}</span>
             </div>
+            <div class="card-times">
+              <span class="card-time">
+                <span class="time-label">添加：</span>{{ formatDateTime(task.created_at) }}
+              </span>
+              <span class="card-time">
+                <span class="time-label">完成：</span>{{ formatDateTime(task.completed_at) }}
+              </span>
+            </div>
             <div v-if="activeTab === 'failed' && task.error_message" class="card-error">
               <el-button text size="small" @click="toggleError(task.task_id)">
                 <el-icon><Warning /></el-icon>
@@ -150,6 +158,28 @@
             <template #default="{ row }">
               <span v-if="row.speed">{{ formatSpeed(row.speed) }}</span>
               <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="completed_at"
+            label="完成时间"
+            width="170"
+            sortable="custom"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.completed_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="created_at"
+            label="添加时间"
+            width="170"
+            sortable="custom"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.created_at) }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="240" fixed="right">
@@ -308,6 +338,15 @@ const formatSpeed = (bytesPerSecond) => {
   if (bytesPerSecond < 1024) return `${bytesPerSecond.toFixed(0)} B/s`
   if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
   return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
+}
+
+const formatDateTime = (isoString) => {
+  if (!isoString) return '-'
+  const d = new Date(isoString)
+  if (isNaN(d.getTime())) return '-'
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 const emptyText = computed(() => {
@@ -528,6 +567,22 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.card-times {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.card-time {
+  white-space: nowrap;
+}
+.time-label {
+  color: var(--text-secondary);
+  margin-right: 2px;
 }
 
 .card-error {
