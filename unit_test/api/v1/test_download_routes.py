@@ -77,3 +77,19 @@ def test_get_tasks_count_returns_all_six_statuses(client):
         "completed", "failed", "cancelled",
     }
     assert all(isinstance(data[k], int) for k in data)
+
+
+def test_get_tasks_with_sort_by_image_id(client):
+    resp = client.get("/api/v1/download/tasks?sort_by=image_id&order=desc")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    image_ids = [t["image_id"] for t in data]
+    assert image_ids == sorted(image_ids, reverse=True)
+
+
+def test_get_tasks_default_sort_is_image_id_desc(client):
+    resp = client.get("/api/v1/download/tasks")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    image_ids = [t["image_id"] for t in data]
+    assert image_ids == sorted(image_ids, reverse=True)
