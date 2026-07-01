@@ -114,3 +114,25 @@ def test_query_tasks_pagination(dao):
 
     page3, _ = dao.query_tasks(page=3, page_size=2)
     assert len(page3) == 1
+
+
+def test_query_tasks_sorts_by_image_id_desc(dao):
+    for i in range(3):
+        dao.create(task_id=f"img-{i}", image_id=6000 + i, file_name=f"img{i}.jpg")
+        rec = dao.get_by_id(f"img-{i}")
+        rec.status = TaskStatus.COMPLETED
+
+    results, _ = dao.query_tasks(sort_by="image_id", order="desc")
+    image_ids = [r["image_id"] for r in results]
+    assert image_ids == [6002, 6001, 6000]
+
+
+def test_query_tasks_sorts_by_image_id_asc(dao):
+    for i in range(3):
+        dao.create(task_id=f"img-{i}", image_id=7000 + i, file_name=f"img{i}.jpg")
+        rec = dao.get_by_id(f"img-{i}")
+        rec.status = TaskStatus.COMPLETED
+
+    results, _ = dao.query_tasks(sort_by="image_id", order="asc")
+    image_ids = [r["image_id"] for r in results]
+    assert image_ids == [7000, 7001, 7002]
