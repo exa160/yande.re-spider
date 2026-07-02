@@ -152,7 +152,7 @@ class DownloadTaskDao(BaseDAO):
         page_size: int = 20,
     ) -> Tuple[List[dict], int]:
         """分页查询任务（多状态过滤 + 排序 + 分页）。"""
-        allowed_sort = {"created_at", "updated_at", "completed_at", "progress"}
+        allowed_sort = {"image_id", "created_at", "updated_at", "completed_at", "progress"}
         if sort_by not in allowed_sort:
             raise ValueError(f"Invalid sort_by: {sort_by}. Must be one of {allowed_sort}")
         if order not in ("asc", "desc"):

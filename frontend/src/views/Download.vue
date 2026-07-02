@@ -48,6 +48,14 @@
               </span>
               <span v-if="task.speed" class="card-speed">{{ formatSpeed(task.speed) }}</span>
             </div>
+            <div class="card-times">
+              <span class="card-time">
+                <span class="time-label">添加：</span>{{ formatDateTime(task.created_at) }}
+              </span>
+              <span class="card-time">
+                <span class="time-label">完成：</span>{{ formatDateTime(task.completed_at) }}
+              </span>
+            </div>
             <div v-if="activeTab === 'failed' && task.error_message" class="card-error">
               <el-button text size="small" @click="toggleError(task.task_id)">
                 <el-icon><Warning /></el-icon>
@@ -109,8 +117,15 @@
           :data="tasks"
           style="width: 100%"
           size="small"
+          :default-sort="{ prop: sortBy, order: sortOrder === 'asc' ? 'ascending' : 'descending' }"
+          @sort-change="onSortChange"
         >
-          <el-table-column prop="image_id" label="图片ID" width="90" />
+          <el-table-column
+            prop="image_id"
+            label="图片ID"
+            width="90"
+            sortable="custom"
+          />
           <el-table-column label="文件名" show-overflow-tooltip>
             <template #default="{ row }">
               {{ getFileName(row) }}
@@ -150,6 +165,28 @@
             <template #default="{ row }">
               <span v-if="row.speed">{{ formatSpeed(row.speed) }}</span>
               <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="completed_at"
+            label="完成时间"
+            width="170"
+            sortable="custom"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.completed_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="created_at"
+            label="添加时间"
+            width="170"
+            sortable="custom"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.created_at) }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="240" fixed="right">
@@ -237,11 +274,11 @@ const TAB_STATUS_MAP = {
 }
 
 const TAB_SORT_MAP = {
-  all:       { sort_by: 'created_at',   order: 'desc' },
-  active:    { sort_by: 'created_at',   order: 'asc'  },
-  completed: { sort_by: 'completed_at', order: 'desc' },
-  failed:    { sort_by: 'completed_at', order: 'desc' },
-  cancelled: { sort_by: 'completed_at', order: 'desc' },
+  all:       { sort_by: 'image_id', order: 'desc' },
+  active:    { sort_by: 'image_id', order: 'desc' },
+  completed: { sort_by: 'image_id', order: 'desc' },
+  failed:    { sort_by: 'image_id', order: 'desc' },
+  cancelled: { sort_by: 'image_id', order: 'desc' },
 }
 
 const activeTab = ref('active')
@@ -251,6 +288,8 @@ const currentPage = ref(1)
 const total = ref(0)
 const isMobile = ref(false)
 const errorExpanded = ref({})
+const sortBy = ref('image_id')   // 当前排序字段
+const sortOrder = ref('desc')    // 当前排序方向
 const counts = ref({
   all: null, active: null, completed: null, failed: null, cancelled: null
 })
@@ -310,6 +349,15 @@ const formatSpeed = (bytesPerSecond) => {
   return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
 }
 
+const formatDateTime = (isoString) => {
+  if (!isoString) return '-'
+  const d = new Date(isoString)
+  if (isNaN(d.getTime())) return '-'
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const emptyText = computed(() => {
   const map = {
     all:       '暂无下载任务',
@@ -343,12 +391,11 @@ const loadTasks = async (showLoading = true) => {
   try {
     const tab = activeTab.value
     const statusList = TAB_STATUS_MAP[tab]
-    const sort = TAB_SORT_MAP[tab]
     const params = {
       page: currentPage.value,
       page_size: isMobile.value ? 10 : 20,
-      sort_by: sort.sort_by,
-      order: sort.order,
+      sort_by: sortBy.value,
+      order: sortOrder.value,
     }
     if (statusList) {
       params.status = [...statusList]
@@ -389,6 +436,18 @@ const onTabChange = () => {
   errorExpanded.value = {}
   loadTasks()
   loadCounts()
+}
+
+const onSortChange = ({ prop, order }) => {
+  if (!prop || !order) {
+    sortBy.value = 'image_id'
+    sortOrder.value = 'desc'
+  } else {
+    sortBy.value = prop
+    sortOrder.value = order === 'ascending' ? 'asc' : 'desc'
+  }
+  currentPage.value = 1
+  loadTasks()
 }
 
 watch(activeTab, (v) => {
@@ -528,6 +587,22 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.card-times {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.card-time {
+  white-space: nowrap;
+}
+.time-label {
+  color: var(--text-secondary);
+  margin-right: 2px;
 }
 
 .card-error {
