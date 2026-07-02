@@ -53,6 +53,7 @@ class TaskStore:
         file_size: Optional[int] = Field(None, description="总大小")
 
     class DownloadTask(ProgressData):
+        image_id: int = Field(0, description="yande 图片 ID")
         yande_data: Optional[YandeData] = Field(None, description="yande数据")
         file_name: Optional[str] = Field(..., description="文件名")
         error_message: Optional[str] = Field(None, description="错误信息")
@@ -94,6 +95,7 @@ class TaskStore:
                 )
                 task = TaskStore.DownloadTask(
                     task_id=rec.task_id,
+                    image_id=rec.image_id,
                     file_name=rec.file_name,
                     file_size=rec.file_size,
                     downloaded_size=rec.downloaded_size or 0,
@@ -128,6 +130,7 @@ class TaskStore:
         with self._lock:
             task = TaskStore.DownloadTask(
                 task_id=task_id,
+                image_id=yande_data.id,
                 yande_data=yande_data,
                 file_name=file_name,
                 file_size=file_size,
@@ -147,6 +150,7 @@ class TaskStore:
         with self._lock:
             task = TaskStore.DownloadTask(
                 task_id=task_id,
+                image_id=yande_data.id,
                 yande_data=yande_data,
                 file_name=f"{yande_data.id}.{yande_data.file_ext or 'jpg'}",
                 file_size=yande_data.file_size,
@@ -180,6 +184,7 @@ class TaskStore:
                 return None
             return TaskStore.DownloadTask(
                 task_id=rec.task_id,
+                image_id=rec.image_id,
                 file_name=rec.file_name,
                 file_size=rec.file_size,
                 downloaded_size=rec.downloaded_size or 0,
