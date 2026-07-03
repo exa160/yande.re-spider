@@ -416,13 +416,41 @@ const refreshAll = async () => {
 }
 
 let pollTimer = null
+let polling = false
+const poll = async () => {
+  if (polling) return
+  polling = true
+  try {
+    if (activeTab.value === 'active' || activeTab.value === 'all') {
+      const before = Object.fromEntries(
+        tasks.value.map(t => [t.task_id, t.status])
+      )
+      await loadTasks(false)
+      const after = Object.fromEntries(
+        tasks.value.map(t => [t.task_id, t.status])
+      )
+      if (statusChanged(before, after)) await loadCounts()
+    }
+  } finally {
+    polling = false
+  }
+}
+
+const ACTIVE_SET = new Set(['pending', 'downloading', 'paused'])
+const statusChanged = (before, after) => {
+  const allIds = new Set([...Object.keys(before), ...Object.keys(after)])
+  for (const id of allIds) {
+    const oldS = before[id]
+    const newS = after[id]
+    if (!oldS || !newS) return true  // 任务新增或消失
+    if (ACTIVE_SET.has(oldS) !== ACTIVE_SET.has(newS)) return true  // 跨活跃/终态转换
+  }
+  return false
+}
+
 const startPolling = () => {
   if (pollTimer) return
-  pollTimer = setInterval(() => {
-    if (activeTab.value === 'active') {
-      loadTasks(false)
-    }
-  }, 2000)
+  pollTimer = setInterval(poll, 2000)
 }
 const stopPolling = () => {
   if (pollTimer) {
@@ -451,7 +479,7 @@ const onSortChange = ({ prop, order }) => {
 }
 
 watch(activeTab, (v) => {
-  if (v === 'active') startPolling()
+  if (v === 'active' || v === 'all') startPolling()
   else stopPolling()
 })
 
@@ -491,7 +519,7 @@ const toggleError = (taskId) => {
 
 onMounted(async () => {
   await Promise.all([loadTasks(), loadCounts()])
-  if (activeTab.value === 'active') startPolling()
+  if (activeTab.value === 'active' || activeTab.value === 'all') startPolling()
 })
 
 onUnmounted(() => {
