@@ -78,6 +78,10 @@ class DownloadService:
         """
         获取任务列表（多状态过滤 + 排序 + 分页，DB 持久化）
 
+        DB 查询为主，活跃任务用内存实时进度覆盖。
+        progress_callback 只更新内存（不写 DB），所以 downloading 任务的
+        progress/speed/downloaded_size 需要从内存合并。
+
         Args:
             status_list: 状态过滤列表；None/[] 表示所有
             sort_by: 排序字段（created_at/updated_at/completed_at/progress）
@@ -89,13 +93,36 @@ class DownloadService:
             (任务列表, 总数)
         """
         from src.dao.download_task_dao import download_task_dao
-        return download_task_dao.query_tasks(
+        tasks, total = download_task_dao.query_tasks(
             status_list=status_list,
             sort_by=sort_by,
             order=order,
             page=page,
             page_size=page_size,
         )
+
+        # 仅当查询涉及活跃状态时，用内存中实时进度覆盖 DB 快照
+        ACTIVE_STATUSES = {TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.PAUSED}
+        query_active = (
+            status_list is None or not status_list
+            or any(s in ACTIVE_STATUSES for s in status_list)
+        )
+
+        if query_active:
+            with task_store._lock:
+                overrides = {
+                    t.task_id: {
+                        "progress": t.progress,
+                        "speed": t.speed,
+                        "downloaded_size": t.downloaded_size,
+                    }
+                    for t in task_store._tasks.values()
+                }
+            for task_dict in tasks:
+                if task_dict["task_id"] in overrides:
+                    task_dict.update(overrides[task_dict["task_id"]])
+
+        return tasks, total
 
     @staticmethod
     def get_status_counts() -> dict:
