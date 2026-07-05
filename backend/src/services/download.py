@@ -158,8 +158,15 @@ class DownloadService:
         if not task:
             return False, "任务不存在"
 
-        # CANCELLED 任务：内存已被终态清理，需要重建（带 yande_data）
-        if task.status == TaskStatus.CANCELLED:
+        # 终态任务（FAILED/CANCELLED）：内存已被终态清理，
+        # get_task 的 DB fallback 路径返回的 task 不带 yande_data，
+        # 必须从 yande_data 表重建内存缓存，否则 worker 会命中
+        # run_download_async 的 'No yande_data' 错误。
+        # 内存中仍带 yande_data 的任务（罕见的并发场景）跳过重建，避免覆盖。
+        if task.yande_data is None and task.status in (
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ):
             from src.dao.download_task_dao import download_task_dao
             from src.dao.yande_data_dao import YandeDataRepository
             with download_task_dao as dao:
@@ -171,6 +178,9 @@ class DownloadService:
             if not yande_data:
                 return False, "图片元数据已丢失，无法重试"
             task_store.recreate_task(task_id, yande_data)
+            # 重建后 task 仍是旧 DB fallback 的实例，需要重新从内存获取
+            # 以便后续 status 检查和 update_task 走正确的内存对象
+            task = task_store._tasks.get(task_id)
 
         if task.status not in [
             TaskStatus.PENDING,
