@@ -74,6 +74,7 @@ class DownloadService:
         order: str = "desc",
         page: int = 1,
         page_size: int = 20,
+        download_first: bool = False,
     ) -> Tuple[List[dict], int]:
         """
         获取任务列表（多状态过滤 + 排序 + 分页，DB 持久化）
@@ -88,6 +89,7 @@ class DownloadService:
             order: 'asc' | 'desc'
             page: 页码
             page_size: 每页数量
+            download_first: 是否将 status='downloading' 的任务排在最前
 
         Returns:
             (任务列表, 总数)
@@ -99,6 +101,7 @@ class DownloadService:
             order=order,
             page=page,
             page_size=page_size,
+            download_first=download_first,
         )
 
         # 仅当查询涉及活跃状态时，用内存中实时进度覆盖 DB 快照
