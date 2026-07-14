@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
@@ -29,5 +30,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets'
+  },
+  test: {
+    environment: 'happy-dom',
+    globals: false,
+    include: ['src/**/*.spec.js'],
+    css: false
   }
 })
