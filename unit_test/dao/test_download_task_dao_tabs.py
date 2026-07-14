@@ -136,3 +136,70 @@ def test_query_tasks_sorts_by_image_id_asc(dao):
     results, _ = dao.query_tasks(sort_by="image_id", order="asc")
     image_ids = [r["image_id"] for r in results]
     assert image_ids == [7000, 7001, 7002]
+
+
+# ===== download_first: downloading 任务排在最前 =====
+
+def test_query_tasks_download_first_groups_downloading_to_top(dao):
+    """download_first=True 时，downloading 任务排在前，其他状态按第二排序键排后。
+
+    场景：active tab 默认行为 — 用户希望先看到正在下载的任务。
+    """
+    # 1 个 pending (image_id=8001), 2 个 downloading (8002, 8003), 1 个 paused (8004)
+    # 不开 download_first 时按 image_id desc 排序：8004, 8003, 8002, 8001
+    # 开 download_first 后：8002/8003 在前（保持 desc），8001/8004 在后（保持 desc）
+    for image_id, status in [
+        (8001, TaskStatus.PENDING),
+        (8002, TaskStatus.DOWNLOADING),
+        (8003, TaskStatus.DOWNLOADING),
+        (8004, TaskStatus.PAUSED),
+    ]:
+        dao.create(task_id=f"df-{image_id}", image_id=image_id, file_name=f"{image_id}.jpg")
+        rec = dao.get_by_id(f"df-{image_id}")
+        rec.status = status
+
+    results, _ = dao.query_tasks(
+        sort_by="image_id", order="desc", download_first=True,
+    )
+    statuses = [r["status"] for r in results]
+    # 前 2 个必须是 downloading
+    assert statuses[:2] == ["downloading", "downloading"]
+    # 后 2 个是 pending + paused
+    assert set(statuses[2:]) == {"pending", "paused"}
+    # downloading 组内仍按 image_id desc
+    downloading_ids = [r["image_id"] for r in results if r["status"] == "downloading"]
+    assert downloading_ids == [8003, 8002]
+    # 非 downloading 组内也按 image_id desc
+    other_ids = [r["image_id"] for r in results if r["status"] != "downloading"]
+    assert other_ids == [8004, 8001]
+
+
+def test_query_tasks_download_first_with_no_downloading_is_noop(dao):
+    """download_first=True 但没有 downloading 任务时，应等价于普通排序"""
+    for i in range(3):
+        dao.create(task_id=f"nd-{i}", image_id=9000 + i, file_name=f"{i}.jpg")
+        rec = dao.get_by_id(f"nd-{i}")
+        rec.status = TaskStatus.PENDING
+
+    results, _ = dao.query_tasks(
+        sort_by="image_id", order="desc", download_first=True,
+    )
+    image_ids = [r["image_id"] for r in results]
+    assert image_ids == [9002, 9001, 9000]
+
+
+def test_query_tasks_download_first_default_false(dao):
+    """默认 download_first=False，混状态按 image_id desc 排序（不加 grouping）"""
+    for image_id, status in [
+        (7001, TaskStatus.PENDING),
+        (7002, TaskStatus.DOWNLOADING),
+        (7003, TaskStatus.PAUSED),
+    ]:
+        dao.create(task_id=f"def-{image_id}", image_id=image_id, file_name=f"{image_id}.jpg")
+        rec = dao.get_by_id(f"def-{image_id}")
+        rec.status = status
+
+    results, _ = dao.query_tasks(sort_by="image_id", order="desc")
+    image_ids = [r["image_id"] for r in results]
+    # 默认行为：纯按 image_id desc，不分组
+    assert image_ids == [7003, 7002, 7001]
