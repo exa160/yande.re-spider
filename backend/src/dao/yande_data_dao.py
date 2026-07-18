@@ -14,6 +14,26 @@ from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
 
 
+_LIKE_ESCAPE = "\\"
+
+
+def _to_like_pattern(token: str) -> str:
+    """把 yande DSL 的通配形式翻译为 SQL LIKE 模式：
+    - `*` 翻译为未转义的 SQL 通配符 %
+    - 字面 `%`、`_`、`\\` 加转义符，避免被解释为通配/转义
+    """
+    out = []
+    for ch in token:
+        if ch == "*":
+            out.append("%")
+        elif ch in ("%", "_", _LIKE_ESCAPE):
+            out.append(_LIKE_ESCAPE)
+            out.append(ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 class SortBy(str, Enum):
     """排序字段枚举"""
     ID = "id"
@@ -35,7 +55,10 @@ class YandeDataRepository(BaseDAO):
     class YandeDataQueryParams(BaseModel):
         """高级查询参数"""
 
-        tags: Optional[str] = Field(None, description="标签表达式，空格分隔，前缀 - 表示排除")
+        tags: Optional[str] = Field(
+            None,
+            description="标签表达式，空格分隔；无 * 表精确 token 匹配，前缀 - 表排除；含 *（如 pan* / p*n）表前缀/中间通配",
+        )
         min_width: Optional[int] = Field(None, ge=0, description="最小宽度")
         max_width: Optional[int] = Field(None, ge=0, description="最大宽度")
         min_height: Optional[int] = Field(None, ge=0, description="最小高度")
@@ -54,14 +77,43 @@ class YandeDataRepository(BaseDAO):
 
     @staticmethod
     def _tag_filter(tags: str):
-        tags_filter = [t for t in tags.split() if t.strip()]
+        """本地 tag 过滤。
+
+        规则：
+          - 无 * -> 精确 token 匹配（按空格分词）
+          - 含 * -> 走 LIKE 通配，与 yande.re DSL 一致；用户输入 * 翻译为 SQL %
+          - 前缀 - -> 排除语义（取反）
+          - 纯 * 或空 token -> 静默忽略
+        多 token 之间为 AND 关系（与历史行为一致）。
+        """
+        if not tags:
+            return None
+        parts = [t for t in tags.split() if t.strip()]
         filters = []
-        for tag in tags_filter:
-            tag = tag.strip()
-            if tag.startswith("-"):
-                filters.append(~YandeData.tags.contains(tag.strip("-")))
+        for raw in parts:
+            negated = raw.startswith("-")
+            token = raw[1:] if negated else raw
+            if not token or token == "*":
+                continue
+
+            if "*" in token:
+                pattern = _to_like_pattern(token)
+                cond = or_(
+                    YandeData.tags.like(pattern, escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {pattern}", escape=_LIKE_ESCAPE),
+                )
             else:
-                filters.append(YandeData.tags.contains(tag))
+                cond = or_(
+                    YandeData.tags == token,
+                    YandeData.tags.like(f"{token} %", escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {token}", escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {token} %", escape=_LIKE_ESCAPE),
+                )
+
+            filters.append(~cond if negated else cond)
+
+        if not filters:
+            return None
         return and_(*filters)
 
     @staticmethod
