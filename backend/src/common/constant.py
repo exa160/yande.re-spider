@@ -79,6 +79,12 @@ class RouterMap(Enum):
         return member.value if member else None
 
 
+class CleanupMode(str, Enum):
+    """预览图清理模式"""
+    CLEAN_LOCAL_PREVIEWS = "clean_local_previews"  # 局部清理：有原图可再生的 preview
+    CLEAN_ALL_PREVIEWS = "clean_all_previews"      # 全量清理：清空整个 previews/ 目录
+
+
 # ==================== 其他常量 ====================
 class Rating(str, Enum):
     S = "s"
@@ -132,6 +138,7 @@ class ErrMsg(BaseMsgEnum):
     LOAD_YANDE_DATA_ERROR = ("0010", "Failed to load yande data.", HTTPStatus.INTERNAL_SERVER_ERROR)
     LOAD_PREVIEW_DATA_ERROR = ("0011", "Failed to load preview data.", HTTPStatus.NOT_FOUND)
     SAVE_PREVIEW_DATA_ERROR = ("0012", "Failed to save preview data.", HTTPStatus.NOT_FOUND)
+    CLEANUP_PREVIEW_ERROR = ("0013", "Failed to cleanup preview cache.", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     # 配置相关
     CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -145,6 +152,7 @@ class ErrMsg(BaseMsgEnum):
     SCHEDULE_DISABLED = ("5002", "Schedule is disabled for this folder.", HTTPStatus.BAD_REQUEST)
     SCHEDULE_TRIGGER_ERROR = ("5003", "Failed to trigger schedule.", HTTPStatus.INTERNAL_SERVER_ERROR)
     SCHEDULE_STATUS_NOT_FOUND = ("5404", "Schedule status not found.", HTTPStatus.NOT_FOUND)
+    SCHEDULE_INVALID_RESET = ("5004", "Invalid last_synced_id value.", HTTPStatus.BAD_REQUEST)
 
     # 下载任务
     TASK_START_ERROR = ("3001", "Failed to start task.", HTTPStatus.BAD_REQUEST)

@@ -77,3 +77,79 @@ def test_get_tasks_count_returns_all_six_statuses(client):
         "completed", "failed", "cancelled",
     }
     assert all(isinstance(data[k], int) for k in data)
+
+
+def test_get_tasks_with_sort_by_image_id(client):
+    resp = client.get("/api/v1/download/tasks?sort_by=image_id&order=desc")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    image_ids = [t["image_id"] for t in data]
+    assert image_ids == sorted(image_ids, reverse=True)
+
+
+def test_get_tasks_default_sort_is_image_id_desc(client):
+    resp = client.get("/api/v1/download/tasks")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    image_ids = [t["image_id"] for t in data]
+    assert image_ids == sorted(image_ids, reverse=True)
+
+
+# ===== download_first API 参数 =====
+
+@pytest.fixture
+def setup_data_with_active_mix():
+    """混入 pending / downloading / paused 三个活跃状态，便于测 download_first 分组效果。"""
+    with DownloadTaskDao() as dao:
+        dao.session.query(DownloadTask).delete()
+        # image_id 顺序：31001=pending, 31002=downloading, 31003=paused, 31004=downloading
+        for image_id, status in [
+            (31001, TaskStatus.PENDING),
+            (31002, TaskStatus.DOWNLOADING),
+            (31003, TaskStatus.PAUSED),
+            (31004, TaskStatus.DOWNLOADING),
+        ]:
+            dao.create(task_id=f"act-{image_id}", image_id=image_id, file_name=f"{image_id}.jpg")
+            rec = dao.get_by_id(f"act-{image_id}")
+            rec.status = status
+
+
+def test_get_tasks_download_first_default_false(client, setup_data_with_active_mix):
+    """不传 download_first 时，行为与原有排序一致（纯按 image_id desc）"""
+    resp = client.get("/api/v1/download/tasks?status=pending&status=downloading&status=paused")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    image_ids = [t["image_id"] for t in data]
+    # 不带 download_first：纯按 image_id desc
+    assert image_ids == [31004, 31003, 31002, 31001]
+
+
+def test_get_tasks_download_first_groups_downloading_to_top(client, setup_data_with_active_mix):
+    """download_first=true 时，downloading 任务排在最前，其他状态按 image_id desc 排后"""
+    resp = client.get(
+        "/api/v1/download/tasks?status=pending&status=downloading&status=paused&download_first=true"
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    statuses = [t["status"] for t in data]
+    # 前 2 个必须是 downloading
+    assert statuses[:2] == ["downloading", "downloading"]
+    # 后 2 个是 pending + paused
+    assert set(statuses[2:]) == {"pending", "paused"}
+    # downloading 组内按 image_id desc：31004 在前
+    downloading_ids = [t["image_id"] for t in data if t["status"] == "downloading"]
+    assert downloading_ids == [31004, 31002]
+    # 非 downloading 组内按 image_id desc：31003 在前
+    other_ids = [t["image_id"] for t in data if t["status"] != "downloading"]
+    assert other_ids == [31003, 31001]
+
+
+def test_get_tasks_download_first_accepts_false_explicitly(client, setup_data_with_active_mix):
+    """显式传 download_first=false 也正常工作（边界：API 路由接受字面 false）"""
+    resp = client.get(
+        "/api/v1/download/tasks?status=pending&status=downloading&status=paused&download_first=false"
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    image_ids = [t["image_id"] for t in data]
+    assert image_ids == [31004, 31003, 31002, 31001]

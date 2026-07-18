@@ -14,6 +14,26 @@ from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
 
 
+_LIKE_ESCAPE = "\\"
+
+
+def _to_like_pattern(token: str) -> str:
+    """把 yande DSL 的通配形式翻译为 SQL LIKE 模式：
+    - `*` 翻译为未转义的 SQL 通配符 %
+    - 字面 `%`、`_`、`\\` 加转义符，避免被解释为通配/转义
+    """
+    out = []
+    for ch in token:
+        if ch == "*":
+            out.append("%")
+        elif ch in ("%", "_", _LIKE_ESCAPE):
+            out.append(_LIKE_ESCAPE)
+            out.append(ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 class SortBy(str, Enum):
     """排序字段枚举"""
     ID = "id"
@@ -35,7 +55,10 @@ class YandeDataRepository(BaseDAO):
     class YandeDataQueryParams(BaseModel):
         """高级查询参数"""
 
-        tags: Optional[str] = Field(None, description="标签表达式，空格分隔，前缀 - 表示排除")
+        tags: Optional[str] = Field(
+            None,
+            description="标签表达式，空格分隔；无 * 表精确 token 匹配，前缀 - 表排除；含 *（如 pan* / p*n）表前缀/中间通配",
+        )
         min_width: Optional[int] = Field(None, ge=0, description="最小宽度")
         max_width: Optional[int] = Field(None, ge=0, description="最大宽度")
         min_height: Optional[int] = Field(None, ge=0, description="最小高度")
@@ -54,14 +77,43 @@ class YandeDataRepository(BaseDAO):
 
     @staticmethod
     def _tag_filter(tags: str):
-        tags_filter = [t for t in tags.split() if t.strip()]
+        """本地 tag 过滤。
+
+        规则：
+          - 无 * -> 精确 token 匹配（按空格分词）
+          - 含 * -> 走 LIKE 通配，与 yande.re DSL 一致；用户输入 * 翻译为 SQL %
+          - 前缀 - -> 排除语义（取反）
+          - 纯 * 或空 token -> 静默忽略
+        多 token 之间为 AND 关系（与历史行为一致）。
+        """
+        if not tags:
+            return None
+        parts = [t for t in tags.split() if t.strip()]
         filters = []
-        for tag in tags_filter:
-            tag = tag.strip()
-            if tag.startswith("-"):
-                filters.append(~YandeData.tags.contains(tag.strip("-")))
+        for raw in parts:
+            negated = raw.startswith("-")
+            token = raw[1:] if negated else raw
+            if not token or token == "*":
+                continue
+
+            if "*" in token:
+                pattern = _to_like_pattern(token)
+                cond = or_(
+                    YandeData.tags.like(pattern, escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {pattern}", escape=_LIKE_ESCAPE),
+                )
             else:
-                filters.append(YandeData.tags.contains(tag))
+                cond = or_(
+                    YandeData.tags == token,
+                    YandeData.tags.like(f"{token} %", escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {token}", escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {token} %", escape=_LIKE_ESCAPE),
+                )
+
+            filters.append(~cond if negated else cond)
+
+        if not filters:
+            return None
         return and_(*filters)
 
     @staticmethod
@@ -145,9 +197,13 @@ class YandeDataRepository(BaseDAO):
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_max_id_for_tags(self, tags: str) -> Optional[int]:
+        """返回匹配 tags 且已下载的最大图片 ID。仅作为增量模式首次运行的兜底起点。"""
         if not tags or not tags.strip():
             return None
-        filter_funcs = [self._tag_filter(tags)]
+        filter_funcs = [
+            self._tag_filter(tags),
+            YandeData.down_flag.is_(True),
+        ]
         stmt = select(func.max(YandeData.id)).filter(*filter_funcs)
         return self.session.execute(stmt).scalar_one_or_none()
 
@@ -166,6 +222,16 @@ class YandeDataRepository(BaseDAO):
     def check_downloaded(self, image_id: int) -> bool:
         stmt = select(YandeData.id).filter_by(id=image_id, down_flag=True)
         return self.session.execute(stmt).scalar_one_or_none() is not None
+
+    def get_downloaded_ids(self) -> set[int]:
+        """查询所有已下载原图的 image_id（单次 SQL，仅取 id 字段）
+
+        Returns:
+            set[int]: down_flag=True 的 image_id 集合
+        """
+        stmt = select(YandeData.id).where(YandeData.down_flag.is_(True))
+        rows = self.session.execute(stmt).scalars().all()
+        return set(rows)
 
     def get_file_ext(self, image_id: int) -> Optional[str]:
         """只查询 file_ext，轻量级方法"""

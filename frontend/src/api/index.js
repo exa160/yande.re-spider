@@ -47,4 +47,19 @@ api.interceptors.response.use(
   }
 )
 
+/**
+ * 预览图清理
+ * @param {'clean_local_previews' | 'clean_all_previews'} mode - 清理模式
+ * @param {boolean} dryRun - true 仅评估不删除，false 真实清理
+ * @returns {Promise<{code: string, message: string, data: CleanupResult}>}
+ */
+export async function cleanupPreviews(mode, dryRun) {
+  return api({
+    url: '/gallery/cache/preview/cleanup',
+    method: 'post',
+    data: { mode, dry_run: dryRun },
+    timeout: 60000,  // 清理操作可能涉及较多文件 IO，延长超时
+  })
+}
+
 export default api

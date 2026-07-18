@@ -70,6 +70,7 @@ class FavoritesService:
                 last_scheduled_at=f.last_scheduled_at,
                 last_schedule_status=f.last_schedule_status,
                 last_schedule_stats=f.last_schedule_stats,
+                last_synced_id=f.last_synced_id,
                 preview_images=[],
             )
             for f in folders

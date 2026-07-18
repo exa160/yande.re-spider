@@ -60,12 +60,15 @@ async def create_batch_download_tasks(
 @router.get("/tasks", response_model=TaskListResponse, summary="获取任务列表")
 async def get_download_tasks(
     status: Optional[List[TaskStatus]] = Query(None, description="任务状态过滤（多值）"),
-    sort_by: Literal["created_at", "updated_at", "completed_at", "progress"] = Query(
-        "created_at", description="排序字段"
+    sort_by: Literal["image_id", "created_at", "updated_at", "completed_at", "progress"] = Query(
+        "image_id", description="排序字段"
     ),
     order: Literal["asc", "desc"] = Query("desc", description="排序方向"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    download_first: bool = Query(
+        False, description="是否将 downloading 状态任务排在最前（用于 active tab）"
+    ),
 ) -> TaskListResponse:
     """获取下载任务列表（支持多状态过滤、排序、分页）"""
     try:
@@ -75,6 +78,7 @@ async def get_download_tasks(
             order=order,
             page=page,
             page_size=page_size,
+            download_first=download_first,
         )
         return TaskListResponse(
             total=total,

@@ -1,13 +1,11 @@
 name: Docker Image CI
 
 on:
-  pull_request:
-    branches: [ "next" ]
   push:
-    # 监听 PR 合并到 next 触发的事件 (Merge pull request 按钮 / rebase merge / squash merge 都算)
-    branches: [ "next" ]
-    # 监听 semver tag 推送 (v*.*.*)
-    tags: [ 'v*.*.*' ]
+    # 监听 PR 合并到 next / next_dev 触发的事件 (Merge pull request 按钮 / rebase merge / squash merge 都算)
+    branches: [ "next", "next_dev" ]
+    # 监听严格 semver tag 推送 (v<num>.<num>.<num>)，拒收 prerelease 和其他奇怪 tag，避免 latest 被污染
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -34,13 +32,13 @@ jobs:
           images: |
             ${{ secrets.DOCKERHUB_USERNAME }}/picture-manager
           tags: |
-            # PR open/update: 临时验证镜像, 跟 commit SHA 绑定
-            type=sha,prefix=git-,enable=${{ github.event_name == 'pull_request' }}
-            # PR merge 到 next: 累积历史 (dev-<sha> 便于回滚到任一 commit)
-            type=sha,prefix=dev-,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next' }}
-            # PR merge 到 next: 浮动指针 (dev 始终指向最新合入 next 的代码)
-            type=raw,value=dev,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next' }}
-            # Tag push (v*.*.*): semver 镜像
+            # PR merge 到 next_dev: 累积历史 (dev-<sha> 便于回滚到任一 commit)
+            type=sha,prefix=dev-,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next_dev' }}
+            # PR merge 到 next_dev: 浮动指针 (dev 始终指向最新合入 next_dev 的代码)
+            type=raw,value=dev,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next_dev' }}
+            # PR merge 到 next: rc-<sha> 仅供开发验证使用，无浮动指针（强制显式选择 SHA，避免自动化误拉 RC 进生产）
+            type=sha,prefix=rc-,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/next' }}
+            # Tag push (vX.Y.Z): semver 镜像
             type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
             # Tag push: 浮动指针 (latest 仅在正式 tag 时绑定, 避免 RC 污染)
             type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}

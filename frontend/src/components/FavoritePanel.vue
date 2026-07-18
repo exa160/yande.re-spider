@@ -22,6 +22,17 @@
         </div>
         <div class="folder-meta">
           <el-tag
+            v-if="folder.schedule_enabled && folder.last_synced_id != null"
+            type="info"
+            size="small"
+            effect="plain"
+            class="cursor-badge"
+            :title="`同步游标：上次实际处理到的图片 ID #${folder.last_synced_id}`"
+          >
+            <el-icon><Aim /></el-icon>
+            #{{ folder.last_synced_id }}
+          </el-tag>
+          <el-tag
             v-if="folder.schedule_enabled"
             :type="scheduleStatusType(folder.last_schedule_status)"
             size="small"
@@ -146,14 +157,39 @@
               <el-radio value="max">最大</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="单次上限">
+<el-form-item label="单次上限">
             <el-input-number
               v-model="form.schedule_max_images"
               :min="1"
               :max="10000"
               placeholder="留空用全局默认"
               size="small"
+              style="width: 100%"
             />
+          </el-form-item>
+          <el-form-item v-if="currentEditingFolder && currentEditingFolder.schedule_enabled" label="同步游标" class="sync-cursor-form-item">
+            <div class="sync-cursor-row">
+              <span class="sync-cursor-value">
+                <template v-if="currentEditingFolder.last_synced_id != null">
+                  上次同步至 <strong>#{{ currentEditingFolder.last_synced_id }}</strong>
+                </template>
+                <template v-else>
+                  <em>未初始化</em>
+                </template>
+              </span>
+              <el-popconfirm
+                title="重置同步游标？下次调度将从头开始（增量模式回退到当前已下载位置，全量模式直接全量）。"
+                confirm-button-text="重置"
+                cancel-button-text="取消"
+                @confirm="handleResetSync"
+              >
+                <template #reference>
+                  <el-button size="small" type="warning" plain class="sync-cursor-reset">
+                    <el-icon><RefreshRight /></el-icon> 重置游标
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </div>
           </el-form-item>
         </template>
       </el-form>
@@ -184,7 +220,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, Star } from '@element-plus/icons-vue'
+import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Star } from '@element-plus/icons-vue'
 
 const props = defineProps({
   folders: { type: Array, required: true },
@@ -192,10 +228,18 @@ const props = defineProps({
   sourceMode: { type: String, default: 'local' },
 })
 
-const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'mode-change'])
+const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change'])
 
 const mode = ref('list')
 const editingFolder = ref(null)
+
+// 编辑模式：从 props.folders 派生最新的 folder 对象（按 id 匹配）。
+// 这样父组件刷新 favoriteFolders 后，编辑面板上的 last_synced_id 等字段自动同步，
+// 避免持久的旧引用导致"重置游标后仍显示未初始化"的问题。
+const currentEditingFolder = computed(() => {
+  if (!editingFolder.value) return null
+  return props.folders.find(f => f.id === editingFolder.value.id) || editingFolder.value
+})
 
 // 通知父组件 mode 变化 (父组件用此隐藏 panel-header 等装饰性头部)
 watch(mode, (newMode) => emit('mode-change', newMode), { immediate: true })
@@ -414,6 +458,12 @@ const handleDeleteConfirm = () => {
   cancelForm()
 }
 
+const handleResetSync = () => {
+  if (editingFolder.value) {
+    emit('reset-sync', editingFolder.value)
+  }
+}
+
 const handleSubmit = () => {
   if (!form.name.trim()) {
     ElMessage.warning('请输入收藏夹名称')
@@ -527,6 +577,55 @@ defineExpose({ openCreate, openEdit, cancelForm })
   font-size: 10px;
   padding: 0 4px;
   height: 18px;
+}
+
+.cursor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  padding: 0 4px;
+  height: 18px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.sync-cursor-value {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sync-cursor-value strong {
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+.sync-cursor-value em {
+  color: var(--text-muted, #999);
+  font-style: italic;
+}
+
+/* el-form-item__content 默认是 display:flex，子项会按内容撑开，
+   导致我们的 .sync-cursor-row 无法占满整个 content 区域宽度。
+   强制改成 block，让 row 自身 width:100% 生效，从而 flex 布局能正确占满空间。 */
+:deep(.sync-cursor-form-item .el-form-item__content) {
+  display: block;
+}
+
+.sync-cursor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.sync-cursor-value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sync-cursor-reset {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .empty-state {

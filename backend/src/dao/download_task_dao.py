@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from loguru import logger
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 
 from src.common.constant import TaskStatus
 from src.dao.database import BaseDAO
@@ -150,9 +150,20 @@ class DownloadTaskDao(BaseDAO):
         order: str = "desc",
         page: int = 1,
         page_size: int = 20,
+        download_first: bool = False,
     ) -> Tuple[List[dict], int]:
-        """分页查询任务（多状态过滤 + 排序 + 分页）。"""
-        allowed_sort = {"created_at", "updated_at", "completed_at", "progress"}
+        """分页查询任务（多状态过滤 + 排序 + 分页）。
+
+        Args:
+            status_list: 状态过滤列表；None/[] 表示所有
+            sort_by: 排序字段（image_id/created_at/updated_at/completed_at/progress）
+            order: 'asc' | 'desc'
+            page: 页码
+            page_size: 每页数量
+            download_first: 是否将 status='downloading' 的任务排在最前（用于 active tab
+                默认排序：先看正在下载的任务）。第二排序键仍为 sort_by + order。
+        """
+        allowed_sort = {"image_id", "created_at", "updated_at", "completed_at", "progress"}
         if sort_by not in allowed_sort:
             raise ValueError(f"Invalid sort_by: {sort_by}. Must be one of {allowed_sort}")
         if order not in ("asc", "desc"):
@@ -168,12 +179,21 @@ class DownloadTaskDao(BaseDAO):
 
         total = self.session.execute(count_stmt).scalar() or 0
 
+        order_clauses = []
+        if download_first:
+            # CASE WHEN status='downloading' THEN 0 ELSE 1 END
+            # 把 downloading 任务排到 group 0，其他排到 group 1
+            # 组内仍按 sort_by + order 排
+            order_clauses.append(
+                case(
+                    (DownloadTask.status == TaskStatus.DOWNLOADING.value, 0),
+                    else_=1,
+                ).asc()
+            )
         sort_col = getattr(DownloadTask, sort_by)
-        if order == "asc":
-            stmt = stmt.order_by(sort_col.asc())
-        else:
-            stmt = stmt.order_by(sort_col.desc())
+        order_clauses.append(sort_col.asc() if order == "asc" else sort_col.desc())
 
+        stmt = stmt.order_by(*order_clauses)
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
         records = self.session.execute(stmt).scalars().all()
 
