@@ -19,14 +19,18 @@ _LIKE_ESCAPE = "\\"
 
 def _to_like_pattern(token: str) -> str:
     """把 yande DSL 的通配形式翻译为 SQL LIKE 模式：
-    - `*` 替换为 `%`
+    - `*` 翻译为未转义的 SQL 通配符 %
     - 字面 `%`、`_`、`\\` 加转义符，避免被解释为通配/转义
     """
     out = []
-    for ch in token.replace("*", "%"):
-        if ch in ("%", "_", _LIKE_ESCAPE):
+    for ch in token:
+        if ch == "*":
+            out.append("%")
+        elif ch in ("%", "_", _LIKE_ESCAPE):
             out.append(_LIKE_ESCAPE)
-        out.append(ch)
+            out.append(ch)
+        else:
+            out.append(ch)
     return "".join(out)
 
 
