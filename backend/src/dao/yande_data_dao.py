@@ -14,6 +14,22 @@ from src.dao.database import BaseDAO
 from src.models.database.yande import YandeData
 
 
+_LIKE_ESCAPE = "\\"
+
+
+def _to_like_pattern(token: str) -> str:
+    """把 yande DSL 的通配形式翻译为 SQL LIKE 模式：
+    - `*` 替换为 `%`
+    - 字面 `%`、`_`、`\\` 加转义符，避免被解释为通配/转义
+    """
+    out = []
+    for ch in token.replace("*", "%"):
+        if ch in ("%", "_", _LIKE_ESCAPE):
+            out.append(_LIKE_ESCAPE)
+        out.append(ch)
+    return "".join(out)
+
+
 class SortBy(str, Enum):
     """排序字段枚举"""
     ID = "id"
@@ -61,11 +77,13 @@ class YandeDataRepository(BaseDAO):
 
         规则：
           - 无 * -> 精确 token 匹配（按空格分词）
-          - 含 * -> 走 LIKE 通配，与 yande.re DSL 一致
+          - 含 * -> 走 LIKE 通配，与 yande.re DSL 一致；用户输入 * 翻译为 SQL %
           - 前缀 - -> 排除语义（取反）
           - 纯 * 或空 token -> 静默忽略
         多 token 之间为 AND 关系（与历史行为一致）。
         """
+        if not tags:
+            return None
         parts = [t for t in tags.split() if t.strip()]
         filters = []
         for raw in parts:
@@ -75,16 +93,17 @@ class YandeDataRepository(BaseDAO):
                 continue
 
             if "*" in token:
+                pattern = _to_like_pattern(token)
                 cond = or_(
-                    YandeData.tags.like(token, autoescape=True),
-                    YandeData.tags.like(f"% {token}", autoescape=True),
+                    YandeData.tags.like(pattern, escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {pattern}", escape=_LIKE_ESCAPE),
                 )
             else:
                 cond = or_(
                     YandeData.tags == token,
-                    YandeData.tags.like(f"{token} %", autoescape=True),
-                    YandeData.tags.like(f"% {token}", autoescape=True),
-                    YandeData.tags.like(f"% {token} %", autoescape=True),
+                    YandeData.tags.like(f"{token} %", escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {token}", escape=_LIKE_ESCAPE),
+                    YandeData.tags.like(f"% {token} %", escape=_LIKE_ESCAPE),
                 )
 
             filters.append(~cond if negated else cond)
