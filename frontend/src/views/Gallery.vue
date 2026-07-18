@@ -273,10 +273,14 @@
     </teleport>
 
     <!-- 下载管理对话框 -->
+    <!-- destroy-on-close 必要：DownloadManager 内部有 setInterval 轮询，
+         el-dialog 默认关闭时只隐藏不销毁内部组件，会导致 onUnmounted 不触发
+         → stopPolling 不调用 → 轮询 timer 残留持续请求后端 -->
     <el-dialog
       v-model="showDownloadDialog"
       title="下载管理"
       width="80%"
+      destroy-on-close
       class="center-dialog"
     >
       <DownloadManager />
@@ -287,6 +291,7 @@
       v-model="showConfigDialog"
       title="配置"
       width="80%"
+      destroy-on-close
       class="center-dialog"
     >
       <ConfigPanel />

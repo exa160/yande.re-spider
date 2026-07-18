@@ -275,7 +275,9 @@ const TAB_STATUS_MAP = {
 
 const TAB_SORT_MAP = {
   all:       { sort_by: 'image_id', order: 'desc' },
-  active:    { sort_by: 'image_id', order: 'desc' },
+  // active tab 默认把 status='downloading' 任务排最前
+  // 用户点列头排序后由 sortBy/sortOrder 控制，此字段失效
+  active:    { sort_by: 'image_id', order: 'desc', download_first: true },
   completed: { sort_by: 'image_id', order: 'desc' },
   failed:    { sort_by: 'image_id', order: 'desc' },
   cancelled: { sort_by: 'image_id', order: 'desc' },
@@ -391,6 +393,12 @@ const loadTasks = async (showLoading = true) => {
   try {
     const tab = activeTab.value
     const statusList = TAB_STATUS_MAP[tab]
+    const defaultSort = TAB_SORT_MAP[tab]
+    // 只有当用户没点过列头排序（sortBy === default sort_by）时，
+    // 才传 download_first，让 active tab 默认把 downloading 任务排最前。
+    const useDownloadFirst =
+      defaultSort?.download_first === true &&
+      sortBy.value === defaultSort.sort_by
     const params = {
       page: currentPage.value,
       page_size: isMobile.value ? 10 : 20,
@@ -399,6 +407,9 @@ const loadTasks = async (showLoading = true) => {
     }
     if (statusList) {
       params.status = [...statusList]
+    }
+    if (useDownloadFirst) {
+      params.download_first = true
     }
     const response = await api.get('/download/tasks', { params })
     const body = response.data?.data !== undefined ? response.data : response

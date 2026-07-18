@@ -176,7 +176,6 @@ const loadedImages = ref(new Set())
 const retryingImages = ref(new Set())
 const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
-const imageLoadTimeouts = ref(new Map()) // 跟踪图片加载超时
 
 // 长按选择相关
 const touchFocusedId = ref(null)
@@ -304,19 +303,15 @@ watch(() => props.images.length, () => {
     loadedImages.value.clear()
     retryingImages.value.clear()
     retrySuccessImages.value.clear()
-    // 清除所有超时
-    imageLoadTimeouts.value.forEach(t => clearTimeout(t))
-    imageLoadTimeouts.value.clear()
     return
   }
   const existingIds = new Set(displayedImages.value.map(img => img.id))
   const newItems = newImages.filter(img => !existingIds.has(img.id))
   if (newItems.length > 0) {
     displayedImages.value = [...displayedImages.value, ...newItems]
-    // 新图片加入后标记为正在加载
+    // 新图片加入后标记为正在加载（由 el-image 的 @load/@error 事件驱动退出）
     newItems.forEach(img => {
       loadingImages.value.add(img.id)
-      nextTick(() => setImageTimeout(img))
     })
   }
   // 新图片加入后，重新观察
@@ -594,7 +589,6 @@ const handleImageError = (image) => {
   loadingImages.value.delete(image.id)
   failedImages.value.add(image.id)
   loadedImages.value.delete(image.id)
-  clearImageTimeout(image.id)
 }
 
 const handleImageLoad = (image) => {
@@ -602,32 +596,6 @@ const handleImageLoad = (image) => {
   loadedImages.value.add(image.id)
   failedImages.value.delete(image.id)
   retrySuccessImages.value.delete(image.id)
-  clearImageTimeout(image.id)
-}
-
-// 超时检测图片加载失败
-const IMAGE_LOAD_TIMEOUT = 10000 // 10秒超时
-
-const clearImageTimeout = (imageId) => {
-  if (imageLoadTimeouts.value.has(imageId)) {
-    clearTimeout(imageLoadTimeouts.value.get(imageId))
-    imageLoadTimeouts.value.delete(imageId)
-  }
-}
-
-const setImageTimeout = (image) => {
-  clearImageTimeout(image.id)
-  const timeoutId = setTimeout(() => {
-    // 超时后检查：如果图片在 loadingImages 但不在 loadedImages，认为加载失败
-    if (loadingImages.value.has(image.id) && !loadedImages.value.has(image.id)) {
-      if (!props.saveDataMode) {
-        failedImages.value.add(image.id)
-      }
-    }
-    loadingImages.value.delete(image.id)
-    imageLoadTimeouts.value.delete(image.id)
-  }, IMAGE_LOAD_TIMEOUT)
-  imageLoadTimeouts.value.set(image.id, timeoutId)
 }
 
 const shouldShowRetry = (image) => {
@@ -642,7 +610,6 @@ const handleImageRetry = async (image, event) => {
   retryingImages.value.add(image.id)
   failedImages.value.delete(image.id)
   loadingImages.value.add(image.id)
-  clearImageTimeout(image.id)
 
   let apiSuccess = false
   if (props.sourceMode === 'local') {
@@ -665,7 +632,6 @@ const handleImageRetry = async (image, event) => {
 
   if (!apiSuccess) {
     failedImages.value.add(image.id)
-    nextTick(() => setImageTimeout(image))
   }
   // 如果 API 成功，等待 el-image 的 load/error 事件处理状态
 }
