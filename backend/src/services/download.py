@@ -74,9 +74,14 @@ class DownloadService:
         order: str = "desc",
         page: int = 1,
         page_size: int = 20,
+        download_first: bool = False,
     ) -> Tuple[List[dict], int]:
         """
         获取任务列表（多状态过滤 + 排序 + 分页，DB 持久化）
+
+        DB 查询为主，活跃任务用内存实时进度覆盖。
+        progress_callback 只更新内存（不写 DB），所以 downloading 任务的
+        progress/speed/downloaded_size 需要从内存合并。
 
         Args:
             status_list: 状态过滤列表；None/[] 表示所有
@@ -84,18 +89,43 @@ class DownloadService:
             order: 'asc' | 'desc'
             page: 页码
             page_size: 每页数量
+            download_first: 是否将 status='downloading' 的任务排在最前
 
         Returns:
             (任务列表, 总数)
         """
         from src.dao.download_task_dao import download_task_dao
-        return download_task_dao.query_tasks(
+        tasks, total = download_task_dao.query_tasks(
             status_list=status_list,
             sort_by=sort_by,
             order=order,
             page=page,
             page_size=page_size,
+            download_first=download_first,
         )
+
+        # 仅当查询涉及活跃状态时，用内存中实时进度覆盖 DB 快照
+        ACTIVE_STATUSES = {TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.PAUSED}
+        query_active = (
+            status_list is None or not status_list
+            or any(s in ACTIVE_STATUSES for s in status_list)
+        )
+
+        if query_active:
+            with task_store._lock:
+                overrides = {
+                    t.task_id: {
+                        "progress": t.progress,
+                        "speed": t.speed,
+                        "downloaded_size": t.downloaded_size,
+                    }
+                    for t in task_store._tasks.values()
+                }
+            for task_dict in tasks:
+                if task_dict["task_id"] in overrides:
+                    task_dict.update(overrides[task_dict["task_id"]])
+
+        return tasks, total
 
     @staticmethod
     def get_status_counts() -> dict:
@@ -130,13 +160,41 @@ class DownloadService:
         task = task_store.get_task(task_id)
         if not task:
             return False, "任务不存在"
+
+        # 终态任务（FAILED/CANCELLED）：内存已被终态清理，
+        # get_task 的 DB fallback 路径返回的 task 不带 yande_data，
+        # 必须从 yande_data 表重建内存缓存，否则 worker 会命中
+        # run_download_async 的 'No yande_data' 错误。
+        # 内存中仍带 yande_data 的任务（罕见的并发场景）跳过重建，避免覆盖。
+        if task.yande_data is None and task.status in (
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ):
+            from src.dao.download_task_dao import download_task_dao
+            from src.dao.yande_data_dao import YandeDataRepository
+            with download_task_dao as dao:
+                rec = dao.get_by_id(task_id)
+            if not rec:
+                return False, "任务记录不存在"
+            with YandeDataRepository() as repo:
+                yande_data = repo.get_by_id(rec.image_id)
+            if not yande_data:
+                return False, "图片元数据已丢失，无法重试"
+            task_store.recreate_task(task_id, yande_data)
+            # 重建后 task 仍是旧 DB fallback 的实例，需要重新从内存获取
+            # 以便后续 status 检查和 update_task 走正确的内存对象
+            task = task_store._tasks.get(task_id)
+
         if task.status not in [
             TaskStatus.PENDING,
             TaskStatus.PAUSED,
             TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
         ]:
             return False, "任务无法启动"
 
+        # 先改 status=PENDING 再 add_task，worker 拿起来时短路检查（run_download_async
+        # 的 CANCELLED 短路）会自动放行，不会被误判为 cancelled 而跳过
         task_store.update_task(task_id, {"status": TaskStatus.PENDING})
         await download_queue.add_task(task_id)
         return True, "任务已启动"

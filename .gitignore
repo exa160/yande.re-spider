@@ -8,6 +8,9 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+
+# Brainstorm / visual companion local artifacts (mockups + state)
+.superpowers/
 build/
 develop-eggs/
 dist/

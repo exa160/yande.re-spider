@@ -33,6 +33,7 @@ class FavoriteFolder(FavoriteFolderBase):
     last_scheduled_at: Optional[datetime] = None
     last_schedule_status: Optional[str] = None
     last_schedule_stats: Optional[dict] = None
+    last_synced_id: Optional[int] = Field(default=None, description="上次调度实际同步到的最大图片ID，NULL=未初始化")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,7 +92,7 @@ class ScheduleTriggerStatsData(BaseModel):
 
 
 class FolderScheduleStatusData(BaseModel):
-    """收藏夹调度状态的 data 模型（7 字段，省去前端重复解构）"""
+    """收藏夹调度状态的 data 模型（8 字段，省去前端重复解构）"""
     schedule_enabled: bool
     schedule_cron: str
     schedule_mode: str
@@ -99,6 +100,7 @@ class FolderScheduleStatusData(BaseModel):
     last_scheduled_at: Optional[datetime]
     last_schedule_status: Optional[str]
     last_schedule_stats: Optional[dict]
+    last_synced_id: Optional[int] = Field(default=None, description="上次调度实际同步到的最大图片ID")
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from random import uniform
 import time
@@ -89,6 +90,26 @@ class ImageCache:
         preview_exists = self.get_preview_path(image_id, file_ext).exists()
         original_exists = self.get_original_path(image_id, file_ext).exists()
         return preview_exists, original_exists
+
+    def list_preview_files(self) -> list[Path]:
+        """列出 previews/ 下所有非隐藏文件（用 os.scandir 性能更好）"""
+        if not self.PREVIEWS_DIR.exists():
+            return []
+        return [
+            Path(entry.path)
+            for entry in os.scandir(self.PREVIEWS_DIR)
+            if entry.is_file() and not entry.name.startswith(".")
+        ]
+
+    def safe_unlink(self, path: Path) -> bool:
+        """安全删除单个文件，失败返回 False 不抛异常"""
+        try:
+            if path.exists():
+                path.unlink()
+            return True
+        except OSError as e:
+            logger.warning(f"Failed to unlink {path}: {e}")
+            return False
 
 
 cache = ImageCache()

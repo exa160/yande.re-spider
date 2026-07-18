@@ -82,6 +82,7 @@
 - [ ] 是否声明返回类型注解
 - [ ] 是否添加 docstring
 - [ ] Request Model 是否使用 `Field()` 校验
+- [ ] 本地 tag 匹配：默认精确 token；`*` 表通配（`pan*` 前缀，`p*n` 中间）；`-` 表排除；纯 `*` 忽略（详见 `docs/superpowers/specs/2026-07-18-local-tag-exact-match-design.md`）
 
 **响应格式检查**：
 - [ ] 成功响应：`BaseResponse(message=ErrMsg.OK.msg, data={...})`

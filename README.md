@@ -28,7 +28,7 @@
 ## 主要功能
 
 - ✅ yande.re 图片批量下载（多线程 + 断点续传）
-- ✅ 瀑布流图库 + 高级查询（标签组合、分辨率、评分、文件大小过滤）
+- ✅ 瀑布流图库 + 高级查询（本地 tag 默认精确匹配，`pan*` 前缀通配、`p*n` 中间通配，与 yande.re DSL 一致）
 - ✅ 使用docker部署，支持MeriaDB/SQLite
 - ✅ NSFW 友好模式，省流模式
 - ✅ 数据库缓存，根据tag下载时相同ID不会重复下载
@@ -88,10 +88,39 @@ docker compose up
 # 生产环境（使用预构建镜像）
 docker compose -f docker-compose.yml up
 
-# 镜像通过 GitHub Actions 自动构建推送：
-# - PR 到 next 分支 → 构建 git-<SHA> 标签
-# - 推送 v*.*.* tag → 构建语义化版本标签 + latest
+# 镜像通过 GitHub Actions 自动构建推送（详见 .github/workflows/docker-build-push.yml）：
+# - push 到 next_dev 分支（PR merge） → dev-<sha> + 浮动 dev
+# - push 到 next 分支（PR merge）    → rc-<sha>（仅开发验证，无浮动指针）
+# - push tag vX.Y.Z                  → X.Y.Z + 浮动 latest
 ```
+
+## 分支与发布策略
+
+> 代码从开发到上线的完整路径，对应 `.github/workflows/docker-build-push.yml` 的触发器。
+
+### 分支层级
+
+| 分支 | 角色 | 触发 Docker 镜像 |
+|------|------|------------------|
+| `feature/<name>` | 主开发分支，新功能在此实现 | （本地构建） |
+| `next_feature` | 新特性验证专用分支（与 `feature` 区分） | （本地构建） |
+| `next_dev` | 多功能集成验证 | `dev-<sha>` + 浮动 `dev` |
+| `next` | RC 验证 | `rc-<sha>`（**无浮动指针**） |
+| `vX.Y.Z` tag | 正式发布 | `X.Y.Z` + 浮动 `latest` |
+
+### 完整流程
+
+```
+feature/<name>  ──┐
+feature/<name2> ──┼─→  next_dev  ──→  next  ──→  vX.Y.Z tag  ──→  latest
+feature/<name3> ──┘
+```
+
+1. 从 `feature` 拉新分支开发，完成后 MR 合入 `next_dev` 集成验证
+2. 多个功能在 `next_dev` 验证通过后，`next_dev` 合入 `next` 作为 RC
+3. RC 验证通过后，打 `vX.Y.Z` tag 发布为 latest
+
+> **RC 无浮动指针的设计原因**：强制显式选择 SHA，避免自动化脚本误把 RC 镜像拉进生产。`rc-<sha>` 是给测试人员人肉验证用的，不是给自动化用的。
 
 ## 数据流程
 

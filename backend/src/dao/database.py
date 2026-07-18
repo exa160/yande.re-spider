@@ -1,5 +1,7 @@
 import os
 
+from typing import Optional
+
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -30,13 +32,15 @@ def get_db_engine():
             database=config.database.schema_name
         )
         _cached_engine = create_engine(url,
-            pool_recycle=180,           # 3 分钟回收连接，避免 KILL 之后连接长期处于 stale 状态
-            pool_pre_ping=True,         # 自动重连
-            pool_reset_on_return="rollback",  # 连接还池时自动 ROLLBACK，防止 zombie 事务
-            echo=False,                 # 生产关闭 SQL 日志
-            pool_size=10,              # 连接池大小
-            max_overflow=20,           # 连接池溢出时最大创建的连接数
-            pool_timeout=30,           # 获取连接的超时时间
+            pool_recycle=1800,
+            pool_pre_ping=True,
+            pool_use_lifo=True,
+            pool_reset_on_return="rollback",
+            connect_args={"connect_timeout": 10},
+            echo=False,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
         )
     else:
         _cached_engine = create_engine(
@@ -78,6 +82,7 @@ def _auto_migrate(engine) -> None:
         Column("last_scheduled_at", DateTime, nullable=True),
         Column("last_schedule_status", String(16), nullable=True),
         Column("last_schedule_stats", JSON, nullable=True),
+        Column("last_synced_id", Integer, nullable=True),
     ]
 
     dialect = engine.dialect
@@ -119,7 +124,7 @@ def _get_session_factory():
 
 
 class BaseDAO:
-    def __init__(self, session: Session = None):
+    def __init__(self, session: Optional[Session] = None):
         self._session = session
         self.owns_session = session is None
 
@@ -131,11 +136,15 @@ class BaseDAO:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._session and self.owns_session:
-            if exc_type is None:
-                self._session.commit()
-            else:
-                self._session.rollback()
-            self._session.close()
+            try:
+                if exc_type is None:
+                    self._session.commit()
+                else:
+                    self._session.rollback()
+            finally:
+                self._session.close()
+                self._session = None       # 重置，防止下次复用已关闭的 session
+                self.owns_session = False
         return False
 
     @property
