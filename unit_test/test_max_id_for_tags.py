@@ -69,15 +69,15 @@ def _cleanup_tag(session, tag: str) -> None:
 
 def test_get_max_id_for_tags_no_match(session):
     repo = YandeDataRepository(session=session)
-    result = repo.get_max_id_for_tags("nonexistent_tag_xyz_zzz")
+    result = repo.get_max_id_for_tags("nonexistent_tag_xyz_zzz_exact")
     assert result is None
 
 
 def test_get_max_id_for_tags_match(session):
     test_id = 99999997
-    _make_data(session, test_id, "unique_test_tag_abc_zzz", down_flag=True)
+    _make_data(session, test_id, "unique_test_tag_abc_zzz_exact", down_flag=True)
     repo = YandeDataRepository(session=session)
-    result = repo.get_max_id_for_tags("unique_test_tag_abc_zzz")
+    result = repo.get_max_id_for_tags("unique_test_tag_abc_zzz_exact")
     assert result == test_id
     session.query(YandeData).filter_by(id=test_id).delete()
     session.commit()
@@ -91,7 +91,7 @@ def test_get_max_id_for_tags_empty_string(session):
 
 def test_get_max_id_for_tags_only_filters_downloaded(session):
     """load 接口缓存的 down_flag=False 记录不应被计入 max(id)，避免污染增量起点。"""
-    tag = "test_filter_downloaded_tag_zzz"
+    tag = "test_filter_downloaded_tag_zzz_exact"
     _cleanup_tag(session, tag)
     _make_data(session, 88800001, tag, down_flag=False)
     _make_data(session, 88800002, tag, down_flag=True)
@@ -106,7 +106,7 @@ def test_get_max_id_for_tags_only_filters_downloaded(session):
 
 def test_get_max_id_for_tags_returns_none_when_all_undownloaded(session):
     """所有匹配记录都是 down_flag=False 时返回 None（兜底为空）。"""
-    tag = "test_all_undownloaded_tag_zzz"
+    tag = "test_all_undownloaded_tag_zzz_exact"
     _cleanup_tag(session, tag)
     _make_data(session, 88800010, tag, down_flag=False)
     _make_data(session, 88800011, tag, down_flag=False)
