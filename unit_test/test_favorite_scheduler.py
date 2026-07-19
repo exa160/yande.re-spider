@@ -78,14 +78,31 @@ def folder_with_data():
     session.close()
 
 
-def test_run_folder_schedule_disabled_skips():
+def test_run_folder_schedule_unenabled_executes_without_skip():
+    """未启用 schedule 的 folder 调用 run_folder_schedule 也应执行（不跳过）
+
+    这是 plan 2026-07-19 §3.1 改动 2 的新行为：service 层不再检查 schedule_enabled，
+    是否启用 schedule 由调用方（API endpoint 或 _on_folder_trigger 防御性检查）负责。
+    手动触发路径应能执行 schedule_enabled=False 的 folder。
+    """
     with FavoriteDao() as dao:
-        folder = dao.create(name="test_disabled", tags="x", schedule_enabled=False)
+        folder = dao.create(name="test_unenabled_executes", tags="x", schedule_enabled=False)
         folder_id = folder.id
     try:
-        from src.services.favorite_scheduler import run_folder_schedule
-        result = asyncio.run(run_folder_schedule(folder_id))
-        assert result.get("skipped") is True
+        mock_response = MagicMock()
+        mock_response.root = []  # 空结果快速退出 while 循环
+        with patch("src.services.favorite_scheduler.YandeApi") as mock_api:
+            mock_api.return_value.get_ranking.return_value = mock_response
+            from src.services.favorite_scheduler import run_folder_schedule
+            stats = asyncio.run(run_folder_schedule(folder_id))
+
+        # 关键断言：未启用 schedule 不应被跳过（这是 Task 2 的核心行为变更）
+        assert stats.get("skipped") is not True, (
+            f"未启用 schedule 的 folder 不应被 service 层跳过，但 stats={stats}"
+        )
+        # 验证 stats 正常返回（API 返回空，pages_fetched=1，无 errors）
+        assert "errors" in stats
+        assert stats["pages_fetched"] == 1
     finally:
         with FavoriteDao() as dao:
             dao.delete(folder_id)
