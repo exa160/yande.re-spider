@@ -2,6 +2,8 @@
 收藏夹管理 API 路由
 """
 
+import asyncio
+
 from fastapi import APIRouter
 
 from src.common.constant import ErrMsg
@@ -25,6 +27,7 @@ from src.models.response.favorites import (
     FolderScheduleStatusData,
     FolderScheduleStatusResponse,
     ScheduleTriggerResponse,
+    ScheduleTriggerStatsData,
 )
 from src.services.favorites import FavoritesService
 
@@ -179,17 +182,21 @@ async def update_local_count(folder_id: int, count: int) -> FolderCountResponse:
     summary="手动触发收藏夹调度",
 )
 async def trigger_folder_schedule(folder_id: int) -> ScheduleTriggerResponse:
+    """手动触发收藏夹调度（异步执行，立即返回）
+
+    调度任务在后台异步执行，不会阻塞当前 HTTP 响应。
+    通过 GET /{folder_id}/schedule/status 查询实时进度。
+    """
     from src.services.favorite_scheduler import run_folder_schedule
+
     folder = favorite_dao.get_by_id(folder_id)
     if not folder:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
-    if not folder.schedule_enabled:
-        raise APIException(ErrMsg.SCHEDULE_DISABLED)
-    try:
-        stats = await run_folder_schedule(folder_id)
-        return ScheduleTriggerResponse(message="触发成功", data=stats)
-    except Exception as e:
-        raise APIException(ErrMsg.SCHEDULE_TRIGGER_ERROR, e=e)
+    asyncio.create_task(run_folder_schedule(folder_id))
+    return ScheduleTriggerResponse(
+        message="已触发，请通过 /schedule/status 查询进度",
+        data=ScheduleTriggerStatsData(status="queued"),
+    )
 
 
 @router.get(
