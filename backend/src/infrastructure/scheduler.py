@@ -101,7 +101,28 @@ class ScheduleManager:
 
 
 async def _on_folder_trigger(folder_id: int) -> None:
+    """定时触发入口：防御性检查 + 顺手清理残留 job
+
+    若 DB 中 folder 已不存在或 schedule_enabled=False，
+    跳过本次触发并调用 unregister_folder 清理 APScheduler 中可能残留的 job。
+    """
     from src.services.favorite_scheduler import run_folder_schedule
+    from src.dao.favorite_dao import favorite_dao
+
+    folder = favorite_dao.get_by_id(folder_id)
+    if not folder:
+        logger.warning(
+            f"Scheduled trigger skipped: folder {folder_id} not found, cleanup residual job"
+        )
+        schedule_manager.unregister_folder(folder_id)
+        return
+    if not folder.schedule_enabled:
+        logger.info(
+            f"Scheduled trigger skipped: folder {folder_id} schedule disabled, cleanup residual job"
+        )
+        schedule_manager.unregister_folder(folder_id)
+        return
+
     asyncio.create_task(run_folder_schedule(folder_id))
 
 

@@ -1,57 +1,86 @@
 <template>
   <div class="favorite-panel">
-    <div v-if="mode === 'list'" class="folder-list">
-      <div
-        v-for="folder in folders"
-        :key="folder.id"
-        class="folder-item"
-        @click="handleSelect(folder)"
-        @mousedown="handlePressStart(folder, $event)"
-        @mouseup="handlePressEnd(folder)"
-        @mouseleave="handlePressEnd(folder)"
-        @touchstart.passive="handlePressStart(folder, $event)"
-        @touchend="handlePressEnd(folder)"
-        @touchcancel="handlePressEnd(folder)"
-      >
-        <div class="folder-icon" :style="{ backgroundColor: folder.color }">
-          <el-icon><Star v-if="folder.icon === 'star'" /><Folder v-else /></el-icon>
+    <template v-if="mode === 'list'">
+      <div class="folder-list">
+        <div
+          v-for="folder in filteredFolders"
+          :key="folder.id"
+          class="folder-item"
+          @click="handleSelect(folder)"
+          @mousedown="handlePressStart(folder, $event)"
+          @mouseup="handlePressEnd(folder)"
+          @mouseleave="handlePressEnd(folder)"
+          @touchstart.passive="handlePressStart(folder, $event)"
+          @touchend="handlePressEnd(folder)"
+          @touchcancel="handlePressEnd(folder)"
+        >
+          <div class="folder-icon" :style="{ backgroundColor: folder.color }">
+            <el-icon><Star v-if="folder.icon === 'star'" /><Folder v-else /></el-icon>
+          </div>
+          <div class="folder-info">
+            <div class="folder-name">{{ folder.name }}</div>
+            <div class="folder-tags">{{ folder.tags || '无标签' }}</div>
+          </div>
+          <div class="folder-meta">
+            <el-tag
+              v-if="folder.schedule_enabled && folder.last_synced_id != null"
+              type="info"
+              size="small"
+              effect="plain"
+              class="cursor-badge"
+              :title="`同步游标：上次实际处理到的图片 ID #${folder.last_synced_id}`"
+            >
+              <el-icon><Aim /></el-icon>
+              #{{ folder.last_synced_id }}
+            </el-tag>
+            <el-tag
+              v-if="folder.schedule_enabled"
+              :type="scheduleStatusType(folder.last_schedule_status)"
+              size="small"
+              effect="light"
+              class="schedule-badge"
+            >
+              <el-icon><Clock /></el-icon>
+              {{ formatLastScheduled(folder.last_scheduled_at) }}
+            </el-tag>
+            <el-button
+              v-if="folder.tags && folder.tags.trim()"
+              link
+              size="small"
+              :loading="triggeringSet.has(folder.id)"
+              class="folder-trigger-btn"
+              :title="`立即执行：${folder.name}`"
+              @click.stop="handleTrigger(folder)"
+            >
+              <el-icon><VideoPlay /></el-icon>
+            </el-button>
+            <span class="folder-count">
+              {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
+            </span>
+          </div>
         </div>
-        <div class="folder-info">
-          <div class="folder-name">{{ folder.name }}</div>
-          <div class="folder-tags">{{ folder.tags || '无标签' }}</div>
+        <div v-if="folders.length === 0" class="empty-state">
+          <el-icon class="empty-icon"><FolderOpened /></el-icon>
+          <div class="empty-text">暂无收藏夹</div>
         </div>
-        <div class="folder-meta">
-          <el-tag
-            v-if="folder.schedule_enabled && folder.last_synced_id != null"
-            type="info"
-            size="small"
-            effect="plain"
-            class="cursor-badge"
-            :title="`同步游标：上次实际处理到的图片 ID #${folder.last_synced_id}`"
-          >
-            <el-icon><Aim /></el-icon>
-            #{{ folder.last_synced_id }}
-          </el-tag>
-          <el-tag
-            v-if="folder.schedule_enabled"
-            :type="scheduleStatusType(folder.last_schedule_status)"
-            size="small"
-            effect="light"
-            class="schedule-badge"
-          >
-            <el-icon><Clock /></el-icon>
-            {{ formatLastScheduled(folder.last_scheduled_at) }}
-          </el-tag>
-          <span class="folder-count">
-            {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
-          </span>
+        <div v-else-if="filteredFolders.length === 0 && folderSearchKeyword" class="empty-state">
+          <el-icon class="empty-icon"><Search /></el-icon>
+          <div class="empty-text">无匹配收藏夹</div>
         </div>
       </div>
-      <div v-if="folders.length === 0" class="empty-state">
-        <el-icon class="empty-icon"><FolderOpened /></el-icon>
-        <div class="empty-text">暂无收藏夹</div>
+      <div v-if="folders.length > 0" class="tag-search-bar">
+        <el-input
+          v-model="folderSearchKeyword"
+          placeholder="搜索收藏夹..."
+          size="small"
+          clearable
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
       </div>
-    </div>
+    </template>
 
     <div v-else class="inline-form">
       <div class="inline-form-header">
@@ -218,9 +247,10 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Star } from '@element-plus/icons-vue'
+import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, VideoPlay } from '@element-plus/icons-vue'
+import { triggerFolderSchedule } from '@/api/favorites'
 
 const props = defineProps({
   folders: { type: Array, required: true },
@@ -228,7 +258,7 @@ const props = defineProps({
   sourceMode: { type: String, default: 'local' },
 })
 
-const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change'])
+const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'triggered'])
 
 const mode = ref('list')
 const editingFolder = ref(null)
@@ -257,6 +287,19 @@ const form = reactive({
   schedule_mode: 'last_id',
   schedule_max_images: null,
 })
+
+// 搜索状态
+const folderSearchKeyword = ref('')
+
+// 触发中状态：正在触发的 folder.id 集合（用于按钮 loading 防重复点击）
+const triggeringSet = ref(new Set())
+
+// 设备是否支持精细 hover（用于决定按钮是 hover 显示还是常驻）
+const hasHover = ref(true)
+
+// matchMedia 监听引用（用于 onUnmounted 清理）
+let mqlRef = null
+const onMqChange = (e) => { hasHover.value = e.matches }
 
 const pad2 = (n) => String(n).padStart(2, '0')
 
@@ -404,6 +447,46 @@ const formatLastScheduled = (dt) => {
   return d.toLocaleDateString('zh-CN')
 }
 
+// 按 name / tags 过滤收藏夹（纯前端，零后端调用）
+const filteredFolders = computed(() => {
+  const kw = folderSearchKeyword.value.trim().toLowerCase()
+  if (!kw) return props.folders
+  return props.folders.filter(f =>
+    (f.name || '').toLowerCase().includes(kw) ||
+    (f.tags || '').toLowerCase().includes(kw)
+  )
+})
+
+// 立即执行：手动触发指定 folder 的调度抓取
+const handleTrigger = async (folder) => {
+  if (triggeringSet.value.has(folder.id)) return  // 防重复点击
+  triggeringSet.value.add(folder.id)
+  try {
+    await triggerFolderSchedule(folder.id)
+    ElMessage.success(`后台更新中：${folder.name}`)
+    emit('triggered', folder)
+  } catch (e) {
+    const msg = e?.response?.data?.message || e?.message || '未知错误'
+    ElMessage.error(`触发失败：${msg}`)
+  } finally {
+    triggeringSet.value.delete(folder.id)
+  }
+}
+
+// 设备能力检测：精细指针设备才支持 hover
+onMounted(() => {
+  mqlRef = window.matchMedia('(hover: hover) and (pointer: fine)')
+  hasHover.value = mqlRef.matches
+  mqlRef.addEventListener('change', onMqChange)
+})
+
+onUnmounted(() => {
+  if (mqlRef) {
+    mqlRef.removeEventListener('change', onMqChange)
+    mqlRef = null
+  }
+})
+
 const resetForm = () => {
   form.name = ''
   form.tags = ''
@@ -503,6 +586,7 @@ defineExpose({ openCreate, openEdit, cancelForm })
 
 .folder-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 4px 0;
 }
@@ -568,6 +652,27 @@ defineExpose({ openCreate, openEdit, cancelForm })
 .folder-count {
   font-size: 11px;
   color: var(--text-muted, #999);
+}
+
+/* 触发按钮：默认透明，hover 显示 */
+.folder-trigger-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px 4px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.folder-item:hover .folder-trigger-btn,
+.folder-trigger-btn:focus,
+.folder-trigger-btn.is-loading {
+  opacity: 1;
+}
+
+/* 移动端常驻（hover: none 或粗指针设备） */
+@media (hover: none), (pointer: coarse) {
+  .folder-trigger-btn {
+    opacity: 1;
+  }
 }
 
 .schedule-badge {
@@ -773,5 +878,14 @@ defineExpose({ openCreate, openEdit, cancelForm })
 
 .footer-spacer {
   flex: 1;
+}
+
+/* 搜索栏：与 AdvancedQuery.vue 保持一致 */
+.tag-search-bar {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+}
+.tag-search-bar .el-input {
+  width: 100%;
 }
 </style>

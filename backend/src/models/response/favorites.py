@@ -81,6 +81,10 @@ class PreviewData(BaseModel):
 
 class ScheduleTriggerStatsData(BaseModel):
     """调度任务运行统计的 data 模型"""
+    status: str = Field(
+        default="completed",
+        description="本次响应状态：completed=同步执行已返回完整 stats；queued=已加入后台任务立即返回",
+    )
     new_images: int = Field(default=0, description="本次发现的新图数")
     enqueued: int = Field(default=0, description="实际入下载队列的图数")
     skipped: int = Field(default=0, description="跳过入队的图数")
