@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from loguru import logger
 
@@ -15,7 +15,7 @@ from src.services.download import DownloadService
 from src.services.favorites import FavoritesService
 
 
-def _load_folder_for_schedule(folder_id: int):
+def _load_folder_for_schedule(folder_id: int) -> tuple[Optional[Any], str]:
     """Load folder and mark as running. Returns (folder_dict_or_None, status)."""
     with FavoriteDao() as dao:
         folder = dao.get_by_id(folder_id)
@@ -29,13 +29,13 @@ def _load_folder_for_schedule(folder_id: int):
         return folder, "ok"
 
 
-def _get_max_id_for_tags(raw_tags: str):
+def _get_max_id_for_tags(raw_tags: str) -> Optional[int]:
     """Get max ID for tags (may involve table scan). Returns int or None."""
     with YandeDataRepository() as repo:
         return repo.get_max_id_for_tags(raw_tags)
 
 
-def _upsert_item(item):
+def _upsert_item(item) -> bool:
     """Upsert item, return whether should_enqueue. Returns bool."""
     with YandeDataRepository() as repo:
         existing = repo.get_by_id(item.id)
@@ -43,12 +43,12 @@ def _upsert_item(item):
         return existing is None or not existing.down_flag
 
 
-def _mark_schedule_success(folder_id: int, update_kwargs: dict):
+def _mark_schedule_success(folder_id: int, update_kwargs: dict[str, Any]) -> Any:
     with FavoriteDao() as dao:
         dao.update(folder_id, **update_kwargs)
 
 
-def _mark_schedule_failed(folder_id: int, stats: dict):
+def _mark_schedule_failed(folder_id: int, stats: dict[str, Any]) -> Any:
     with FavoriteDao() as dao:
         dao.update(
             folder_id,
