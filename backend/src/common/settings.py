@@ -52,7 +52,7 @@ class DownloaderConfig(ConfigModel):
 class SchedulerConfig(ConfigModel):
     max_concurrent_schedules: int = Field(2, ge=1, le=10, description="同时抓取的收藏夹数")
     max_images_per_run_default: int = Field(800, ge=1, description="单收藏夹单次拉取上限兜底")
-    max_pages_per_run: int = Field(5, ge=1, le=20, description="单收藏夹单次分页上限兜底")
+    per_page_limit: int = Field(100, ge=1, le=1000, description="单收藏夹单次抓取每页条数（yande.re API 上限 1000）")
 
 
 class DatabaseConfig(ConfigModel):
