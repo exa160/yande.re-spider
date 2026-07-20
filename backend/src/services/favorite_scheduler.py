@@ -93,7 +93,7 @@ async def run_folder_schedule(folder_id: int) -> dict:
                 if folder.schedule_max_images is not None
                 else config.scheduler.max_images_per_run_default
             )
-            max_pages = config.scheduler.max_pages_per_run
+            per_page_limit = config.scheduler.per_page_limit
 
             query_params_obj = FavoritesService._parse_tags_to_params(raw_tags)
             tags_for_api = (query_params_obj.tags or raw_tags) if query_params_obj else raw_tags
@@ -104,10 +104,10 @@ async def run_folder_schedule(folder_id: int) -> dict:
             stop = False
             processed_max_id: Optional[int] = None
 
-            while page <= max_pages and enqueued_count < max_images:
+            while enqueued_count < max_images:
                 try:
                     rank_params = YandeApi.PostRankQueryParams(
-                        page=page, limit=100, tags=tags_for_api
+                        page=page, limit=per_page_limit, tags=tags_for_api
                     )
                     page_data = await asyncio.to_thread(yande_api.get_ranking, rank_params)
                     items = page_data.root if page_data else []

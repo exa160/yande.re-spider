@@ -193,6 +193,43 @@ def test_run_folder_schedule_not_found():
     assert result == {"skipped": True, "reason": "not_found"}
 
 
+def test_per_page_limit_used_from_config(folder_with_data):
+    """验证 SchedulerConfig.per_page_limit 被正确传递给 yande API"""
+    folder = folder_with_data
+    from src.infrastructure.yande_api import YandeApi
+
+    captured_params = []
+
+    real_post_rank_params_cls = YandeApi.PostRankQueryParams
+
+    with patch("src.services.favorite_scheduler.YandeApi") as mock_cls:
+        mock_cls.PostRankQueryParams = real_post_rank_params_cls
+
+        def spy_get(params):
+            captured_params.append(params)
+            return MagicMock(root=[])
+
+        mock_cls.return_value.get_ranking.side_effect = spy_get
+
+        with patch("src.services.favorite_scheduler.DownloadService.create_task"):
+            from src.common.settings import Config
+            from src.services.favorite_scheduler import config as fs_config, run_folder_schedule
+
+            config_dict = fs_config.model_dump()
+            config_dict["scheduler"]["per_page_limit"] = 50
+            test_config = Config.model_validate(config_dict)
+            assert test_config.scheduler.per_page_limit == 50
+
+            with patch("src.services.favorite_scheduler.config", test_config):
+                asyncio.run(run_folder_schedule(folder.id))
+
+    assert len(captured_params) >= 1, "Expected get_ranking to be called"
+    rank_params = captured_params[0]
+    assert rank_params.limit == 50, (
+        f"Expected limit=50 from config, got {rank_params.limit}"
+    )
+
+
 def test_run_folder_schedule_pagination_stops_on_empty():
     with FavoriteDao() as dao:
         folder = dao.create(
