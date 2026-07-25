@@ -91,4 +91,71 @@
 
 ---
 
-*最后更新：基于 next_dev 分支 fd42787 提交记录总结*
+## 🔐 密钥与敏感信息管理（强制红线）
+
+### 规则总览
+
+| 位置 | 内容 | 是否进 git |
+|------|------|-----------|
+| **本地** `config/config.yaml` | 真实密码（用于本地运行） | ❌ **不进**（仅 working tree）|
+| **本地** `config/data.cfg.bak` | 真实密码（备份） | ❌ **不进**（仅 working tree）|
+| **远端** `config/config.yaml` | 占位符 `password: ""` | ✅ 进 |
+| **远端** `config/data.cfg.bak` | 不存在 | ✅ 已删除 |
+
+### 红线规则
+
+- ❌ **绝不在 commit / push 中包含真实密码、token、API key、secret、内网 IP 等敏感字段**
+- ✅ **远端仓库所有分支的** `config/config.yaml` 中 `database.password` **必须是** `""` 或占位符
+- ✅ **本地** `config/config.yaml` 保留真实密码用于本地运行
+- ❌ **`config/data.cfg.bak`** 不应存在于任何分支（之前误提交，已清理）
+
+### 推送前必查（强制执行）
+
+推送任何 commit 前**必须**运行：
+
+```bash
+# 扫描即将推送的 diff 是否含真密钥（password / secret / token / api_key 等）
+git diff origin/<base-branch>..HEAD \
+  | grep -iE '(password|secret|token|api[_-]?key)\s*[:=]\s*["\047][^"\047]+["\047]' \
+  | grep -vE '""|null|<YOUR_|<CHANGE_'
+```
+
+**判定规则**：
+- ✅ **无输出** → 可以推送
+- ❌ **有输出** → **立即停止推送**，把真密钥替换为占位符（如 `"<YOUR_DB_PASSWORD>"`），然后重新跑检查
+
+### 错误示例与正确示例
+
+```yaml
+# ❌ 错误：含真实密码
+database:
+  password: "Max=1616"
+
+# ✅ 正确：占位符
+database:
+  password: ""
+  # 或
+  password: "<YOUR_DB_PASSWORD>"
+```
+
+### 历史密钥泄漏的紧急处理
+
+如果发现历史 commit 误包含真密钥：
+
+1. **立即 rotate 密钥**（数据库密码、API token 等）—— 这是**最关键**的一步
+2. 用 [BFG Repo-Cleaner](https://rtyley.github.io/bfg-repo-cleaner/) 或 `git filter-branch` 清理历史（谨慎操作，会改 commit hash）
+3. 通知所有协作者 pull 时注意
+4. Force push 到所有相关分支（会改 commit hash，需重新打 tag）
+
+### 远端仓库现状
+
+```
+✅ 所有远端分支的 config/config.yaml 中 password = ""
+✅ config/data.cfg.bak 已从所有分支删除
+```
+
+**未来任何分支如有真密钥 → 视为事故，立即清理**。
+
+---
+
+*最后更新：v1.1.7 release 后增加密钥管理章节*
