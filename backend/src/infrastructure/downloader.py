@@ -97,7 +97,7 @@ class MultiDown:
                         headers.update({"Range": f"bytes={current_start}-"})
                     else:
                         headers.update({"Range": f"bytes={current_start}-{e}"})
-                headers.update(config.yande_api.headers)
+                headers.update(config.yande_api.headers.model_dump(by_alias=True))
                 with closing(
                     requests.get(
                         url,

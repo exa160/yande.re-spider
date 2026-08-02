@@ -31,7 +31,7 @@ class ConfigService:
         """
         try:
             tmp_config = config.yande_api.model_dump(mode="json")
-            tmp_config.update(api_config.model_dump(exclude={"headers"}))
+            tmp_config.update(api_config.model_dump(mode="json"))
             config.update_config(ApiConfig.model_validate(tmp_config))
             return True
         except Exception as e:
