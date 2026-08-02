@@ -130,6 +130,112 @@ html, body {
   color: var(--text-secondary);
 }
 
+/* el-input / el-input-number 暗色适配 */
+.dark-mode .el-input__wrapper,
+.dark-mode .el-input-number {
+  background-color: var(--bg-secondary);
+  box-shadow: 0 0 0 1px var(--border-color) inset;
+}
+
+.dark-mode .el-input__wrapper.is-focus,
+.dark-mode .el-input-number.is-focus {
+  box-shadow: 0 0 0 1px #409EFF inset !important;
+}
+
+.dark-mode .el-input__inner {
+  color: var(--text-primary);
+}
+
+.dark-mode .el-input__inner::placeholder {
+  color: var(--text-muted);
+}
+
+.dark-mode .el-textarea__inner {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* el-input-number 边上的 +/- 按钮暗色适配 */
+.dark-mode .el-input-number__decrease,
+.dark-mode .el-input-number__increase {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .el-input-number__decrease:hover,
+.dark-mode .el-input-number__increase:hover {
+  background: var(--hover-bg);
+  color: #409EFF;
+}
+
+/* el-button 暗色适配 — element-plus 2.5 的 .el-button--default 直接写死 background/color,
+   CSS 变量覆盖无效,必须直接覆盖属性 + !important */
+.dark-mode .el-button.el-button--default,
+.dark-mode .el-button.el-button--success,
+.dark-mode .el-button.el-button--warning,
+.dark-mode .el-button.el-button--info {
+  --el-button-bg-color: var(--bg-tertiary);
+  --el-button-text-color: var(--text-primary);
+  --el-button-border-color: var(--border-color);
+  --el-button-hover-bg-color: var(--hover-bg);
+  --el-button-hover-text-color: #409EFF;
+  --el-button-hover-border-color: #409EFF;
+  --el-button-active-bg-color: var(--hover-bg);
+  --el-button-active-border-color: #409EFF;
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark-mode .el-button.el-button--default:hover,
+.dark-mode .el-button.el-button--success:hover,
+.dark-mode .el-button.el-button--warning:hover,
+.dark-mode .el-button.el-button--info:hover {
+  background-color: var(--hover-bg) !important;
+  border-color: #409EFF !important;
+  color: #409EFF !important;
+}
+
+.dark-mode .el-button--text {
+  color: var(--text-secondary);
+}
+
+/* el-switch 暗色适配 — 关闭时深色杆,开启时深蓝色,圆点也变暗 */
+.dark-mode .el-switch {
+  --el-switch-off-color: var(--bg-tertiary);
+  --el-switch-on-color: #1e6fd9;
+  --el-switch-border-color: var(--border-color);
+}
+
+.dark-mode .el-switch__core {
+  border-color: var(--border-color);
+  background-color: var(--bg-tertiary);
+}
+
+.dark-mode .el-switch.is-checked .el-switch__core {
+  background-color: #1e6fd9 !important;
+  border-color: #1e6fd9 !important;
+}
+
+/* 圆点变暗:关闭时深灰,开启时也用深灰 */
+.dark-mode .el-switch__core .el-switch__action {
+  background-color: #c0c4cc !important;
+}
+
+/* el-checkbox / el-radio 暗色适配 */
+.dark-mode .el-checkbox__label,
+.dark-mode .el-radio__label {
+  color: var(--text-primary);
+}
+
+/* el-alert 暗色适配 */
+.dark-mode .el-alert {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 /* 深色模式下自定义 tooltip 样式 */
 .dark-mode .el-tooltip__popper.is-light {
   background: var(--bg-secondary) !important;
