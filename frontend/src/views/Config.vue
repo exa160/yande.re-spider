@@ -56,6 +56,11 @@
           <el-form-item label="代理地址" v-if="apiConfig.proxy_enable">
             <el-input v-model="apiConfig.proxy" placeholder="http://host:port 或 socks5://host:port" size="small" />
           </el-form-item>
+          <el-form-item label="请求头">
+            <el-button @click="showHeadersDialog = true" size="small">
+              编辑
+            </el-button>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="saveApiConfig" :loading="saving" size="small">
               保存
@@ -242,6 +247,11 @@
     </div>
 
     <PreviewCleanupDialog v-model="showCleanupDialog" :mode="selectedCleanupMode" />
+    <HeadersEditorDialog
+      v-model="showHeadersDialog"
+      :headers="apiConfig.headers"
+      @save="saveHeaders"
+    />
   </div>
 </template>
 
@@ -251,6 +261,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import PreviewCleanupDialog from '@/components/PreviewCleanupDialog.vue'
+import HeadersEditorDialog from '@/components/HeadersEditorDialog.vue'
 
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
@@ -259,7 +270,8 @@ const apiConfig = ref({
   retry_times: 3,
   timeout: 30,
   proxy_enable: false,
-  proxy: ''
+  proxy: '',
+  headers: {}
 })
 
 const downloaderConfig = ref({
@@ -285,6 +297,7 @@ const testing = ref(false)
 const tamperDetected = ref(false)
 const showCleanupDialog = ref(false)
 const selectedCleanupMode = ref(null)
+const showHeadersDialog = ref(false)
 
 function openCleanupDialog(mode) {
   selectedCleanupMode.value = mode
@@ -516,7 +529,8 @@ const loadConfig = async () => {
       retry_times: config.yande_api.retry,
       timeout: config.yande_api.timeout,
       proxy_enable: config.yande_api.proxy_enable,
-      proxy: config.yande_api.proxies?.http || ''
+      proxy: config.yande_api.proxies?.http || '',
+      headers: config.yande_api.headers || {}
     }
     downloaderConfig.value = {
       thread_num: config.downloader.thread_num,
@@ -541,11 +555,34 @@ const saveApiConfig = async () => {
       proxies: {
         http: apiConfig.value.proxy,
         https: apiConfig.value.proxy
-      }
+      },
+      headers: apiConfig.value.headers
     }
     await api.put('/config/api', payload)
     ElMessage.success('API配置保存成功')
   } catch (error) {
+    ElMessage.error('保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveHeaders(newHeaders) {
+  saving.value = true
+  try {
+    await api.put('/config/api', {
+      retry: apiConfig.value.retry_times,
+      timeout: apiConfig.value.timeout,
+      proxy_enable: apiConfig.value.proxy_enable,
+      proxies: {
+        http: apiConfig.value.proxy,
+        https: apiConfig.value.proxy
+      },
+      headers: newHeaders
+    })
+    apiConfig.value.headers = newHeaders
+    ElMessage.success('请求头已更新')
+  } catch (e) {
     ElMessage.error('保存失败')
   } finally {
     saving.value = false
@@ -841,7 +878,7 @@ onUnmounted(() => {
 }
 
 /* 暗色模式适配 */
-:deep(.dark) .menu-item.active {
+:deep(.dark-mode) .menu-item.active {
   background: #1a1a2e;
   border-right: 3px solid #409EFF;
 }
