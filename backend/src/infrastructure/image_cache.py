@@ -9,7 +9,7 @@ import requests
 from loguru import logger
 
 from src.common import config, path_constant
-from src.common.utils import get_proxy
+from src.common.utils import configure_proxy_session
 
 
 def _with_retry_write(method):
@@ -46,8 +46,7 @@ class ImageCache:
         self.PREVIEWS_DIR = path_constant.previews_dir
         self.ORIGINALS_DIR = path_constant.originals_dir
 
-        self._session = requests.Session()
-        self._session.proxies = get_proxy()   # 需要在 get_proxy() 返回字典
+        self._session = configure_proxy_session(requests.Session())
         self._session.timeout = config.yande_api.timeout
 
     def _ensure_dirs(self):
@@ -110,6 +109,3 @@ class ImageCache:
         except OSError as e:
             logger.warning(f"Failed to unlink {path}: {e}")
             return False
-
-
-cache = ImageCache()

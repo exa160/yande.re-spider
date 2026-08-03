@@ -10,6 +10,12 @@ services:
       - ./logs:/app/logs
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+    environment:
+      # 仅当 UI「代理模式」选择「系统代理」时生效；OFF/CUSTOM 模式会被后端忽略
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - ALL_PROXY=${ALL_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-}
     logging:
       driver: "json-file"
       options:

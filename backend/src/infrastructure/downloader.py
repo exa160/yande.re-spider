@@ -14,7 +14,7 @@ from pathvalidate import sanitize_filename
 from pydantic import BaseModel
 
 from src.common import config
-from src.common.utils import get_proxy
+from src.common.utils import configure_proxy_session
 
 
 class FileInfo(BaseModel):
@@ -43,8 +43,9 @@ class MultiDown:
         self.close_event = Event()
         self.progress_lock = Lock()
         self.progress_callback = _progress_callback
+        self._session = configure_proxy_session(requests.Session())
         if not file_info.file_size:
-            file_info.file_size = self.get_file_size(file_info.url)
+            file_info.file_size = self.get_file_size(file_info.url, self._session)
         file_info.file_name = sanitize_filename(file_info.file_name)
         self._file_info = file_info
 
@@ -60,12 +61,11 @@ class MultiDown:
         return self._file_info
 
     @staticmethod
-    def get_file_size(_url):
+    def get_file_size(_url, session: requests.Session):
         with closing(
-            requests.get(
+            session.get(
                 _url,
                 stream=True,
-                proxies=get_proxy(),
                 headers=config.yande_api.headers.model_dump(by_alias=True),
             )
         ) as res:
@@ -79,6 +79,7 @@ class MultiDown:
         s: int,
         e: int,
         data_q: Queue,
+        session: requests.Session,
         progress_callback=None,
     ):
         content_data = []
@@ -99,10 +100,9 @@ class MultiDown:
                         headers.update({"Range": f"bytes={current_start}-{e}"})
                 headers.update(config.yande_api.headers.model_dump(by_alias=True))
                 with closing(
-                    requests.get(
+                    session.get(
                         url,
                         stream=True,
-                        proxies=get_proxy(),
                         headers=headers,
                         timeout=config.yande_api.timeout,
                     )
@@ -221,6 +221,7 @@ class MultiDown:
                     s_offset,
                     e_offset,
                     self.data_q,
+                    self._session,
                     self.progress_callback,
                 )
                 t.add_done_callback(

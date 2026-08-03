@@ -1,16 +1,36 @@
 
-from typing import Optional, MutableMapping
+from typing import Optional
 
 import requests
 
-from src.common.constant import ErrMsg, path_constant
+from src.common.constant import ErrMsg, ProxyMode, path_constant
 from src.common.settings import config
 
 
-def get_proxy() -> Optional[MutableMapping[str, str]]:
-    if config.yande_api.proxy_enable:
-        return config.yande_api.proxies.model_dump(mode="json")
-    return None
+def configure_proxy_session(session: requests.Session) -> requests.Session:
+    """按 ProxyMode 三态统一配置 requests Session 的代理与 trust_env。
+
+    | mode    | trust_env | proxies                  |
+    |---------|-----------|--------------------------|
+    | OFF     | False     | 清空                     |
+    | CUSTOM  | False     | proxies.http/https       |
+    | SYSTEM  | True      | 清空（让 requests 读环境）|
+
+    强制 OFF/CUSTOM 都关 trust_env，避免 requests 默认 trust_env=True 时被
+    环境变量里的 HTTP_PROXY 偷偷生效（即原代码「关闭代理实际未关」的问题）。
+    """
+    mode = config.yande_api.proxy_enable
+    session.proxies.clear()
+
+    if mode == ProxyMode.CUSTOM:
+        session.trust_env = False
+        session.proxies.update(config.yande_api.proxies.model_dump(mode="json"))
+    elif mode == ProxyMode.SYSTEM:
+        session.trust_env = True
+    else:
+        session.trust_env = False
+
+    return session
 
 
 def check_local_file(image_id: int, file_ext: str, file_type: str) -> Optional[str]:
@@ -51,9 +71,9 @@ def get_error_type_from_exception(e: Exception) -> tuple[ErrMsg, str]:
         # 尝试获取更详细的错误信息
         if "Proxy" in error_msg or "proxy" in error_msg:
             return ErrMsg.PROXY_ERROR, f"Proxy connection failed: {error_msg}"
-        # Connection refused 通常是网络问题或代理问题
+        # Connection refused：OFF 模式按网络错误归类，CUSTOM/SYSTEM 时通常为代理端口未启动
         if "Connection refused" in error_msg or "ECONNREFUSED" in error_msg:
-            if config.yande_api.proxy_enable:
+            if config.yande_api.proxy_enable != ProxyMode.OFF:
                 return ErrMsg.PROXY_ERROR, f"Proxy connection refused: {error_msg}"
             return ErrMsg.NETWORK_ERROR, f"Connection refused: {error_msg}"
         return ErrMsg.NETWORK_ERROR, f"Connection failed: {error_msg}"

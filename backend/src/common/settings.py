@@ -42,7 +42,10 @@ class ApiConfig(ConfigModel):
             '', alias='Accept-Language', serialization_alias='Accept-Language'
         )
 
-    proxy_enable: bool = Field(default=False)
+    proxy_enable: Optional[bool] = Field(
+        default=None,
+        description="True=自定义代理, False=关闭代理, None=使用系统代理(读取后端进程环境变量 HTTP_PROXY 等)。",
+    )
     proxies: ProxiesConfig = ProxiesConfig()
     timeout: int = Field(default=30)
     retry: int = Field(3, description='yandere失败重试')

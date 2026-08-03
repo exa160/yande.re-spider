@@ -50,11 +50,21 @@
           <el-form-item label="超时时间">
             <el-input-number v-model="apiConfig.timeout" :min="1" :max="300" /> 秒
           </el-form-item>
-          <el-form-item label="启用代理">
-            <el-switch v-model="apiConfig.proxy_enable" />
+          <el-form-item label="代理模式">
+            <el-segmented
+              v-model="apiConfig.proxy_enable"
+              :options="proxyModeOptions"
+              block
+            />
           </el-form-item>
-          <el-form-item label="代理地址" v-if="apiConfig.proxy_enable">
+          <el-form-item v-if="apiConfig.proxy_enable === true" label="代理地址">
             <el-input v-model="apiConfig.proxy" placeholder="http://host:port 或 socks5://host:port" size="small" />
+          </el-form-item>
+          <el-form-item v-else-if="apiConfig.proxy_enable === null" label="提示">
+            <el-alert type="info" :closable="false" show-icon>
+              使用后端进程环境变量 HTTP_PROXY / HTTPS_PROXY / NO_PROXY；
+              Docker 部署需在 docker-compose.yml 中显式透传。
+            </el-alert>
           </el-form-item>
           <el-form-item label="请求头">
             <el-button @click="showHeadersDialog = true" size="small">
@@ -266,10 +276,16 @@ import HeadersEditorDialog from '@/components/HeadersEditorDialog.vue'
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
 
+const proxyModeOptions = [
+  { label: '关闭', value: false },
+  { label: '自定义', value: true },
+  { label: '系统代理', value: null },
+]
+
 const apiConfig = ref({
   retry_times: 3,
   timeout: 30,
-  proxy_enable: false,
+  proxy_enable: null,
   proxy: '',
   headers: {}
 })
@@ -528,7 +544,7 @@ const loadConfig = async () => {
     apiConfig.value = {
       retry_times: config.yande_api.retry,
       timeout: config.yande_api.timeout,
-      proxy_enable: config.yande_api.proxy_enable,
+      proxy_enable: config.yande_api.proxy_enable ?? null,
       proxy: config.yande_api.proxies?.http || '',
       headers: config.yande_api.headers || {}
     }
