@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from src.common import config
 from src.common.constant import Rating, yande_constant
-from src.common.utils import get_proxy
+from src.common.utils import configure_proxy_session
 from src.models.request.yande import YandeSearchTags
 from src.models.response.yande import YandePostData
 
@@ -55,10 +55,7 @@ class YandeApi:
         self.tag_json_api = yande_constant.tag_json_api
         self.artist_json_api = yande_constant.artist_json_api
 
-        self._session = requests.Session()
-        proxies = get_proxy()
-        if proxies:
-            self._session.proxies = proxies
+        self._session = configure_proxy_session(requests.Session())
         headers = config.yande_api.headers
         if headers is not None:
             self._session.headers.update(headers.model_dump(by_alias=True, exclude_none=True))

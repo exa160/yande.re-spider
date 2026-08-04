@@ -85,6 +85,19 @@ class CleanupMode(str, Enum):
     CLEAN_ALL_PREVIEWS = "clean_all_previews"      # 全量清理：清空整个 previews/ 目录
 
 
+class ProxyMode:
+    """代理模式三态常量。SYSTEM 指后端进程环境变量（HTTP_PROXY 等），非浏览器用户系统设置。
+
+    与 ApiConfig.proxy_enable 的存储值一一对应：
+    - OFF    = False   — 关闭代理
+    - CUSTOM = True    — 使用自定义代理（ApiConfig.proxies）
+    - SYSTEM = None    — 读取后端进程环境变量
+    """
+    OFF = False
+    CUSTOM = True
+    SYSTEM = None
+
+
 # ==================== 其他常量 ====================
 class Rating(str, Enum):
     S = "s"

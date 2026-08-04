@@ -30,15 +30,26 @@ class ApiConfig(ConfigModel):
         https: str = ""
 
     class Headers(ConfigModel):
-        user_agent: str = Field('', serialization_alias='User-agent')
-        accept: str = Field('', serialization_alias='Accept')
-        accept_language: str = Field('', serialization_alias='Accept-Language')
+        model_config = ConfigDict(populate_by_name=True, extra='allow')
 
-    proxy_enable: bool = Field(default=False)
+        user_agent: str = Field(
+            '', alias='User-agent', serialization_alias='User-agent'
+        )
+        accept: str = Field(
+            '', alias='Accept', serialization_alias='Accept'
+        )
+        accept_language: str = Field(
+            '', alias='Accept-Language', serialization_alias='Accept-Language'
+        )
+
+    proxy_enable: Optional[bool] = Field(
+        default=None,
+        description="True=自定义代理, False=关闭代理, None=使用系统代理(读取后端进程环境变量 HTTP_PROXY 等)。",
+    )
     proxies: ProxiesConfig = ProxiesConfig()
     timeout: int = Field(default=30)
     retry: int = Field(3, description='yandere失败重试')
-    headers: Optional[Headers] = Field(Headers())
+    headers: Optional[Headers] = Field(default_factory=Headers)
 
 
 class DownloaderConfig(ConfigModel):
@@ -107,7 +118,7 @@ def save_config(_config: Config, config_path: Path = path_constant.config_file) 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
         yaml.dump(
-            _config.model_dump(mode="json"),
+            _config.model_dump(mode="json", by_alias=True),
             default_flow_style=False,
             allow_unicode=True,
             sort_keys=False,
