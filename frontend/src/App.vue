@@ -146,6 +146,12 @@ html, body {
   background: var(--bg-tertiary);
 }
 
+/* Config.vue sidebar tab 激活态暗色适配 */
+.dark-mode .config-menu .menu-item.active {
+  background: #1a1a2e;
+  border-right-color: #5b9bd5;
+}
+
 .dark-mode .el-pagination {
   color: var(--text-secondary);
   --el-pagination-bg-color: var(--bg-tertiary);
@@ -311,6 +317,7 @@ html, body {
   --el-segmented-item-hover-color: var(--text-primary);
   --el-segmented-item-active-color: #fff;
   --el-segmented-item-active-bg-color: var(--el-color-primary);
+  --el-segmented-item-selected-bg-color: #2563eb;
   background-color: var(--bg-tertiary);
 }
 
