@@ -54,7 +54,7 @@
             <el-segmented
               v-model="apiConfig.proxy_enable"
               :options="proxyModeOptions"
-              block
+              class="proxy-mode-segmented"
             />
           </el-form-item>
           <el-form-item v-if="apiConfig.proxy_enable === true" label="代理地址">
@@ -62,8 +62,7 @@
           </el-form-item>
           <el-form-item v-else-if="apiConfig.proxy_enable === null" label="提示">
             <el-alert type="info" :closable="false" show-icon>
-              使用后端进程环境变量 HTTP_PROXY / HTTPS_PROXY / NO_PROXY；
-              Docker 部署需在 docker-compose.yml 中显式透传。
+              使用系统环境变量中的代理配置
             </el-alert>
           </el-form-item>
           <el-form-item label="请求头">
@@ -974,5 +973,16 @@ onUnmounted(() => {
   .cleanup-buttons {
     width: 100%;
   }
+}
+
+/* 代理模式 segmented 撑开容器，去掉 block 后仍保持三按钮单行可读 */
+.proxy-mode-segmented {
+  min-width: 320px;
+  max-width: 100%;
+}
+
+.proxy-mode-segmented :deep(.el-segmented__item) {
+  white-space: nowrap;
+  padding: 0 16px;
 }
 </style>

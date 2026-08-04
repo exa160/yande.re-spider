@@ -113,7 +113,77 @@ html, body {
   color: var(--text-primary);
 }
 
+.dark-mode .el-table td.el-table__cell {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .el-table__body-wrapper {
+  background: var(--bg-secondary);
+}
+
+.dark-mode .el-table__empty-block {
+  background: var(--bg-secondary);
+}
+
+.dark-mode .el-table__empty-text {
+  color: var(--text-muted);
+}
+
+.dark-mode .el-table__fixed-right-patch {
+  background: var(--bg-secondary) !important;
+}
+
+.dark-mode .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: var(--bg-tertiary);
+}
+
+.dark-mode .el-table__body tr:hover > td.el-table__cell {
+  background: var(--hover-bg);
+}
+
+.dark-mode .el-table th.el-table__cell {
+  background: var(--bg-tertiary);
+}
+
 .dark-mode .el-pagination {
+  color: var(--text-secondary);
+  --el-pagination-bg-color: var(--bg-tertiary);
+  --el-pagination-button-disabled-bg-color: var(--bg-secondary);
+  --el-pagination-button-color: var(--text-secondary);
+  --el-pagination-button-disabled-color: var(--text-muted);
+}
+
+.dark-mode .el-pagination .btn-prev,
+.dark-mode .el-pagination .btn-next {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.dark-mode .el-pagination .btn-prev:disabled,
+.dark-mode .el-pagination .btn-next:disabled {
+  background: var(--bg-secondary);
+}
+
+.dark-mode .el-pager li {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.dark-mode .el-pager li.active {
+  background: var(--el-color-primary);
+  color: #fff;
+}
+
+.dark-mode .el-pager li:hover {
+  color: var(--el-color-primary);
+}
+
+.dark-mode .el-pagination__sizes .el-select .el-input__wrapper {
+  background: var(--bg-tertiary);
+}
+
+.dark-mode .el-pagination__total {
   color: var(--text-secondary);
 }
 
@@ -170,9 +240,8 @@ html, body {
   color: #409EFF;
 }
 
-/* el-button 暗色适配 — element-plus 2.5 的 .el-button--default 直接写死 background/color,
-   CSS 变量覆盖无效,必须直接覆盖属性 + !important */
-.dark-mode .el-button.el-button--default,
+/* el-button 暗色适配 — 排除 primary/danger/text（各自有专用规则），其余全变深灰 */
+.dark-mode .el-button:not(.el-button--primary):not(.el-button--danger):not(.el-button--text),
 .dark-mode .el-button.el-button--success,
 .dark-mode .el-button.el-button--warning,
 .dark-mode .el-button.el-button--info {
@@ -189,13 +258,121 @@ html, body {
   color: var(--text-primary) !important;
 }
 
-.dark-mode .el-button.el-button--default:hover,
+.dark-mode .el-button:not(.el-button--primary):not(.el-button--danger):not(.el-button--text):hover,
 .dark-mode .el-button.el-button--success:hover,
 .dark-mode .el-button.el-button--warning:hover,
 .dark-mode .el-button.el-button--info:hover {
   background-color: var(--hover-bg) !important;
   border-color: #409EFF !important;
   color: #409EFF !important;
+}
+
+/* el-button primary/danger 暗色适配 — 用绝对色值替代 EP 浅色变量（dark/css-vars.css 未导入） */
+.dark-mode .el-button.el-button--primary {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #e0e0e0 !important;
+}
+
+.dark-mode .el-button.el-button--primary:hover {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #fff !important;
+}
+
+.dark-mode .el-button.el-button--primary:active {
+  background-color: #1e40af !important;
+  border-color: #1e40af !important;
+  color: #fff !important;
+}
+
+.dark-mode .el-button.el-button--danger {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #e0e0e0 !important;
+}
+
+.dark-mode .el-button.el-button--danger:hover {
+  background-color: #b91c1c !important;
+  border-color: #b91c1c !important;
+  color: #fff !important;
+}
+
+.dark-mode .el-button.el-button--danger:active {
+  background-color: #991b1b !important;
+  border-color: #991b1b !important;
+  color: #fff !important;
+}
+
+/* el-segmented 暗色适配 */
+.dark-mode .el-segmented {
+  --el-segmented-bg-color: var(--bg-tertiary);
+  --el-segmented-item-color: var(--text-primary);
+  --el-segmented-item-hover-color: var(--text-primary);
+  --el-segmented-item-active-color: #fff;
+  --el-segmented-item-active-bg-color: var(--el-color-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.dark-mode .el-segmented .el-segmented__item {
+  color: var(--text-primary);
+}
+
+.dark-mode .el-segmented .el-segmented__item:hover {
+  background-color: #4a4a4a;
+  color: var(--text-primary);
+}
+
+.dark-mode .el-segmented .el-segmented__item.is-selected {
+  background-color: var(--el-color-primary);
+  color: #fff;
+  border-color: var(--el-color-primary);
+}
+
+.dark-mode .el-segmented .el-segmented__item.is-selected:hover {
+  background-color: var(--el-color-primary-light-3);
+  color: #fff;
+}
+
+.dark-mode .el-segmented .el-segmented__group {
+  background-color: var(--bg-tertiary);
+}
+
+/* el-tag 暗色适配 — status/type 标签在暗色下改深底浅字 */
+.dark-mode .el-tag {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-mode .el-tag.el-tag--primary {
+  background-color: #1a3a6b;
+  border-color: #2563eb;
+  color: #93c5fd;
+}
+
+.dark-mode .el-tag.el-tag--success {
+  background-color: #1a3d2e;
+  border-color: #16a34a;
+  color: #86efac;
+}
+
+.dark-mode .el-tag.el-tag--warning {
+  background-color: #3d2e1a;
+  border-color: #ca8a04;
+  color: #fde68a;
+}
+
+.dark-mode .el-tag.el-tag--danger {
+  background-color: #3d1a1a;
+  border-color: #dc2626;
+  color: #fca5a5;
+}
+
+.dark-mode .el-tag.el-tag--info {
+  background-color: #2d2d3d;
+  border-color: #6b7280;
+  color: #d1d5db;
 }
 
 .dark-mode .el-button--text {
