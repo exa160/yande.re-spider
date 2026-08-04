@@ -651,6 +651,9 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 12px;
 }
+.dark-mode .card-error {
+  background: #3d1f1f;
+}
 .error-detail {
   margin-top: 6px;
   color: #f56c6c;
