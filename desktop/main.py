@@ -26,6 +26,7 @@ from loguru import logger
 from desktop.paths import get_icon_path, get_install_dir, get_user_config_dir
 from desktop.single_instance import SingleInstanceError, acquire_lock
 from desktop.tray import SystemTray
+from src.common.port_manager import find_free_port, write_port_file
 
 HEALTH_TIMEOUT = 30.0
 HEALTH_INTERVAL = 0.2
@@ -52,14 +53,14 @@ def wait_for_health(port_file: Path, timeout: float = HEALTH_TIMEOUT) -> bool:
     return False
 
 
-def start_uvicorn_subprocess(install_dir: Path) -> subprocess.Popen:
-    """启动 uvicorn subprocess，端口由 OS 分配（``YANDE_PORT=0``）。
+def start_uvicorn_subprocess(install_dir: Path, port: int) -> subprocess.Popen:
+    """启动 uvicorn subprocess，并通过 ``YANDE_PORT`` 传入主进程分配的端口。
 
     frozen 时从 ``_internal/`` 找 python.exe；开发模式直接用 ``sys.executable``。
     """
     env = os.environ.copy()
     env["YANDE_HOST"] = "127.0.0.1"
-    env["YANDE_PORT"] = "0"  # OS auto-allocate
+    env["YANDE_PORT"] = str(port)
     env["PYTHONPATH"] = str(install_dir / "_internal" / "backend")
 
     if getattr(sys, "frozen", False):
@@ -105,15 +106,16 @@ def main() -> int:
     user_config_dir = get_user_config_dir()
     user_config_dir.mkdir(parents=True, exist_ok=True)
     port_file = user_config_dir / "port"
+    port = find_free_port()
+    write_port_file(port_file, port)
 
-    proc = start_uvicorn_subprocess(install_dir)
+    proc = start_uvicorn_subprocess(install_dir, port)
 
     if not wait_for_health(port_file):
         logger.error("Uvicorn failed to start within timeout.")
         _terminate_proc(proc)
         return 2
 
-    port = int(port_file.read_text(encoding="utf-8").strip())
     url = f"http://127.0.0.1:{port}"
 
     icon_path = get_icon_path(install_dir)
