@@ -93,21 +93,23 @@
 
 ## 🔐 密钥与敏感信息管理（强制红线）
 
+> **运行时配置文件是 `backend/config/config.yaml`**（由 `PathConstant.config_file` 决定，所有读写都走这里）。
+> 项目根目录的 `config/` 是历史遗留、不被代码读取，本节的规则**不再针对它**。
+
 ### 规则总览
 
 | 位置 | 内容 | 是否进 git |
 |------|------|-----------|
-| **本地** `config/config.yaml` | 真实密码（用于本地运行） | ❌ **不进**（仅 working tree）|
-| **本地** `config/data.cfg.bak` | 真实密码（备份） | ❌ **不进**（仅 working tree）|
-| **远端** `config/config.yaml` | 占位符 `password: ""` | ✅ 进 |
-| **远端** `config/data.cfg.bak` | 不存在 | ✅ 已删除 |
+| **本地** `backend/config/config.yaml` | 真实密码（用于本地运行） | ❌ **不进**（已被 `.gitignore` 排除，但已 tracked 文件需 `git rm --cached`）|
+| **本地** `backend/config/*.bak` | 真实密码（备份） | ❌ 强制不进（`.gitignore` 规则）|
+| **远端** `backend/config/config.yaml` | 占位符 `password: ""` | ✅ 进 |
 
 ### 红线规则
 
 - ❌ **绝不在 commit / push 中包含真实密码、token、API key、secret、内网 IP 等敏感字段**
-- ✅ **远端仓库所有分支的** `config/config.yaml` 中 `database.password` **必须是** `""` 或占位符
-- ✅ **本地** `config/config.yaml` 保留真实密码用于本地运行
-- ❌ **`config/data.cfg.bak`** 不应存在于任何分支（之前误提交，已清理）
+- ✅ **远端仓库所有分支的** `backend/config/config.yaml` 中 `database.password` **必须是** `""` 或占位符
+- ✅ **本地** `backend/config/config.yaml` 保留真实密码用于本地运行
+- ❌ **`backend/config/*.bak`** 不应存在于任何分支（`.gitignore` 已覆盖）
 
 ### 推送前必查（强制执行）
 
@@ -129,7 +131,7 @@ git diff origin/<base-branch>..HEAD \
 ```yaml
 # ❌ 错误：含真实密码
 database:
-  password: "Max=1616"
+  password: "<真实密码>"
 
 # ✅ 正确：占位符
 database:
@@ -150,12 +152,90 @@ database:
 ### 远端仓库现状
 
 ```
-✅ 所有远端分支的 config/config.yaml 中 password = ""
-✅ config/data.cfg.bak 已从所有分支删除
+✅ 所有远端分支的 backend/config/config.yaml 中 password = ""
+✅ backend/config/*.bak 被 .gitignore 阻塞
 ```
 
 **未来任何分支如有真密钥 → 视为事故，立即清理**。
 
 ---
 
-*最后更新：v1.1.7 release 后增加密钥管理章节*
+## 🚀 Dev 发布流程
+
+> **开发集成流程**：feature 分支 → MR → `next_dev`（集成验证层）。
+> 完整 release（MR → `next` + tag + GH Release）走另一条独立流程，详见 [docs/release.md](docs/release.md)。
+
+### 1. 准备分支
+
+- **不要直接 push 到 `next` / `next_dev`**
+- **当前分支非 next/next_dev**：可直接使用现有的固定 dev 分支（如 `feature`）
+- **当前分支是 next/next_dev**：必须新建分支，命名建议：
+  - `feature/<name>`（注意：现有 `feature` 分支会冲突，建议用 `feature-<name>` 或 `feat/<name>`）
+  - 或 `feature-segments-responsive` 等带连字符的命名
+
+```bash
+git checkout -b feature-segments-responsive origin/next
+```
+
+### 2. 改代码 + bump version
+
+按需修改代码。如果改动包含用户可见功能 / 行为变化，**同步 bump version**（3 处）：
+
+| 文件 | 字段 |
+|------|------|
+| `frontend/package.json` | `"version"` |
+| `pyproject.toml` | `version` |
+| `backend/src/__init__.py` | `AppConfig.version` |
+
+```bash
+# 推送前必查：diff 不含真密钥
+git diff origin/<base-branch>..HEAD \
+  | grep -iE '(password|secret|token|api[_-]?key)\s*[:=]\s*["\047][^"\047]+["\047]' \
+  | grep -vE '""|null|<YOUR_|<CHANGE_'
+# ✅ 无输出 → 可以推送
+```
+
+### 3. Commit + push
+
+```bash
+git commit -m "feat(<scope>): <description>"
+git push origin <branch>
+```
+
+### 4. 提 issue + MR
+
+```bash
+# 1. 创建 issue（关联后续 MR）
+gh issue create \
+  --title "[vX.Y.Z] <一句话标题>" \
+  --label "enhancement|bug" \
+  --body "## 背景 ... ## 修复 ... ## 验证 ..."
+
+# 2. 创建 MR，body 中用 "Closes #N" 关联 issue
+gh pr create \
+  --base next_dev \
+  --head <branch> \
+  --title "<title>" \
+  --body "Closes #N ..."
+```
+
+### 5. 自主审批 + 合入
+
+> 当用户授权自主审批时，使用 `--admin` 绕过 GitHub 禁止作者自批的限制，并在 review comment 中留下审批理由。
+
+```bash
+# 写一条 review comment（含审批理由）
+gh pr comment <N> --body "Reviewed: ..."
+
+# admin 合并
+gh pr merge <N> --admin --squash --delete-branch=false
+```
+
+### 6. 不走完整 release
+
+Dev 流程**只合入 `next_dev`**，**不打 tag、不发 GH Release**。
+如需发布到 `next` + tag + release，**单独走完整 release 流程**（`docs/release.md` §5）。
+
+---
+
+*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节*
