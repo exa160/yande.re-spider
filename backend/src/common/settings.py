@@ -102,9 +102,14 @@ class Config(ConfigModel):
 
 
 def load_config(config_path: Path = Path('config.yaml')) -> Config:
+    from src.common.config_bootstrap import write_default_user_config
+    write_default_user_config(config_path)
+
     if config_path.exists():
         try:
             data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if data is None:
+                data = {}
             return Config.model_validate(data)
         except Exception as e:
             logger.warning(f"load config err: {e}")
