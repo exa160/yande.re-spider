@@ -20,6 +20,9 @@
 │  ├─ 配置管理组件    │  └─ 本地API调用         │                  │
 │  └─ 高级查询组件    │                         │                  │
 └─────────────────────────────────────────────────────────────┘
+> **架构图修订（2026-08-05）**：原"桌面客户端 (Electron)"节点已升级为
+> **Windows 客户端（NSIS）**，技术栈由 Electron 改为 PyWebView + PyInstaller + NSIS。
+> 详见实施文档 [docs/superpowers/specs/2026-08-05-windows-client-design.md](../superpowers/specs/2026-08-05-windows-client-design.md)。
                               ↓ HTTP/WebSocket
 ┌─────────────────────────────────────────────────────────────┐
 │                    业务逻辑层 (Business Logic)               │
