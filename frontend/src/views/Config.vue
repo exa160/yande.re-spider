@@ -54,6 +54,7 @@
             <el-segmented
               v-model="apiConfig.proxy_enable"
               :options="proxyModeOptions"
+              :direction="segmentedDirection"
               class="proxy-mode-segmented"
             />
           </el-form-item>
@@ -308,6 +309,21 @@ const databaseConfig = ref({
 
 const saving = ref(false)
 const activeMenu = ref('api')
+
+// 窄屏下代理模式 segmented 垂直堆叠（<540px）
+const SEGMENTED_VERTICAL_BREAKPOINT = 540
+const segmentedDirection = ref('horizontal')
+const mqlSegmented = window.matchMedia(`(max-width: ${SEGMENTED_VERTICAL_BREAKPOINT - 1}px)`)
+const updateSegmentedDirection = (e) => {
+  segmentedDirection.value = e.matches ? 'vertical' : 'horizontal'
+}
+updateSegmentedDirection(mqlSegmented)
+if (mqlSegmented.addEventListener) {
+  mqlSegmented.addEventListener('change', updateSegmentedDirection)
+} else {
+  // Safari < 14 fallback
+  mqlSegmented.addListener(updateSegmentedDirection)
+}
 const testing = ref(false)
 const tamperDetected = ref(false)
 const showCleanupDialog = ref(false)
@@ -693,6 +709,11 @@ onUnmounted(() => {
   stopProtection()
   document.removeEventListener('contextmenu', disableContextMenu)
   document.removeEventListener('keydown', handleKeyDown)
+  if (mqlSegmented.removeEventListener) {
+    mqlSegmented.removeEventListener('change', updateSegmentedDirection)
+  } else {
+    mqlSegmented.removeListener(updateSegmentedDirection)
+  }
 })
 </script>
 
@@ -984,5 +1005,13 @@ onUnmounted(() => {
 .proxy-mode-segmented :deep(.el-segmented__item) {
   white-space: nowrap;
   padding: 0 16px;
+}
+
+/* 窄屏垂直堆叠：三段一行 -> 三行一列，释放水平空间 */
+@media screen and (max-width: 539px) {
+  .proxy-mode-segmented {
+    min-width: 0;
+    width: 100%;
+  }
 }
 </style>
