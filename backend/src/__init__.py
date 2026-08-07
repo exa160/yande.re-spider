@@ -71,6 +71,7 @@ def _print_startup_banner(config: AppConfig) -> None:
     logger.info(f"  Data dir   : {path_constant.data_dir}")
     logger.info(f"  Download   : {path_constant.download_dir}")
     logger.info(f"  Log dir    : {path_constant.log_dir}")
+    logger.info(f"  Config     : {path_constant.config_file}")
     logger.info(f"  Docs       : {config.docs_url}  |  ReDoc: {config.redoc_url}")
     logger.info("=" * 66)
 

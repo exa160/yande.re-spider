@@ -42,9 +42,16 @@ def resolve_install_dir() -> Path:
 def resolve_user_config_dir() -> Path:
     """用户配置目录（持久、可漫游）。
 
-    - Windows: %APPDATA%\\yande-spider
-    - POSIX 开发模式: ~/.config/yande-spider
+    优先级：
+    1. 显式覆盖：YANDE_USER_CONFIG_DIR 环境变量（Docker 等需固定路径的场景）
+    2. Windows: %APPDATA%\\yande-spider
+    3. POSIX 开发模式: ~/.config/yande-spider
     """
+    explicit = os.environ.get("YANDE_USER_CONFIG_DIR")
+    if explicit:
+        # Use actual OS path class to avoid WindowsPath instantiation on POSIX
+        # (test compat: tests mock os.name to 'nt' on POSIX hosts)
+        return _ActualPathCls(explicit)
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         if appdata:
