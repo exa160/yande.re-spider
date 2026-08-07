@@ -2,8 +2,6 @@
 配置管理相关API路由
 """
 
-import asyncio
-
 from fastapi import APIRouter, Query
 
 from src.common.constant import ErrMsg
@@ -19,13 +17,13 @@ router = APIRouter()
 @router.get("", response_model=ConfigResponse, summary="获取系统配置")
 async def get_system_config() -> ConfigResponse:
     """获取系统配置"""
-    return ConfigResponse(data=await asyncio.to_thread(ConfigService.get_system_config))
+    return ConfigResponse(data=ConfigService.get_system_config())
 
 
 @router.put("/api", response_model=BaseResponse, summary="更新API配置")
 async def update_api_config(api_config: ApiConfig) -> BaseResponse:
     """更新 API 配置"""
-    success = await asyncio.to_thread(ConfigService.update_api_config, api_config)
+    success = ConfigService.update_api_config(api_config)
     if not success:
         raise APIException(ErrMsg.CONFIG_UPDATE_ERROR)
     return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
@@ -34,7 +32,7 @@ async def update_api_config(api_config: ApiConfig) -> BaseResponse:
 @router.put("/downloader", response_model=BaseResponse, summary="更新下载器配置")
 async def update_downloader_config(down_config: DownloaderConfig) -> BaseResponse:
     """更新下载器配置"""
-    success = await asyncio.to_thread(ConfigService.update_downloader_config, down_config)
+    success = ConfigService.update_downloader_config(down_config)
     if not success:
         raise APIException(ErrMsg.CONFIG_UPDATE_ERROR)
     return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
@@ -43,7 +41,7 @@ async def update_downloader_config(down_config: DownloaderConfig) -> BaseRespons
 @router.put("/database", response_model=BaseResponse, summary="更新数据库配置")
 async def update_database_config(database_config: DatabaseConfig) -> BaseResponse:
     """更新数据库配置"""
-    success = await asyncio.to_thread(ConfigService.update_database_config, database_config)
+    success = ConfigService.update_database_config(database_config)
     if not success:
         raise APIException(ErrMsg.CONFIG_UPDATE_ERROR)
     return BaseResponse(message=ErrMsg.CONFIG_UPDATE_SUCCESS)
@@ -52,7 +50,7 @@ async def update_database_config(database_config: DatabaseConfig) -> BaseRespons
 @router.post("/test-connection", response_model=BaseResponse, summary="测试数据库连接")
 async def test_database_connection(database_config: DatabaseConfig) -> BaseResponse:
     """测试数据库连接"""
-    result = await asyncio.to_thread(ConfigService.test_database_connection, database_config)
+    result = ConfigService.test_database_connection(database_config)
     return BaseResponse(message=result["message"], data={"success": result["success"]})
 
 
@@ -61,7 +59,7 @@ async def reset_config(
     section: str = Query(..., description="配置类型: api, downloader, database"),
 ) -> BaseResponse:
     """重置指定段的配置"""
-    success, message = await asyncio.to_thread(ConfigService.reset_config, section)
+    success, message = ConfigService.reset_config(section)
     if not success:
         raise APIException(ErrMsg.CONFIG_RESET_ERROR, data=message)
     return BaseResponse(message="Reset success.")
