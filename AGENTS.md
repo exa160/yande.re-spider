@@ -93,10 +93,10 @@
 
 ## 🔐 密钥与敏感信息管理（强制红线）
 
-> **运行时配置文件路径**（由 `PathConstant.config_file` 经 `path_resolver.resolve_user_config_dir()` 解析）：
+> **运行时配置文件路径**（由 `PathConstant` 实例化时通过 `_resolve_user_config_dir()` 立即解析）：
 > - POSIX 开发 / 裸机部署：`~/.config/yande-spider/config/config.yaml`
 > - Windows 客户端：`%APPDATA%\yande-spider\config\config.yaml`
-> - Docker：通过 `YANDE_USER_CONFIG_DIR` 环境变量显式指定（`docker-compose.yml` 默认设为 `/app/config`，对齐 `./config:/app/config` 挂载点）
+> - Docker：通过 `YANDE_USER_CONFIG_DIR=/app` 环境变量显式指定 → `config_file = /app/config/config.yaml`
 >
 > 仓库内 tracked 的 `backend/config/config.yaml` 和 `config/config.yaml` **均不被运行时读取**，仅作 PyInstaller frozen 资源兜底 placeholder。详见下方「📦 部署模式与配置路径」一节。
 
@@ -246,7 +246,7 @@ Dev 流程**只合入 `next_dev`**，**不打 tag、不发 GH Release**。
 
 > 62f162d（v1.1.10）将 `PathConstant.config_file` 从 `install_dir/config/config.yaml` 拆到了 `user_config_dir/config/config.yaml`，以适配 PyInstaller Windows 客户端跨升级保留配置。但 **Docker / 裸机 server 部署的期望路径仍在 `install_dir`（容器内 `/app`，裸机仓库根）下**。
 >
-> 为让两种部署模式互不干扰，引入 `YANDE_USER_CONFIG_DIR` 环境变量作为显式覆盖入口。
+> `PathConstant` 在 `constant.py` 模块加载时通过 `_resolve_user_config_dir()` 立即读取 `YANDE_USER_CONFIG_DIR` 环境变量，**无须手动调用任何 resolver 函数**。Python 进程启动 → `constant.py` 加载 → `path_constant = PathConstant()` 实例化时环境变量已就绪 → `path_constant.config_file` 自动正确。
 
 ### 三种部署模式的路径解析
 
@@ -254,7 +254,7 @@ Dev 流程**只合入 `next_dev`**，**不打 tag、不发 GH Release**。
 |---------|----------------|--------------------------|---------|
 | **开发模式**（`uvicorn service:main_app --reload`） | 仓库根 | `~/.config/yande-spider`（POSIX）/ `%APPDATA%\yande-spider`（Windows） | 无需覆盖 |
 | **PyInstaller 客户端**（Windows NSIS 安装器） | `sys._MEIPASS` 父目录 | `%APPDATA%\yande-spider` | 无需覆盖 |
-| **Docker 服务**（`docker compose up`） | `/app` | **被 `YANDE_USER_CONFIG_DIR=/app/config` 覆盖** | 见下方 |
+| **Docker 服务**（`docker compose up`） | `/app` | **被 `YANDE_USER_CONFIG_DIR=/app` 覆盖** | 见下方 |
 
 **关键区别**：
 
@@ -263,6 +263,8 @@ Dev 流程**只合入 `next_dev`**，**不打 tag、不发 GH Release**。
 
 ### Docker 部署的正确配置
 
+`YANDE_USER_CONFIG_DIR` 的语义是「**用户配置根目录**」（其下还有 `config/` 子目录）。所以要让 `config_file = /app/config/config.yaml`，应设：
+
 ```yaml
 # docker-compose.yml（关键片段）
 services:
@@ -270,12 +272,12 @@ services:
     volumes:
       - ./config:/app/config        # 宿主机 ./config/config.yaml 映射到容器 /app/config
     environment:
-      - YANDE_USER_CONFIG_DIR=/app/config   # 让 path_resolver 把 user_config_dir 解析为 /app/config
+      - YANDE_USER_CONFIG_DIR=/app  # user_config_dir=/app → config_file=/app/config/config.yaml
 ```
 
 **不设 `YANDE_USER_CONFIG_DIR` 的后果**：
 
-- 容器内 `Path.home()` = `/root`，`resolve_user_config_dir()` 返回 `/root/.config/yande-spider`
+- 容器内 `Path.home()` = `/root`，`_resolve_user_config_dir()` 返回 `/root/.config/yande-spider`
 - `config_bootstrap` 会在 `/root/.config/yande-spider/config/config.yaml` 写一个 placeholder
 - 宿主机 `./config/config.yaml` 永远不被读取 → UI 配置的密码/代理全部丢失，容器重启被覆盖
 - 启动 banner 的 `Config:` 行会显示 `/root/.config/yande-spider/config/config.yaml`（一眼能看出来错配）
@@ -285,10 +287,10 @@ services:
 | 操作 | 规范 |
 |------|------|
 | 读取运行时配置路径 | 通过 `path_constant.config_file`，**不要**直接写 `Path('config.yaml')` 或 `Path('~/.config/...')` |
-| 跨部署兼容 | 让 path 在 `resolve_user_config_dir()` 解析，不绕过 |
+| 跨部署兼容 | 让 path 在 `_resolve_user_config_dir()` 解析，不绕过 |
 | 自定义部署路径 | 通过 `YANDE_USER_CONFIG_DIR` 环境变量注入，**不要**改代码硬编码 |
-| 加新路径 | 在 `PathConstant` 加字段，并在 `_resolve_paths()` 里同步注入 install_dir/user_cfg 派生路径 |
-| 路径相关测试 | `backend/tests/test_path_resolver.py` 加 case，必须包含 POSIX/Windows/环境变量覆盖三分支 |
+| 加新路径 | 在 `PathConstant` 加字段（跟随 `install_dir` 用类级 default，跟随 `user_config_dir` 用 `@property`） |
+| 路径相关测试 | `backend/tests/test_path_constant.py` 加 case，必须包含 POSIX/Windows/环境变量覆盖三分支 |
 
 ### 启动 banner 中的 `Config:` 行
 

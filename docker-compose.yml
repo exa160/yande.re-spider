@@ -16,8 +16,8 @@ services:
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - ALL_PROXY=${ALL_PROXY:-}
       - NO_PROXY=${NO_PROXY:-}
-      # 让 path_resolver 把 user_config_dir 解析为 /app/config，对齐 ./config:/app/config 挂载点
-      - YANDE_USER_CONFIG_DIR=/app/config
+      # 让 user_config_dir 解析为 /app；config_file = /app/config/config.yaml 对齐 ./config 挂载
+      - YANDE_USER_CONFIG_DIR=/app
     logging:
       driver: "json-file"
       options:
