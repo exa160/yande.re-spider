@@ -9,7 +9,7 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
 from src.api import APILoader
-from src.common.constant import _resolve_paths, path_constant
+from src.common.constant import path_constant
 from src.lifecycle.download import DownloadLifecycle
 from src.lifecycle.lifespan import LifespanRegistry
 from src.lifecycle.scheduler import SchedulerLifecycle
@@ -83,7 +83,6 @@ def work_dir_setup():
 
 
 def init_app(app: FastAPI) -> FastAPI:
-    _resolve_paths()  # 必须在任何中间件读 path_constant 之前
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
