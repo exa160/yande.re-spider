@@ -760,6 +760,7 @@ class QueryPreset(Base):
 
 - **后端优化**：
   - 异步IO处理请求
+  - **async 路由内同步 service/DAO 调用必须包 `asyncio.to_thread`**（v1.1.10+ 强制规范，详见 [specs/2026-08-07-async-blocking-fix-design.md](superpowers/specs/2026-08-07-async-blocking-fix-design.md)）
   - 查询结果缓存
   - 数据库连接池
   - 批量数据库操作
