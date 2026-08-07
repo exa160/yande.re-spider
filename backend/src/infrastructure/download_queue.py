@@ -22,6 +22,27 @@ _TERMINAL_STATUS = {
 }
 
 
+def _compute_file_md5(file_path: Path) -> Optional[str]:
+    """整文件 MD5 计算（专供 asyncio.to_thread 调用，不持有事务）
+
+    Args:
+        file_path: 原图完整路径
+
+    Returns:
+        十六进制 MD5 字符串；文件不存在/读取失败返回 None
+    """
+    if not file_path.exists():
+        return None
+    try:
+        md5_hasher = hashlib.md5()
+        with file_path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                md5_hasher.update(chunk)
+        return md5_hasher.hexdigest()
+    except OSError:
+        return None
+
+
 def _coerce_db_value(field: str, value):
     """Pydantic 字符串时间 → ORM datetime 转换"""
     if field in ("started_at", "completed_at") and isinstance(value, str):
@@ -380,19 +401,22 @@ async def run_download_async(task_id: str):
         db_updated = False
         need_download = True
         if original_path.exists() and expected_md5:
-            md5_hasher = hashlib.md5()
-            with original_path.open("rb") as existing_file:
-                for chunk in iter(lambda: existing_file.read(1024*1024), b""):
-                    md5_hasher.update(chunk)
-            file_md5 = md5_hasher.hexdigest()
-            if file_md5 == expected_md5:
+            # 整文件 MD5 计算移出事件循环（大文件会冻主线程）
+            file_md5 = await asyncio.to_thread(_compute_file_md5, original_path)
+            if file_md5 is None:
+                logger.warning(
+                    f"Original exists but MD5 check failed for {image_id}, will re-download"
+                )
+                need_download = True
+            elif file_md5 == expected_md5:
                 logger.info(
                     f"Original exists and MD5 matches ({file_md5}), skipping download"
                 )
                 need_download = False
             else:
                 logger.info(f"Original exists but MD5 mismatch, re-downloading")
-                original_path.unlink()
+                await asyncio.to_thread(original_path.unlink)
+                need_download = True
 
         if need_download:
             downloaded_size = 0
