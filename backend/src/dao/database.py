@@ -154,8 +154,6 @@ class BaseDAO:
             return self._session
         # 单例路径: 每次从 ContextVar 拿当前请求 session
         # 禁止缓存! 缓存会导致下次请求拿到已 close 的旧 session
-        try:
-            from src.middleware.session import RequestSessionMiddleware
-            return RequestSessionMiddleware.get_session()
-        except Exception:
-            return _get_session_factory()()
+        # 请求外场景（后台调度/CLI）必须用 with DAO() as dao: 显式上下文
+        from src.middleware.session import RequestSessionMiddleware
+        return RequestSessionMiddleware.get_session()
