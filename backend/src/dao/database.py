@@ -38,9 +38,9 @@ def get_db_engine():
             pool_reset_on_return="rollback",
             connect_args={"connect_timeout": 10},
             echo=False,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=10,
         )
     else:
         _cached_engine = create_engine(
