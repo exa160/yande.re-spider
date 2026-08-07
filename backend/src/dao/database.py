@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from src.common import config
 from src.common.constant import path_constant
@@ -46,7 +46,7 @@ def get_db_engine():
         _cached_engine = create_engine(
             f"sqlite:///{path_constant.sqlite_file}",
             connect_args={"timeout": 30, "check_same_thread": False},
-            poolclass=StaticPool,
+            poolclass=NullPool,
         )
     # TODO 考虑取消自动建表/迁移，改为手动执行脚本
     Base.metadata.create_all(bind=_cached_engine)
