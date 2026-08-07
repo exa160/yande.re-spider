@@ -108,7 +108,7 @@ class RequestSessionMiddleware:
             await self.app(scope, receive, send)
             session.commit()
         except Exception:
-            await session.rollback()
+            session.rollback()  # 同步方法，await None 会抛 TypeError
             raise
         finally:
             _request_session.reset(token)

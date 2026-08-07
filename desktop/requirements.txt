@@ -1,0 +1,9 @@
+# desktop/requirements.txt
+# Windows 桌面客户端打包依赖（pywebview 启动器 + 系统托盘 + PyInstaller）
+# 与 backend/pyproject.toml 的运行时依赖互不重叠——本文件专门服务于 PyInstaller 打包。
+pywebview>=5.7,<6
+pystray>=0.19.5
+appdirs>=1.4.4
+Pillow>=10.0.0
+pyinstaller>=6.0
+pywin32>=306; sys_platform == "win32"

@@ -20,6 +20,9 @@
 │  ├─ 配置管理组件    │  └─ 本地API调用         │                  │
 │  └─ 高级查询组件    │                         │                  │
 └─────────────────────────────────────────────────────────────┘
+> **架构图修订（2026-08-05）**：原"桌面客户端 (Electron)"节点已升级为
+> **Windows 客户端（NSIS）**，技术栈由 Electron 改为 PyWebView + PyInstaller + NSIS。
+> 详见实施文档 [docs/superpowers/specs/2026-08-05-windows-client-design.md](../superpowers/specs/2026-08-05-windows-client-design.md)。
                               ↓ HTTP/WebSocket
 ┌─────────────────────────────────────────────────────────────┐
 │                    业务逻辑层 (Business Logic)               │
@@ -757,6 +760,7 @@ class QueryPreset(Base):
 
 - **后端优化**：
   - 异步IO处理请求
+  - **async 路由内同步 service/DAO 调用必须包 `asyncio.to_thread`**（v1.1.10+ 强制规范，详见 [specs/2026-08-07-async-blocking-fix-design.md](superpowers/specs/2026-08-07-async-blocking-fix-design.md)）
   - 查询结果缓存
   - 数据库连接池
   - 批量数据库操作

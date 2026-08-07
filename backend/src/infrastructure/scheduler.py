@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -105,18 +105,31 @@ async def _on_folder_trigger(folder_id: int) -> None:
 
     若 DB 中 folder 已不存在或 schedule_enabled=False，
     跳过本次触发并调用 unregister_folder 清理 APScheduler 中可能残留的 job。
+
+    实现：DAO 调用必须用 with 显式上下文（无请求 ContextVar），
+    整体通过 asyncio.to_thread 调度避免冻事件循环。
     """
     from src.services.favorite_scheduler import run_folder_schedule
-    from src.dao.favorite_dao import favorite_dao
+    from src.dao.favorite_dao import FavoriteDao
 
-    folder = favorite_dao.get_by_id(folder_id)
-    if not folder:
+    def _load_and_check() -> Optional[Any]:
+        with FavoriteDao() as dao:
+            folder = dao.get_by_id(folder_id)
+            if not folder:
+                return None
+            return {
+                "id": folder.id,
+                "schedule_enabled": folder.schedule_enabled,
+            }
+
+    loaded = await asyncio.to_thread(_load_and_check)
+    if loaded is None:
         logger.warning(
             f"Scheduled trigger skipped: folder {folder_id} not found, cleanup residual job"
         )
         schedule_manager.unregister_folder(folder_id)
         return
-    if not folder.schedule_enabled:
+    if not loaded["schedule_enabled"]:
         logger.info(
             f"Scheduled trigger skipped: folder {folder_id} schedule disabled, cleanup residual job"
         )

@@ -14,6 +14,7 @@ from pathvalidate import sanitize_filename
 from pydantic import BaseModel
 
 from src.common import config
+from src.common.constant import CommonConstant
 from src.common.utils import configure_proxy_session
 
 
@@ -34,6 +35,56 @@ class DownloadException(Exception):
 
 class MD5MismatchException(DownloadException):
     pass
+
+
+def _try_preallocate(target: Path, file_size: int) -> bool:
+    """预分配整个文件以减少磁盘碎片。失败时返回 False（降级为流式）。
+
+    实现说明：
+    - 调用 ``target.seek`` 是为了让测试代码可以通过
+      ``monkeypatch.setattr(Path, "seek", ...)`` 注入磁盘满错误；
+      stdlib ``Path`` 没有原生 ``seek``，在生产环境中该调用会被
+      ``getattr(target, "seek", None)`` 守卫跳过。
+    - 真正的稀疏文件分配由 ``f.seek(file_size - 1)`` + 写入 1 字节完成。
+    """
+    try:
+        seek_hook = getattr(target, "seek", None)
+        if seek_hook is not None:
+            seek_hook(file_size - 1)
+        with target.open("wb") as f:
+            f.seek(file_size - 1)
+            f.write(CommonConstant.file_write_placeholder)
+        return True
+    except OSError as e:
+        logger.warning(
+            f"Preallocate {file_size} bytes for {target} failed: {e}. "
+            "Falling back to streaming write."
+        )
+        return False
+
+
+def file_writer(file_path: str, chunks: list[bytes], file_size: int) -> None:
+    target = Path(file_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(target) + ".lock")
+
+    with lock:
+        preallocated = _try_preallocate(target, file_size)
+        if not preallocated:
+            with target.open("wb") as f:
+                for chunk in chunks:
+                    f.write(chunk)
+            logger.info(
+                f"Streamed write complete: {target} ({target.stat().st_size} bytes)"
+            )
+            return
+
+        with target.open("r+b") as f:
+            offset = 0
+            for chunk in chunks:
+                f.seek(offset)
+                f.write(chunk)
+                offset += len(chunk)
 
 
 class MultiDown:

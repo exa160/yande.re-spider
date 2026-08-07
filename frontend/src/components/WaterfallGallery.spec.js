@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import api from '@/api'
 import WaterfallGallery from './WaterfallGallery.vue'
@@ -16,6 +16,33 @@ vi.mock('element-plus', async (importOriginal) => {
     ElMessage: { error: vi.fn() }
   }
 })
+
+let observerInstances
+let observedTargets
+
+beforeEach(() => {
+  observerInstances = []
+  observedTargets = []
+  globalThis.IntersectionObserver = vi.fn().mockImplementation((cb) => {
+    const instance = {
+      cb,
+      observe: vi.fn((el) => observedTargets.push(el)),
+      disconnect: vi.fn(),
+    }
+    observerInstances.push(instance)
+    return instance
+  })
+})
+
+const triggerAllIntersecting = async () => {
+  await flushPromises()
+  const entries = observedTargets.map((el) => ({
+    isIntersecting: true,
+    target: el,
+  }))
+  observerInstances.forEach((o) => o.cb(entries))
+  await flushPromises()
+}
 
 const mkImage = (id) => ({
   id,
@@ -58,7 +85,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
     it('T1 入列后默认 LOADING：所有图片占位', async () => {
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       expect(wrapper.findAll('.image-placeholder').length).toBe(2)
       expect(wrapper.findAll('.retry-button').length).toBe(0)
     })
@@ -66,7 +93,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
     it('T2 @load 触发后单图进入 LOADED：当前图占位消失，waterfall-item 获得 image-loaded class', async () => {
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       await elImageAt(wrapper, 0).vm.$emit('load')
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.image-placeholder').length).toBe(1)
@@ -76,7 +103,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
     it('T3 @error 触发后单图进入 FAILED：当前图占位消失，retry 按钮 +1', async () => {
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       await elImageAt(wrapper, 0).vm.$emit('error')
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.image-placeholder').length).toBe(1)
@@ -89,7 +116,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
       vi.useFakeTimers()
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       vi.advanceTimersByTime(30_000)
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.image-placeholder').length).toBe(2)
@@ -101,7 +128,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
       vi.useFakeTimers()
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       vi.advanceTimersByTime(60_000)
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.image-placeholder').length).toBe(2)
@@ -114,7 +141,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
     it('T6 用户点 reload：retry 后 loadingImages 重置，占位重新出现', async () => {
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       await elImageAt(wrapper, 0).vm.$emit('error')
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.retry-button').length).toBe(1)
@@ -127,7 +154,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
       api.get.mockRejectedValueOnce(new Error('network error'))
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       await elImageAt(wrapper, 0).vm.$emit('error')
       await wrapper.vm.$nextTick()
       await wrapper.findAll('.retry-button')[0].trigger('click')
@@ -141,7 +168,7 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
     it('T8 props.images 清空时所有相关 DOM 元素都消失', async () => {
       const wrapper = factory()
       await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
+      await triggerAllIntersecting()
       await elImageAt(wrapper, 0).vm.$emit('error')
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.retry-button').length).toBe(1)

@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,7 +9,7 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
 from src.api import APILoader
-from src.common.constant import path_constant
+from src.common.constant import _resolve_paths, path_constant
 from src.lifecycle.download import DownloadLifecycle
 from src.lifecycle.lifespan import LifespanRegistry
 from src.lifecycle.scheduler import SchedulerLifecycle
@@ -24,7 +25,7 @@ class AppConfig(BaseModel):
 
     title: str = "Yande.re Local Picture Manager"
     description: str = "本地图片管理工具，提供图片查询、下载和管理功能"
-    version: str = "1.1.9"
+    version: str = "1.1.10"
     docs_url: str = "/docs"
     redoc_url: str = "/redoc"
 
@@ -33,7 +34,17 @@ app_config = AppConfig()
 
 
 def _get_git_sha() -> str:
-    """获取当前 git commit short SHA，启动 banner 用 (git 不可用时返回 'unknown')"""
+    """获取当前 git commit short SHA。
+
+    优先级：
+    1. frozen 环境：读取 sys._MEIPASS/version.txt（PyInstaller NSIS 打包时注入）
+    2. 开发模式：subprocess 调用 git rev-parse
+    3. 都不可用：返回 "unknown"
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        version_txt = Path(sys._MEIPASS) / "version.txt"
+        if version_txt.exists():
+            return version_txt.read_text(encoding="utf-8").strip() or "unknown"
     if not shutil.which("git"):
         return "unknown"
     try:
@@ -71,6 +82,7 @@ def work_dir_setup():
 
 
 def init_app(app: FastAPI) -> FastAPI:
+    _resolve_paths()  # 必须在任何中间件读 path_constant 之前
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
