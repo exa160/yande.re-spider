@@ -83,7 +83,9 @@ async def get_gallery_statistics(
 @router.get("/cache/preview/{image_id}", summary="获取预览图文件")
 async def get_preview_image(image_id: int):
     """获取预览图文件"""
-    preview_path = GalleryService.get_preview_path(f"{image_id}.jpg")
+    preview_path = await asyncio.to_thread(
+        GalleryService.get_preview_path, f"{image_id}.jpg"
+    )
     if preview_path.exists():
         return FileResponse(str(preview_path))
     raise APIException(ErrMsg.NOT_FOUND)
@@ -125,7 +127,9 @@ async def fetch_and_cache_preview(image_id: int):
 @router.get("/cache/original/{filename}", summary="获取原图文件")
 async def get_original_image(filename: str):
     """获取原图文件"""
-    original_path = GalleryService.get_original_path(filename)
+    original_path = await asyncio.to_thread(
+        GalleryService.get_original_path, filename
+    )
     if original_path.exists():
         return FileResponse(str(original_path))
     raise APIException(ErrMsg.NOT_FOUND)
