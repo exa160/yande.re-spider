@@ -25,7 +25,10 @@ def _with_retry_write(method):
 
         for attempt in range(config.yande_api.retry):
             try:
-                resp = self._session.get(url)
+                resp = self._session.get(
+                    url,
+                    timeout=config.yande_api.timeout,
+                )
                 resp.raise_for_status()
                 dest_path.write_bytes(resp.content)
                 return dest_path
@@ -47,7 +50,6 @@ class ImageCache:
         self.ORIGINALS_DIR = path_constant.originals_dir
 
         self._session = configure_proxy_session(requests.Session())
-        self._session.timeout = config.yande_api.timeout
 
     def _ensure_dirs(self):
         self.PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
