@@ -74,7 +74,7 @@ async def get_gallery_statistics(
 ) -> BaseResponse:
     """获取图库统计信息"""
     try:
-        stats = GalleryService.get_statistics(source)
+        stats = await asyncio.to_thread(GalleryService.get_statistics, source)
         return BaseResponse(message=ErrMsg.OK.msg, data=stats)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
