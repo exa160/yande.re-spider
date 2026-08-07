@@ -2,6 +2,7 @@
 下载管理相关API路由
 """
 
+import asyncio
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Query
@@ -29,7 +30,7 @@ router = APIRouter()
 async def create_download_task(task: DownloadTaskCreate) -> TaskCreatedResponse:
     """创建单个下载任务"""
     try:
-        task_id = await DownloadService.create_task(task.image_id)
+        task_id = await asyncio.to_thread(DownloadService.create_task, task.image_id)
         return TaskCreatedResponse(
             message="下载任务创建成功", data=TaskCreatedData(task_id=task_id)
         )
@@ -48,7 +49,9 @@ async def create_batch_download_tasks(
     """批量创建下载任务"""
     try:
         image_ids = [task.image_id for task in tasks]
-        task_ids = await DownloadService.create_batch_tasks(image_ids)
+        task_ids = await asyncio.to_thread(
+            DownloadService.create_batch_tasks, image_ids
+        )
         return BatchTaskCreatedResponse(
             message=f"成功创建 {len(task_ids)} 个下载任务",
             data=BatchTaskCreatedData(task_ids=task_ids),
@@ -72,7 +75,8 @@ async def get_download_tasks(
 ) -> TaskListResponse:
     """获取下载任务列表（支持多状态过滤、排序、分页）"""
     try:
-        tasks, total = DownloadService.get_tasks(
+        tasks, total = await asyncio.to_thread(
+            DownloadService.get_tasks,
             status_list=status,
             sort_by=sort_by,
             order=order,
@@ -100,7 +104,7 @@ async def get_download_tasks(
 async def get_task_status_counts() -> TaskStatusCountResponse:
     """获取各状态任务数量（单次 SQL GROUP BY）"""
     try:
-        counts = DownloadService.get_status_counts()
+        counts = await asyncio.to_thread(DownloadService.get_status_counts)
         return TaskStatusCountResponse(message=ErrMsg.OK.msg, data=counts)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
@@ -111,7 +115,7 @@ async def get_task_status_counts() -> TaskStatusCountResponse:
 )
 async def get_download_task(task_id: str) -> DownloadTaskResponse:
     """获取单个任务详情"""
-    task = DownloadService.get_task(task_id)
+    task = await asyncio.to_thread(DownloadService.get_task, task_id)
     if not task:
         raise APIException(ErrMsg.TASK_NOT_FOUND)
     return DownloadTaskResponse(data=task)
@@ -122,7 +126,7 @@ async def get_download_task(task_id: str) -> DownloadTaskResponse:
 )
 async def get_task_progress(task_id: str) -> ProgressResponse:
     """获取任务进度"""
-    progress = DownloadService.get_task_progress(task_id)
+    progress = await asyncio.to_thread(DownloadService.get_task_progress, task_id)
     if not progress:
         raise APIException(ErrMsg.TASK_NOT_FOUND)
     return ProgressResponse(message=ErrMsg.OK.msg, data=progress)
@@ -131,7 +135,7 @@ async def get_task_progress(task_id: str) -> ProgressResponse:
 @router.post("/task/{task_id}/start", response_model=BaseResponse, summary="启动任务")
 async def start_download_task(task_id: str) -> BaseResponse:
     """启动下载任务"""
-    success, message = await DownloadService.start_task(task_id)
+    success, message = await asyncio.to_thread(DownloadService.start_task, task_id)
     if not success:
         raise APIException(ErrMsg.TASK_START_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
     return BaseResponse(message=message)
@@ -140,7 +144,7 @@ async def start_download_task(task_id: str) -> BaseResponse:
 @router.post("/task/{task_id}/pause", response_model=BaseResponse, summary="暂停任务")
 async def pause_download_task(task_id: str) -> BaseResponse:
     """暂停下载任务"""
-    success, message = DownloadService.pause_task(task_id)
+    success, message = await asyncio.to_thread(DownloadService.pause_task, task_id)
     if not success:
         raise APIException(ErrMsg.TASK_PAUSE_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
     return BaseResponse(message=message)
@@ -149,7 +153,7 @@ async def pause_download_task(task_id: str) -> BaseResponse:
 @router.post("/task/{task_id}/resume", response_model=BaseResponse, summary="恢复任务")
 async def resume_download_task(task_id: str) -> BaseResponse:
     """恢复下载任务"""
-    success, message = await DownloadService.resume_task(task_id)
+    success, message = await asyncio.to_thread(DownloadService.resume_task, task_id)
     if not success:
         raise APIException(ErrMsg.TASK_RESUME_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
     return BaseResponse(message=message)
@@ -158,7 +162,7 @@ async def resume_download_task(task_id: str) -> BaseResponse:
 @router.post("/task/{task_id}/cancel", response_model=BaseResponse, summary="取消任务")
 async def cancel_download_task(task_id: str) -> BaseResponse:
     """取消下载任务"""
-    success, message = DownloadService.cancel_task(task_id)
+    success, message = await asyncio.to_thread(DownloadService.cancel_task, task_id)
     if not success:
         raise APIException(ErrMsg.TASK_CANCEL_ERROR if "不存在" not in message else ErrMsg.NOT_FOUND, data={"detail": message})
     return BaseResponse(message=message)
@@ -167,7 +171,7 @@ async def cancel_download_task(task_id: str) -> BaseResponse:
 @router.delete("/task/{task_id}", response_model=BaseResponse, summary="删除任务")
 async def delete_download_task(task_id: str) -> BaseResponse:
     """删除下载任务"""
-    if not DownloadService.delete_task(task_id):
+    if not await asyncio.to_thread(DownloadService.delete_task, task_id):
         raise APIException(ErrMsg.TASK_NOT_FOUND)
     return BaseResponse(message="任务已删除")
 
@@ -179,7 +183,9 @@ async def get_download_history(
 ) -> TaskListResponse:
     """获取下载历史记录"""
     try:
-        completed_tasks, total = DownloadService.get_download_history(page, page_size)
+        completed_tasks, total = await asyncio.to_thread(
+            DownloadService.get_download_history, page, page_size
+        )
         return TaskListResponse(
             total=total,
             page=page,
@@ -195,7 +201,8 @@ async def get_queue_status() -> BaseResponse:
     """获取下载队列状态"""
     try:
         return BaseResponse(
-            message=ErrMsg.OK.msg, data=DownloadService.get_queue_status()
+            message=ErrMsg.OK.msg,
+            data=await asyncio.to_thread(DownloadService.get_queue_status),
         )
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
