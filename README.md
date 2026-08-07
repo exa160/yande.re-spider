@@ -198,7 +198,8 @@ feature/<name3> ──┘
 - [ ] 本地图片空间压缩（HEIF/AVIF 格式自动转换）
 
 ### 远期计划
-- [ ] Electron 桌面客户端
+- [x] **Windows 桌面客户端**（NSIS 安装器，已规划；详见 [Windows 客户端设计文档](docs/superpowers/specs/2026-08-05-windows-client-design.md)）
+- [ ] 跨平台桌面客户端（macOS / Linux，二期）
 - [ ] 移动端适配优化
 
 ### 已知问题

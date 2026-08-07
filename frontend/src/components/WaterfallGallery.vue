@@ -169,6 +169,13 @@ watch(() => props.isLoadingMore, (newVal) => {
   }
 })
 
+// 省流模式切换：关闭时开始加载队列中的可见图片
+watch(() => props.saveDataMode, (newVal) => {
+  if (!newVal) {
+    nextTick(() => processQueue())
+  }
+})
+
 const loadingMore = ref(false)
 const failedImages = ref(new Set())
 const loadingImages = ref(new Set())
@@ -176,6 +183,11 @@ const loadedImages = ref(new Set())
 const retryingImages = ref(new Set())
 const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
+
+// 懒加载并发控制：限制同时加载的预览图数量，FIFO 顺序
+const MAX_PREVIEW_CONCURRENT = 10
+const srcEnabled = ref(new Set())       // 已启用 src 的图片 ID（门控：只有在此集合中 getPreviewUrl 才返回真实 URL）
+const loadingQueue = ref([])            // FIFO 等待队列（图片 ID 数组，先进先出）
 
 // 长按选择相关
 const touchFocusedId = ref(null)
@@ -303,19 +315,22 @@ watch(() => props.images.length, () => {
     loadedImages.value.clear()
     retryingImages.value.clear()
     retrySuccessImages.value.clear()
+    srcEnabled.value.clear()
+    loadingQueue.value = []
     return
   }
   const existingIds = new Set(displayedImages.value.map(img => img.id))
   const newItems = newImages.filter(img => !existingIds.has(img.id))
   if (newItems.length > 0) {
     displayedImages.value = [...displayedImages.value, ...newItems]
-    // 新图片加入后标记为正在加载（由 el-image 的 @load/@error 事件驱动退出）
-    newItems.forEach(img => {
-      loadingImages.value.add(img.id)
-    })
+    // 不在此处入队：由 IntersectionObserver 在图片进入视口时加入加载队列
+    // 这样只有视口内的图片才会被加载，真正实现懒加载
   }
-  // 新图片加入后，重新观察
-  nextTick(() => observeNewImages())
+  // 新图片加入后，重新观察并处理队列
+  nextTick(() => {
+    observeNewImages()
+    processQueue()
+  })
 }, { immediate: true })
 
 // 懒加载：观察图片是否进入可视区
@@ -327,6 +342,11 @@ const observeNewImages = () => {
           const imageId = parseInt(entry.target.dataset.imageId)
           if (entry.isIntersecting) {
             visibleImages.value.add(imageId)
+            // 进入视口 → 加入 FIFO 加载队列（去重）
+            if (!loadedImages.value.has(imageId) && !srcEnabled.value.has(imageId) && !loadingQueue.value.includes(imageId)) {
+              loadingQueue.value.push(imageId)
+              processQueue()
+            }
             // 非省流模式下，图片重新进入可视区时清除失败状态让其自动重试
             // 省流模式下需要用户手动点击重试，所以不清除
             if (!props.saveDataMode) {
@@ -350,6 +370,20 @@ const observeNewImages = () => {
   }
 }
 
+// 按 FIFO 顺序处理加载队列，并发数不超过 MAX_PREVIEW_CONCURRENT
+const processQueue = () => {
+  if (props.saveDataMode) return
+  const currentLoading = loadingImages.value.size
+  const available = MAX_PREVIEW_CONCURRENT - currentLoading
+  if (available <= 0) return
+  const toProcess = Math.min(available, loadingQueue.value.length)
+  for (let i = 0; i < toProcess; i++) {
+    const imageId = loadingQueue.value.shift()
+    srcEnabled.value.add(imageId)
+    loadingImages.value.add(imageId)
+  }
+}
+
 const updateColumnCount = () => {
   if (containerRef.value) {
     const width = containerRef.value.offsetWidth
@@ -363,6 +397,10 @@ const updateColumnCount = () => {
 onMounted(() => {
   updateColumnCount()
   window.addEventListener('resize', updateColumnCount)
+  nextTick(() => {
+    observeNewImages()
+    processQueue()
+  })
 })
 
 const isSelected = (image) => {
@@ -573,6 +611,12 @@ const getRatingType = (rating) => {
 }
 
 const getPreviewUrl = (image) => {
+  // 已加载的图片始终显示，不受省流模式影响
+  const isLoaded = loadedImages.value.has(image.id)
+  // 未加载的图片：省流模式不加载，非省流模式下由 srcEnabled 门控
+  if (!isLoaded && (props.saveDataMode || !srcEnabled.value.has(image.id))) {
+    return ''
+  }
   const retryTs = retrySuccessImages.value.get(image.id)
   const tsSuffix = retryTs ? `?ts=${retryTs}` : ''
 
@@ -589,6 +633,7 @@ const handleImageError = (image) => {
   loadingImages.value.delete(image.id)
   failedImages.value.add(image.id)
   loadedImages.value.delete(image.id)
+  processQueue()  // 释放一个并发槽位，处理队列中下一个
 }
 
 const handleImageLoad = (image) => {
@@ -596,6 +641,7 @@ const handleImageLoad = (image) => {
   loadedImages.value.add(image.id)
   failedImages.value.delete(image.id)
   retrySuccessImages.value.delete(image.id)
+  processQueue()  // 释放一个并发槽位，处理队列中下一个
 }
 
 const shouldShowRetry = (image) => {
@@ -609,6 +655,7 @@ const handleImageRetry = async (image, event) => {
 
   retryingImages.value.add(image.id)
   failedImages.value.delete(image.id)
+  srcEnabled.value.add(image.id)  // 重试时直接启用 src（绕过队列）
   loadingImages.value.add(image.id)
 
   let apiSuccess = false

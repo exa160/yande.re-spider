@@ -202,3 +202,21 @@ def calculate_local_stats(self) -> int:
     # 退出 with 时才真正写入
     return count
 ```
+
+## DAO 单例的 ContextVar 依赖（v1.1.10+）
+
+`favorite_dao = FavoriteDao()` 等单例的 `.session` 属性依赖 `RequestSessionMiddleware` 设置的 ContextVar。
+
+- **请求内**（HTTP 路由 → service → 单例方法）：正常，自动获取请求 session。
+- **请求外**（后台调度 / CLI / 单元测试）：**必须**用 `with DAO() as dao:` 显式上下文：
+
+```python
+# ✓ 正确
+with FavoriteDao() as dao:
+    folder = dao.get_by_id(folder_id)
+
+# ✗ 错误（v1.1.10 起立即抛 RuntimeError）
+folder = favorite_dao.get_by_id(folder_id)
+```
+
+违反时立即抛 `RuntimeError: RequestSessionMiddleware not active`，不再静默创建未托管 Session。

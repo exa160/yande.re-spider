@@ -313,6 +313,29 @@
 
 ## 8. 桌面客户端开发 (P1)
 
+<!-- §8 顶部加注（2026-08-05）：原 Electron 方案已升级为 PyWebView + PyInstaller + NSIS Windows 客户端；详细任务拆分见下方实施文档 -->
+
+> **规划完成于 2026-08-05**，详见实施文档
+> [docs/superpowers/specs/2026-08-05-windows-client-design.md](../superpowers/specs/2026-08-05-windows-client-design.md)。
+>
+> 实施将按 8 个原子任务逐步合入 `feature/desktop-client` 分支 → MR 到 `next_dev`。
+>
+> **首期非范围**：macOS/Linux、自动更新、代码签名。
+
+### 8.0 验收清单（首期）
+
+- [ ] Task 1 路径抽象层（合并入 `next_dev` 后勾选）
+- [ ] Task 2 端口参数化（合并入 `next_dev` 后勾选）
+- [ ] Task 3 frozen frontend dist 适配
+- [ ] Task 4 配置 bootstrap + 占位符
+- [ ] Task 5 下载器预分配降级
+- [ ] Task 6 PyWebView 启动器
+- [ ] Task 7 PyInstaller 构建脚本
+- [ ] Task 8 NSIS 安装器
+- [ ] Task 9 文档同步 + 凭据红线（**强制**）
+
+<!-- §8.1/§8.2/§8.3 旧内容保留作为参考，但顶部加注 "详见上方实施文档" -->
+
 ### 8.1 Electron项目配置
 **描述**: 配置Electron项目，集成Web界面
 **输入**: Vue.js构建产物

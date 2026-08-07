@@ -134,13 +134,18 @@ yande.re-spider-next 是一个基于 yande.re 网站 API 的图片批量下载�
 **优先级**: P1
 **描述**: 系统应当提供独立的桌面客户端，支持 Windows、macOS、Linux 操作系统。
 
-**验收标准**:
-- [ ] 支持 Windows 10 及以上版本
-- [ ] 支持 macOS 10.15 及以上版本
-- [ ] 支持主流 Linux 发行版（Ubuntu、Fedora、Debian）
-- [ ] 桌面客户端可以独立运行，无需浏览器
-- [ ] 支持系统托盘最小化
-- [ ] 支持开机自启动（可选）
+**实现状态**：✅ 规划完成，进入实施阶段（Windows NSIS 安装器）。
+详见实施文档 [docs/superpowers/specs/2026-08-05-windows-client-design.md](../superpowers/specs/2026-08-05-windows-client-design.md)。
+
+**首期范围**：
+- [x] Windows 10/11 单文件安装器
+- [x] SQLite 零配置
+- [x] 系统托盘常驻（pystray）
+- [x] 下载目录可配置（NSIS 向导）
+- [x] 配置文件独立于安装目录（%APPDATA%）
+- [ ] macOS / Linux（**不在首期范围**）
+- [ ] 自动更新（**不在首期范围**，手动下载）
+- [ ] 代码签名（**不在首期范围**，首期可不签名）
 
 #### 需求 2.2.3: 移动端界面支持
 **优先级**: P2

@@ -19,6 +19,7 @@ from src.models.response.gallery import (
     ImageDetailResponse,
 )
 from src.services.gallery import GalleryService
+from src.infrastructure.image_cache import _preview_executor
 
 router = APIRouter()
 
@@ -93,7 +94,7 @@ async def get_preview_image(image_id: int):
 async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
     """从原图生成预览图"""
     preview_path = await asyncio.get_event_loop().run_in_executor(
-        None, GalleryService.generate_preview, image_id, file_ext
+        _preview_executor, GalleryService.generate_preview, image_id, file_ext
     )
     if preview_path:
         return FileResponse(str(preview_path))
@@ -104,7 +105,7 @@ async def generate_preview_from_original(image_id: int, file_ext: str = "jpg"):
 async def get_preview_for_local(image_id: int):
     """本地模式获取预览图 - 优先从原图生成，其次从远程下载"""
     preview_path = await asyncio.get_event_loop().run_in_executor(
-        None, GalleryService.get_preview_for_local, image_id
+        _preview_executor, GalleryService.get_preview_for_local, image_id
     )
     if preview_path:
         return FileResponse(str(preview_path))
@@ -115,7 +116,7 @@ async def get_preview_for_local(image_id: int):
 async def fetch_and_cache_preview(image_id: int):
     """从远程获取并缓存预览图"""
     preview_path = await asyncio.get_event_loop().run_in_executor(
-        None, GalleryService.fetch_and_cache_preview, image_id
+        _preview_executor, GalleryService.fetch_and_cache_preview, image_id
     )
     if preview_path:
         return FileResponse(str(preview_path))

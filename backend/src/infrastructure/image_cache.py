@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from random import uniform
 import time
@@ -10,6 +11,10 @@ from loguru import logger
 
 from src.common import config, path_constant
 from src.common.utils import configure_proxy_session
+
+# 图片下载专用线程池，与默认 asyncio executor 隔离
+# 避免慢 HTTP（preview fetch）饿死快 DB 查询（download/tasks、tag_cache）
+_preview_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="preview")
 
 
 def _with_retry_write(method):
@@ -25,7 +30,10 @@ def _with_retry_write(method):
 
         for attempt in range(config.yande_api.retry):
             try:
-                resp = self._session.get(url)
+                resp = self._session.get(
+                    url,
+                    timeout=config.yande_api.timeout,
+                )
                 resp.raise_for_status()
                 dest_path.write_bytes(resp.content)
                 return dest_path
@@ -47,7 +55,6 @@ class ImageCache:
         self.ORIGINALS_DIR = path_constant.originals_dir
 
         self._session = configure_proxy_session(requests.Session())
-        self._session.timeout = config.yande_api.timeout
 
     def _ensure_dirs(self):
         self.PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)

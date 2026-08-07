@@ -27,17 +27,59 @@ class DatabaseTableNameConstant(ConstantModel):
 
 # ==================== 路径配置 ====================
 class PathConstant(ConstantModel):
-    base_dir: Path = Path(__file__).parent.parent.parent
+    # 客户端感知：动态计算
+    install_dir: Path = Path(__file__).parent.parent.parent
+    user_config_dir: Path = Path.home() / ".config" / "yande-spider"
 
-    download_dir: Path = base_dir / "downloads"
+    # 数据/下载/日志：跟随安装目录
+    download_dir: Path = install_dir / "downloads"
     previews_dir: Path = download_dir / "previews"
     originals_dir: Path = download_dir / "originals"
-    config_dir: Path = base_dir / "config"
-    config_file: Path = config_dir / "config.yaml"
-    data_dir: Path = base_dir / "data"
+    data_dir: Path = install_dir / "data"
     sqlite_file: Path = data_dir / "yande_data.db"
-    log_dir: Path = base_dir / "logs"
-    frontend_dist: Path = base_dir / "frontend" / "dist"
+    log_dir: Path = install_dir / "logs"
+
+    # 配置：用户目录
+    config_dir: Path = user_config_dir / "config"
+    config_file: Path = config_dir / "config.yaml"
+
+    # 端口文件：与 config 同层
+    port_file: Path = user_config_dir / "port"
+
+    # 前端 dist：frozen 时在 _internal/frontend/dist，dev 时在仓库 frontend/dist
+    frontend_dist: Path = install_dir / "frontend" / "dist"
+
+
+# 暴露 base_dir 作为类属性，供 path_resolver.resolve_install_dir() 和测试打补丁使用
+# Pydantic v2 把字段存到 model_fields，不会自动暴露为类属性
+PathConstant.base_dir = Path(__file__).parent.parent.parent
+
+
+# 冻结后用解析函数覆盖（避免 pydantic frozen 限制，使用 module-level 单例）
+def _resolve_paths() -> None:
+    """在模块导入后被 init_app 调用，把动态解析值写入全局单例。"""
+    from src.common.path_resolver import resolve_install_dir, resolve_user_config_dir
+
+    install = resolve_install_dir()
+    user_cfg = resolve_user_config_dir()
+    global path_constant
+    path_constant = PathConstant(
+        install_dir=install,
+        user_config_dir=user_cfg,
+        download_dir=install / "downloads",
+        previews_dir=install / "downloads" / "previews",
+        originals_dir=install / "downloads" / "originals",
+        data_dir=install / "data",
+        sqlite_file=install / "data" / "yande_data.db",
+        log_dir=install / "logs",
+        config_dir=user_cfg / "config",
+        config_file=user_cfg / "config" / "config.yaml",
+        port_file=user_cfg / "port",
+        frontend_dist=install / "frontend" / "dist",
+    )
+
+
+path_constant = PathConstant()  # 默认值；init_app 时会被覆盖
 
 
 class YandeAPIConstant(ConstantModel):

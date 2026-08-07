@@ -345,38 +345,39 @@ html, body {
   background-color: var(--bg-tertiary);
 }
 
-/* el-tag 暗色适配 — status/type 标签在暗色下改深底浅字 */
-.dark-mode .el-tag {
+/* el-tag 暗色适配 — status/type 标签在暗色下改深底浅字
+   注：:not(.detail-tag) 排除详情面板里的 tag（floating 设计，明暗模式统一样式） */
+.dark-mode .el-tag:not(.detail-tag) {
   background-color: var(--bg-tertiary);
   border-color: var(--border-color);
   color: var(--text-primary);
 }
 
-.dark-mode .el-tag.el-tag--primary {
+.dark-mode .el-tag.el-tag--primary:not(.detail-tag) {
   background-color: #1a3a6b;
   border-color: #2563eb;
   color: #93c5fd;
 }
 
-.dark-mode .el-tag.el-tag--success {
+.dark-mode .el-tag.el-tag--success:not(.detail-tag) {
   background-color: #1a3d2e;
   border-color: #16a34a;
   color: #86efac;
 }
 
-.dark-mode .el-tag.el-tag--warning {
+.dark-mode .el-tag.el-tag--warning:not(.detail-tag) {
   background-color: #3d2e1a;
   border-color: #ca8a04;
   color: #fde68a;
 }
 
-.dark-mode .el-tag.el-tag--danger {
+.dark-mode .el-tag.el-tag--danger:not(.detail-tag) {
   background-color: #3d1a1a;
   border-color: #dc2626;
   color: #fca5a5;
 }
 
-.dark-mode .el-tag.el-tag--info {
+.dark-mode .el-tag.el-tag--info:not(.detail-tag) {
   background-color: #2d2d3d;
   border-color: #6b7280;
   color: #d1d5db;
