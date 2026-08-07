@@ -93,8 +93,12 @@
 
 ## 🔐 密钥与敏感信息管理（强制红线）
 
-> **运行时配置文件是 `backend/config/config.yaml`**（由 `PathConstant.config_file` 决定，所有读写都走这里）。
-> 项目根目录的 `config/` 是历史遗留、不被代码读取，本节的规则**不再针对它**。
+> **运行时配置文件路径**（由 `PathConstant.config_file` 经 `path_resolver.resolve_user_config_dir()` 解析）：
+> - POSIX 开发 / 裸机部署：`~/.config/yande-spider/config/config.yaml`
+> - Windows 客户端：`%APPDATA%\yande-spider\config\config.yaml`
+> - Docker：通过 `YANDE_USER_CONFIG_DIR` 环境变量显式指定（`docker-compose.yml` 默认设为 `/app/config`，对齐 `./config:/app/config` 挂载点）
+>
+> 仓库内 tracked 的 `backend/config/config.yaml` 和 `config/config.yaml` **均不被运行时读取**，仅作 PyInstaller frozen 资源兜底 placeholder。详见下方「📦 部署模式与配置路径」一节。
 
 ### 规则总览
 
@@ -238,4 +242,71 @@ Dev 流程**只合入 `next_dev`**，**不打 tag、不发 GH Release**。
 
 ---
 
-*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节*
+## 📦 部署模式与配置路径
+
+> 62f162d（v1.1.10）将 `PathConstant.config_file` 从 `install_dir/config/config.yaml` 拆到了 `user_config_dir/config/config.yaml`，以适配 PyInstaller Windows 客户端跨升级保留配置。但 **Docker / 裸机 server 部署的期望路径仍在 `install_dir`（容器内 `/app`，裸机仓库根）下**。
+>
+> 为让两种部署模式互不干扰，引入 `YANDE_USER_CONFIG_DIR` 环境变量作为显式覆盖入口。
+
+### 三种部署模式的路径解析
+
+| 部署模式 | `install_dir` | `user_config_dir`（默认） | 覆盖方式 |
+|---------|----------------|--------------------------|---------|
+| **开发模式**（`uvicorn service:main_app --reload`） | 仓库根 | `~/.config/yande-spider`（POSIX）/ `%APPDATA%\yande-spider`（Windows） | 无需覆盖 |
+| **PyInstaller 客户端**（Windows NSIS 安装器） | `sys._MEIPASS` 父目录 | `%APPDATA%\yande-spider` | 无需覆盖 |
+| **Docker 服务**（`docker compose up`） | `/app` | **被 `YANDE_USER_CONFIG_DIR=/app/config` 覆盖** | 见下方 |
+
+**关键区别**：
+
+- 下载/数据/日志 路径跟随 `install_dir`（`downloads/`、`data/`、`logs/`），**始终在 install_dir 下**，Docker 与 dev 模式天然一致。
+- `config.yaml`、`port`（PyInstaller launcher 用）跟随 `user_config_dir`，**必须显式覆盖才能与 Docker volume 挂载对齐**。
+
+### Docker 部署的正确配置
+
+```yaml
+# docker-compose.yml（关键片段）
+services:
+  picture-manager:
+    volumes:
+      - ./config:/app/config        # 宿主机 ./config/config.yaml 映射到容器 /app/config
+    environment:
+      - YANDE_USER_CONFIG_DIR=/app/config   # 让 path_resolver 把 user_config_dir 解析为 /app/config
+```
+
+**不设 `YANDE_USER_CONFIG_DIR` 的后果**：
+
+- 容器内 `Path.home()` = `/root`，`resolve_user_config_dir()` 返回 `/root/.config/yande-spider`
+- `config_bootstrap` 会在 `/root/.config/yande-spider/config/config.yaml` 写一个 placeholder
+- 宿主机 `./config/config.yaml` 永远不被读取 → UI 配置的密码/代理全部丢失，容器重启被覆盖
+- 启动 banner 的 `Config:` 行会显示 `/root/.config/yande-spider/config/config.yaml`（一眼能看出来错配）
+
+### 新增/修改路径相关的代码规范
+
+| 操作 | 规范 |
+|------|------|
+| 读取运行时配置路径 | 通过 `path_constant.config_file`，**不要**直接写 `Path('config.yaml')` 或 `Path('~/.config/...')` |
+| 跨部署兼容 | 让 path 在 `resolve_user_config_dir()` 解析，不绕过 |
+| 自定义部署路径 | 通过 `YANDE_USER_CONFIG_DIR` 环境变量注入，**不要**改代码硬编码 |
+| 加新路径 | 在 `PathConstant` 加字段，并在 `_resolve_paths()` 里同步注入 install_dir/user_cfg 派生路径 |
+| 路径相关测试 | `backend/tests/test_path_resolver.py` 加 case，必须包含 POSIX/Windows/环境变量覆盖三分支 |
+
+### 启动 banner 中的 `Config:` 行
+
+每次启动会在 logger banner 中打印 `Config: <config_file 绝对路径>`，便于第一时间确认路径解析正确：
+
+```
+==================================================================
+  Yande.re Local Picture Manager v1.1.10 (git-ee71d04)
+  Python 3.12.3
+------------------------------------------------------------------
+  Data dir   : /app/data
+  Download   : /app/downloads
+  Log dir    : /app/logs
+  Config     : /app/config/config.yaml   ← Docker 应为这一行
+  Docs       : /docs  |  ReDoc: /redoc
+==================================================================
+```
+
+---
+
+*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节；v1.1.10 拆分 `config_file` 到 `user_config_dir` 后增加部署模式与配置路径章节*

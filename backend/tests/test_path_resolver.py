@@ -58,3 +58,24 @@ def test_resolve_user_config_dir_posix(tmp_path):
         with patch.dict(os.environ, {"HOME": str(fake_home)}):
             result = resolve_user_config_dir()
             assert result == fake_home / ".config" / "yande-spider"
+
+
+def test_resolve_user_config_dir_env_override(tmp_path):
+    """YANDE_USER_CONFIG_DIR 环境变量优先于 Windows/POSIX 默认分支。"""
+    override = tmp_path / "custom_config"
+    with patch("os.name", "posix"):
+        with patch.dict(os.environ, {"YANDE_USER_CONFIG_DIR": str(override)}):
+            result = resolve_user_config_dir()
+            assert result == override
+
+
+def test_resolve_user_config_dir_env_override_beats_windows(tmp_path):
+    """环境变量覆盖在 os.name='nt' 下同样生效（不会回退到 APPDATA）。"""
+    override = tmp_path / "docker_config"
+    with patch("os.name", "nt"):
+        with patch.dict(
+            os.environ,
+            {"YANDE_USER_CONFIG_DIR": str(override), "APPDATA": str(tmp_path / "appdata")},
+        ):
+            result = resolve_user_config_dir()
+            assert result == override
