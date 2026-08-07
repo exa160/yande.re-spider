@@ -54,7 +54,7 @@ async def refresh_artists(request: RefreshArtistsRequest) -> BaseResponse:
 async def get_tags_stats() -> BaseResponse:
     """获取本地标签缓存的统计信息"""
     try:
-        stats = TagCacheService.get_tags_stats()
+        stats = await asyncio.to_thread(TagCacheService.get_tags_stats)
         return BaseResponse(message=ErrMsg.OK.msg, data=stats)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
@@ -64,7 +64,7 @@ async def get_tags_stats() -> BaseResponse:
 async def get_artists_stats() -> BaseResponse:
     """获取本地艺术家缓存的统计信息"""
     try:
-        stats = TagCacheService.get_artists_stats()
+        stats = await asyncio.to_thread(TagCacheService.get_artists_stats)
         return BaseResponse(message=ErrMsg.OK.msg, data=stats)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
@@ -74,7 +74,7 @@ async def get_artists_stats() -> BaseResponse:
 async def search_tags(keyword: str, limit: int = 20) -> BaseResponse:
     """从本地缓存搜索标签"""
     try:
-        tags = TagCacheService.search_tags(keyword, limit)
+        tags = await asyncio.to_thread(TagCacheService.search_tags, keyword, limit)
         return BaseResponse(message=ErrMsg.OK.msg, data=tags)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
@@ -84,7 +84,7 @@ async def search_tags(keyword: str, limit: int = 20) -> BaseResponse:
 async def search_artists(keyword: str, limit: int = 20) -> BaseResponse:
     """从本地缓存搜索艺术家"""
     try:
-        artists = TagCacheService.search_artists(keyword, limit)
+        artists = await asyncio.to_thread(TagCacheService.search_artists, keyword, limit)
         return BaseResponse(message=ErrMsg.OK.msg, data=artists)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
@@ -98,7 +98,7 @@ async def search_artists(keyword: str, limit: int = 20) -> BaseResponse:
 async def calculate_local_stats() -> BaseResponse:
     """从本地已下载图片计算每个标签的使用次数并存储到 tag_local_stats 表"""
     try:
-        stats_updated = TagCacheService.calculate_local_stats()
+        stats_updated = await asyncio.to_thread(TagCacheService.calculate_local_stats)
         return BaseResponse(
             message="计算完成", data={"success": True, "tags_updated": stats_updated}
         )
@@ -119,9 +119,10 @@ async def get_tags_with_stats(
 ) -> BaseResponse:
     """获取标签列表，包含 yande.re 远程数量和本地使用数量"""
     try:
-        tags, total = TagCacheService.get_tags_with_stats(
+        tags, total = await asyncio.to_thread(
+            TagCacheService.get_tags_with_stats,
             tag_type=type,
-            search=search,
+            search_keyword=search,
             limit=limit,
             has_local_only=has_local_only,
         )
@@ -137,7 +138,7 @@ async def get_tags_by_names(names: str) -> BaseResponse:
     """根据逗号分隔的 tag 名称字符串返回类型信息"""
     try:
         name_list = [n.strip() for n in names.split(",") if n.strip()]
-        result = TagCacheService.get_tags_by_names(name_list)
+        result = await asyncio.to_thread(TagCacheService.get_tags_by_names, name_list)
         return BaseResponse(message=ErrMsg.OK.msg, data=result)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
