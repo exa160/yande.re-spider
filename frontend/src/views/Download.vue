@@ -528,9 +528,12 @@ const toggleError = (taskId) => {
   errorExpanded.value[taskId] = !errorExpanded.value[taskId]
 }
 
-onMounted(async () => {
-  await Promise.all([loadTasks(), loadCounts()])
+onMounted(() => {
+  // 同步启动轮询，避免 await 期间用户关闭 dialog 导致 unmount 在 startPolling 之前触发，
+  // 留下无人清理的 setInterval 每 2s 持续请求后端。
   if (activeTab.value === 'active' || activeTab.value === 'all') startPolling()
+  loadTasks()
+  loadCounts()
 })
 
 onUnmounted(() => {
