@@ -24,7 +24,7 @@
 | 抛出错误 | `raise APIException(ErrMsg.XXX, e=e)` |
 | 新增 DAO | 继承 `BaseDAO`，使用 `self.session` 操作数据库 |
 | 配置常量 | 在 `common/constant.py` 中定义 `PathConstant`、`ErrMsg` 等 |
-| **升级版本** | **改 3 处 version 源**（`package.json` + `pyproject.toml` + `AppConfig.version`）→ commit → tag → `gh release create` → `gh issue create` → `gh pr create --base next`（详见 [docs/release.md](docs/release.md)）|
+| **升级版本 / 发版** | **3 条核心流程线**：dev 合入（feature → next_dev）/ 正式 release（feature → next_dev + version bump → tag/GH Release → next）/ dev 多次合入后的 release，详见 [docs/release.md](docs/release.md) |
 
 ---
 
@@ -42,7 +42,7 @@
 | [docs/constants.md](docs/constants.md) | PathConstant、TaskStatus 等常量定义 |
 | [docs/design.md](docs/design.md) | 架构设计详解 |
 | [docs/tasks.md](docs/tasks.md) | 开发任务追踪 |
-| [docs/release.md](docs/release.md) | **版本升级流程**（三处 version 源 + 启动 banner + Vite 注入 + GH Release + Issue + PR）|
+| [docs/release.md](docs/release.md) | **版本与发布流程**（3 条核心流程线 + 分支保护红线 + 主动 version bump 检查） |
 
 ---
 
@@ -164,84 +164,6 @@ database:
 
 ---
 
-## 🚀 Dev 发布流程
-
-> **开发集成流程**：feature 分支 → MR → `next_dev`（集成验证层）。
-> 完整 release（MR → `next` + tag + GH Release）走另一条独立流程，详见 [docs/release.md](docs/release.md)。
-
-### 1. 准备分支
-
-- **不要直接 push 到 `next` / `next_dev`**
-- **当前分支非 next/next_dev**：可直接使用现有的固定 dev 分支（如 `feature`）
-- **当前分支是 next/next_dev**：必须新建分支，命名建议：
-  - `feature/<name>`（注意：现有 `feature` 分支会冲突，建议用 `feature-<name>` 或 `feat/<name>`）
-  - 或 `feature-segments-responsive` 等带连字符的命名
-
-```bash
-git checkout -b feature-segments-responsive origin/next
-```
-
-### 2. 改代码 + bump version
-
-按需修改代码。如果改动包含用户可见功能 / 行为变化，**同步 bump version**（3 处）：
-
-| 文件 | 字段 |
-|------|------|
-| `frontend/package.json` | `"version"` |
-| `pyproject.toml` | `version` |
-| `backend/src/__init__.py` | `AppConfig.version` |
-
-```bash
-# 推送前必查：diff 不含真密钥
-git diff origin/<base-branch>..HEAD \
-  | grep -iE '(password|secret|token|api[_-]?key)\s*[:=]\s*["\047][^"\047]+["\047]' \
-  | grep -vE '""|null|<YOUR_|<CHANGE_'
-# ✅ 无输出 → 可以推送
-```
-
-### 3. Commit + push
-
-```bash
-git commit -m "feat(<scope>): <description>"
-git push origin <branch>
-```
-
-### 4. 提 issue + MR
-
-```bash
-# 1. 创建 issue（关联后续 MR）
-gh issue create \
-  --title "[vX.Y.Z] <一句话标题>" \
-  --label "enhancement|bug" \
-  --body "## 背景 ... ## 修复 ... ## 验证 ..."
-
-# 2. 创建 MR，body 中用 "Closes #N" 关联 issue
-gh pr create \
-  --base next_dev \
-  --head <branch> \
-  --title "<title>" \
-  --body "Closes #N ..."
-```
-
-### 5. 自主审批 + 合入
-
-> 当用户授权自主审批时，使用 `--admin` 绕过 GitHub 禁止作者自批的限制，并在 review comment 中留下审批理由。
-
-```bash
-# 写一条 review comment（含审批理由）
-gh pr comment <N> --body "Reviewed: ..."
-
-# admin 合并
-gh pr merge <N> --admin --squash --delete-branch=false
-```
-
-### 6. 不走完整 release
-
-Dev 流程**只合入 `next_dev`**，**不打 tag、不发 GH Release**。
-如需发布到 `next` + tag + release，**单独走完整 release 流程**（`docs/release.md` §5）。
-
----
-
 ## 📦 部署模式与配置路径
 
 > 62f162d（v1.1.10）将 `PathConstant.config_file` 从 `install_dir/config/config.yaml` 拆到了 `user_config_dir/config/config.yaml`，以适配 PyInstaller Windows 客户端跨升级保留配置。但 **Docker / 裸机 server 部署的期望路径仍在 `install_dir`（容器内 `/app`，裸机仓库根）下**。
@@ -311,4 +233,4 @@ services:
 
 ---
 
-*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节；v1.1.10 拆分 `config_file` 到 `user_config_dir` 后增加部署模式与配置路径章节*
+*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节；v1.1.10 拆分 `config_file` 到 `user_config_dir` 后增加部署模式与配置路径章节；v1.1.10 release 复盘：Dev 发布流程迁入 docs/release.md，3 条核心流程线分明，禁止直接 push 到 next/next_dev，未经用户审核禁止 commit/push*
