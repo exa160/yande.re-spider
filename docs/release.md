@@ -1,175 +1,145 @@
-# 版本升级流程
+# 版本与发布流程 (Release Process)
 
-> **TL;DR** —— 改 `package.json` + `pyproject.toml` + `AppConfig.version` 三处 → commit → push → 打 tag → gh release create → gh issue create + gh pr create
+> **TL;DR —— 核心发布包含 3 条流程线**：
+> 1. **dev 合入流程**（日常开发）：`feature` → `next_dev`。
+> 2. **正式 release 流程**（单次功能直接发版）：`feature` → `next_dev` + `version bump` → `tag/GH Release` → `next`。
+> 3. **dev 多次合入后的 release 流程**（累积发版）：`next_dev` 已累积多次更新，直接 `version bump` → `tag/GH Release` → `next`。
 
-本文档基于 v1.1.4 release 实战经验整理。如果用户说"提个 PR 走正常流程"或"升级版本"，**直接按本文档走**。
-
----
-
-## 1. 三个 version 源（必须同步）
-
-| 文件 | 字段 | 说明 |
-|---|---|---|
-| `frontend/package.json` | `"version"` | npm 语义版本，**Vite build 时通过 `define` 注入到 `__APP_VERSION__`**（见 [vite.config.js](../frontend/vite.config.js)）|
-| `pyproject.toml` | `version` | PEP 621 规范，**uv/pip 用的 source of truth** |
-| `backend/src/__init__.py` | `AppConfig.version` | FastAPI 应用版本，**自动同步到 OpenAPI `info.version`** + 启动 banner |
-
-**坑**：v1.1.0 漏改 `pyproject.toml`（一直 1.0.0），v1.1.0-v1.1.3 期间 `AppConfig.version` 和 `package.json` 一直 1.1.0。**v1.1.4 才统一对齐**。**任何 release 必须三处都改**。
+本文档基于实战经验与最新的 GitHub Action 自动化构建策略整理。
 
 ---
 
-## 2. 后端启动 banner（v1.1.4+）
+## 0. 🔒 分支保护与操作红线
 
-`init_app()` 末尾调用 `_print_startup_banner(app_config)`，打印：
+❌ **非用户明确同意的情况下，禁止任何人（包含 LLM Agent）直接 push 代码到 `next_dev` 和 `next` 分支**。
 
-```
-==================================================================
-  Yande.re Local Picture Manager v1.1.4 (git-2fd53c8)
-  Python 3.12.3
-------------------------------------------------------------------
-  Data dir   : /path/to/data
-  Download   : /path/to/downloads
-  Log dir    : /path/to/logs
-  Docs       : /docs  |  ReDoc: /redoc
-==================================================================
-```
+❌ **未经用户审核，不能直接 commit push 代码**（避免无效 commit 导致 commit 反复修改）。
 
-- `git SHA` 来自 `git rev-parse --short HEAD`，**2 秒超时**，git 不可用 fallback `unknown`
-- banner 放在 `init_app()` 末尾，**reload 模式会重复打印**（每次 reload 重新执行 `init_app`），但**单次进程启动只一次**
-- 这意味着 docker 启动后**第一时间**就能看到 `v1.1.4`，跟 `/openapi.json` 的 `info.version` 一致
+所有对受保护分支的更改，默认必须通过新建开发分支并提交 PR/MR 的方式进行。如需使用 `--admin` 绕过保护直接合并，必须事先得到用户的明确授权，且授权仅对当前单次操作有效。
+
+LLM 工作流约束：
+- 改代码前：先口头描述改动方案，等用户确认
+- 改代码后：先展示 `git diff` 给用户审核，等用户明确说"OK commit" 再 commit
+- commit 后：等用户明确说"OK push" 再 push
 
 ---
 
-## 3. 前端 version 自动注入（v1.1.4+）
+## 1. 流程线一：dev 合入流程
 
-Config.vue 之前硬编码 `Version 1.1.4` —— 跟 npm 升级脱钩。修复：
+**适用场景**：日常功能开发、Bug 修复，仅合入开发环境 (`next_dev`) 供测试，不打 tag，不发版。
 
-**`frontend/vite.config.js`** 顶层：
-```js
-import { readFileSync } from 'fs'
-const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
+### 1.1 准备分支
 
-export default defineConfig({
-  // ...
-  define: {
-    __APP_VERSION__: JSON.stringify(packageJson.version)
-  },
-})
-```
+- **规范**：由最新的 `next_dev` 分支分叉，新建分支（如 `feature-<name>` 或 `feat/<name>`）作为开发分支。注意：现有 `feature` 分支会冲突，必须用连字符命名（如 `feature-release-docs-refactor`）。
+- **第三方/脱节分支的特殊处理 (Cherry Up)**：
+  若前部分的开发并非基于最新的 `next_dev` 分支（例如来自其他第三方开发分支），则必须：
+  1. `git fetch origin next_dev`
+  2. 从最新 `next_dev` 创建新分支：`git checkout -b <new-branch> origin/next_dev`
+  3. 将第三方分支上的最新 commit 提取过来：`git cherry-pick <commit-sha>`
+  4. 解决冲突（如有）后 push 新分支。
 
-**`frontend/src/views/Config.vue`**：
-```vue
-<script setup>
-const appVersion = __APP_VERSION__  // 编译时被替换成 "1.1.4"
-</script>
+### 1.2 主动检查 Version Bump
 
-<template>
-  <div class="about-version">Version {{ appVersion }}</div>
-</template>
-```
-
-**验证**：
-```bash
-cd frontend && npm run build
-grep "__APP_VERSION__" dist/assets/*.js  # 期望 0 匹配（全部被替换）
-grep '"1.1.4"' dist/assets/Config-*.js   # 期望 ≥1 匹配（字面量在 bundle）
-```
-
-**为什么不用 `import.meta.env.VITE_APP_VERSION`**：需要 shell 展开 `$npm_package_version`，**Windows CI 失效**。
-
----
-
-## 4. GH Action 4-tier docker tag 设计
-
-`.github/workflows/docker-build-push.yml` 在 v1.1.4 配齐了 4 套 tag：
-
-| 触发 | 生成 tags | 用途 |
-|---|---|---|
-| `pull_request` (open/update) | `git-<sha>` | PR 临时验证 |
-| `push` 到 `next` 分支（PR merge）| `dev-<sha>` + `dev` | 预发布（测试人员拉取）|
-| `push` semver tag `v*.*.*` | `v<semver>` + `latest` | 正式发布 |
-
-**关键配置**：
-```yaml
-on:
-  pull_request:
-    branches: [ "next" ]
-  push:
-    branches: [ "next" ]      # ← v1.1.4 补的（PR merge 触发必需）
-    tags: [ 'v*.*.*' ]
-```
-
-**⚠️ RC 已知问题**：`v1.2.0-rc.1` tag 推送时 `latest` 仍会被绑定，污染 stable。**留作后续 PR 修**（用 semver `pattern=...rc-prerelease` 排除）。
-
----
-
-## 5. 完整 release 流程
-
-### 5.1 准备 commit
+走完功能开发、准备合入前，**主动检查** version 是否有变更：
 
 ```bash
-# 1. 三处 version 同步
-vim frontend/package.json   # "version": "1.1.5"
-vim pyproject.toml          # version = "1.1.5"
-vim backend/src/__init__.py # version: str = "1.1.5"
+# 对比上次 release 与当前 dev diff
+git log <last-release-tag>..origin/next_dev --oneline
 
-# 2. 验证
+# 检查 3 处 version 与上次 release tag 是否一致
+grep -n '"version"' frontend/package.json
+grep -n '^version' pyproject.toml
+grep -n 'version:' backend/src/__init__.py
+```
+
+判断规则：
+- 如果 3 处 version **与上次 release tag 一致**（说明上次 release 后尚未 bump），且本次改动包含用户可见功能/行为变化 → **必须先 bump version**（见 §4 三处版本源）
+- 如果 3 处 version **已与上次 release tag 不一致**（说明上次 release 后已 bump），无需再 bump
+
+### 1.3 提 PR 与合入
+
+开发与测试完成后，提交并创建 PR 合入 `next_dev`：
+
+```bash
+git push origin <branch>
+gh pr create --base next_dev --head <branch> --title "<title>" --body "Closes #N ..."
+```
+
+*注：经用户授权后，可使用 `gh pr merge <N> --admin --squash` 合入。*
+
+---
+
+## 2. 流程线二：正式 release 流程
+
+**适用场景**：最新代码改动后需要正式发布（流程线一完成后立即发版）。
+
+### 2.1 走完 dev 合入流程
+
+首先按「流程线一」§1.1-§1.3，将本次的代码改动合入到 `next_dev`。
+
+### 2.2 版本号同步 (Version Bump)
+
+按 §1.2 的判断规则再次确认：
+- 如果 3 处 version **已与上次 release tag 不一致**（说明 §1.2 已 bump），跳过本节
+- 如果 3 处 version **仍然一致**，在 `next_dev` 上补做 version bump
+
+修改 3 处 version 源（参考 §4 表格）：
+
+```bash
+# 1. 改 3 处 version
+# frontend/package.json: "version": "X.Y.Z"
+# pyproject.toml: version = "X.Y.Z"
+# backend/src/__init__.py: AppConfig.version = "X.Y.Z"
+
+# 2. 本地验证
 cd frontend && npm run build
-cd ../backend && /path/to/venv/bin/python -c "
-import sys; sys.path.insert(0, '.')
-from src import app_config
-assert app_config.version == '1.1.5', app_config.version
-print('PASS: version =', app_config.version)
-"
-# 后端启动 banner 应输出 v1.1.5
+cd ../backend && /path/to/venv/bin/python -c "from src import app_config; assert app_config.version == 'X.Y.Z'; print('PASS')"
 
-# 3. Commit
-cd ..
+# 3. 提交 bump commit
+git checkout next_dev
+git pull origin next_dev
 git add frontend/package.json pyproject.toml backend/src/__init__.py
-git commit -m "chore(release): bump version to 1.1.5"
+git commit -m "chore(release): bump version to X.Y.Z"
 git push origin next_dev
 ```
 
-### 5.2 打 tag + push
+### 2.3 打 Tag 并推送
 
 ```bash
-# 写 release notes (跟之前 tag message 格式一致)
 cat > /tmp/vX.Y.Z-tag-msg.txt << 'EOF'
 vX.Y.Z - <一句话标题>
 
 Highlights:
 - ...
-
 EOF
 
-# 创建 annotated tag (指向刚 commit)
-git tag -a vX.Y.Z -F /tmp/vX.Y.Z-tag-msg.txt <commit-sha>
+git tag -a vX.Y.Z -F /tmp/vX.Y.Z-tag-msg.txt origin/next_dev
 git push origin vX.Y.Z
 ```
 
-### 5.3 创建 GitHub Release
+### 2.4 创建 GitHub Release & Issue
+
+> **坑**：`gh release create --target + --notes-file` 组合在 GH API 上有 500 错误 bug。必须**先 create 后 edit**。
 
 ```bash
-# 先建空 release (避开 gh release create + --target + --notes-file 的 500 错误)
-gh release create vX.Y.Z --title "vX.Y.Z" 
-
-# 再 edit 加完整 notes
+# 1. 发 Release（notes 简化，引用 issue 编号）
+gh release create vX.Y.Z --title "vX.Y.Z"
 gh release edit vX.Y.Z \
   --title "vX.Y.Z - <一句话标题>" \
-  --notes-file /tmp/vX.Y.Z-tag-msg.txt
-```
+  --notes-file /tmp/vX.Y.Z-release-notes.md
 
-> **坑**：`gh release create --target <sha> --notes-file <file>` 组合在 GitHub API 上**有 500 错误 bug**，**先 create 后 edit** 模式 100% 可靠。
-
-### 5.4 创建 Issue（"按正常流程"）
-
-```bash
+# 2. 记 Issue（详细背景，release notes 引用 issue 编号）
 gh issue create \
   --title "[vX.Y.Z] <一句话标题>" \
   --label "release" \
-  --body "$(cat <<'EOF'
+  --body-file /tmp/vX.Y.Z-issue-body.md
+```
+
+**Issue body 详细模板**（背景/修复/验证/Commits/Tag）：
+
+```markdown
 ## 背景
-<v1.1.0/v1.1.1/v1.1.2/v1.1.3 没解决的痛点，或者 v1.1.X 这次引入的变更>
+<v1.1.X 没解决的痛点，或本次引入的变更>
 
 ## 修复 / 改动
 - 改动 1
@@ -186,75 +156,105 @@ gh issue create \
 | `xxxxxxx` | ... |
 | `xxxxxxx` | ... |
 
-## 文档
-- Spec: docs/superpowers/specs/...
-- Plan: docs/superpowers/plans/...
-
 ## Tag
 `vX.Y.Z` (已 push)
-EOF
-)"
 ```
 
-### 5.5 提 PR（next_dev → next）
+**Release notes 简化模板**（引用 issue 编号）：
+
+```markdown
+# vX.Y.Z - <一句话标题>
+
+完整背景、修复、验证见 Issue #[N]。
+
+## Highlights
+- ...
+```
+
+### 2.5 提 PR (next_dev → next)
 
 ```bash
-# PR body 用 --body-file 避免 shell 转义
-cat > /tmp/pr-body.md << 'EOF'
-## 概述
-<一句话>
-
-## 关联
-- Closes #N (issue 编号)
-
-## 改动文件
-| 文件 | 改动 |
-|---|---|
-| ... | ... |
-
-## Commits
-<commit 列表>
-
-## 验证
-<实证表格>
-
-## 范围说明
-- ✅ 改什么
-- ❌ 不改什么
-EOF
-
 gh pr create \
   --base next \
   --head next_dev \
-  --title "vX.Y.Z: <一句话标题>" \
-  --body-file /tmp/pr-body.md
+  --title "[Release] vX.Y.Z: <一句话标题>" \
+  --body "Release vX.Y.Z. Closes #N"
 ```
 
-### 5.6 等合入后
+合入（仅当用户授权用 `--admin`）：
 
-PR merge 后 GH Action 自动构建 `vX.Y.Z` + `latest` docker 镜像。Issue 自动关闭（`Closes #N`）。
+```bash
+gh pr merge <N> --admin --squash --delete-branch=false
+```
+
+PR merge 后，GitHub Actions 将自动构建并推送 `latest` 镜像。
 
 ---
 
-## 6. 历史参考
+## 3. 流程线三：dev 多次合入后的 release 流程
+
+**适用场景**：用户要求正式 release 时，**检查到无新代码需要 push**（`next_dev` 已累积多次 dev 合入，但用户没新增功能要合入），但用户要求基于当前的 `next_dev` 积累内容直接发版。此时 `next` 分支滞后于 `next_dev`。
+
+**操作步骤**：跳过 §2.1（流程线一），直接从 **§2.2 版本号同步** 开始，但 version bump 判断规则**与上次 release tag 比对**：
+
+1. 在最新 `next_dev` 上检查 3 处 version 与上一个 release tag 的差异：
+
+   ```bash
+   git log <last-release-tag>..origin/next_dev --oneline
+   grep -n '"version"' frontend/package.json
+   ```
+
+2. **判断**：
+   - 如果 3 处 version **与上次 release tag 一致**（说明累积的 dev 合入中无人主动 bump）→ 按 §2.2 提交 bump commit
+   - 如果 3 处 version **已与上次 release tag 不一致**（说明累积的 dev 合入中已有人主动 bump）→ 跳过 bump，直接进入 §2.3 打 tag
+
+3. 按 **§2.3-§2.5** 完成 tag + GH Release + Issue + PR (next_dev → next)。
+
+---
+
+## 4. 版本号与环境同步机制（原理参考）
+
+系统内强制要求 3 个 Version 源必须同步，以实现全栈版本号的统一展示：
+
+| 文件 | 字段 | 作用机制 |
+| --- | --- | --- |
+| `frontend/package.json` | `"version"` | 编译时 Vite 会读取，并通过 `define: { __APP_VERSION__: ... }` 硬编码注入到前端 `Config.vue` 界面中。 |
+| `pyproject.toml` | `version` | Python 依赖打包规范 (PEP 621)，`uv/pip` 安装与环境的 source of truth。 |
+| `backend/src/__init__.py` | `AppConfig.version` | FastAPI 运行时版本，自动同步至 OpenAPI `/openapi.json` 的 `info.version`，并在后端终端打印**启动 Banner**。 |
+
+---
+
+## 5. GitHub Action 镜像构建策略
+
+Docker 镜像的构建与 Tag 分发由 `.github/workflows/docker-build-push.yml` 自动接管，设计了针对不同环境的 3 套分发策略：
+
+| 触发条件 | 分发 Tags | 环境与用途 |
+| --- | --- | --- |
+| **Push / Merge 至 `next_dev`** | `dev-<sha>`<br>`dev` | **开发/预发布环境**。`dev-<sha>` 便于追溯和回滚；`dev` 为浮动指针，始终指向最新开发代码。 |
+| **Push / Merge 至 `next`** | `rc-<sha>` | **发布验证环境**。无浮动指针，强制测试与运维显式拉取 SHA，避免自动化工具误将 RC 拉入生产。 |
+| **Push Semver Tag (`vX.Y.Z`)** | `vX.Y.Z`<br>`latest` | **正式生产环境**。仅监听严格格式 (`v[0-9]+.[0-9]+.[0-9]+`)。 |
+
+✅ **修复了历史上的 RC 污染问题**：原有的工作流在推送形如 `vX.Y.Z-rc.1` 的标签时会错误绑定 `latest`。当前 Action 配置通过 `tags: ["v[0-9]+.[0-9]+.[0-9]+"]` 实现了严格正则过滤，彻底杜绝了非正式 Release 污染 `latest` 的现象。
+
+---
+
+## 6. 历史参考与已知坑清单
+
+### 6.1 历史参考
 
 | Release | PR | Issues |
 |---|---|---|
 | v1.1.1 + v1.1.2 | [PR #4](https://github.com/exa160/yande.re-spider/pull/4) | #3, #5 |
 | v1.1.3 | (未走流程) | (未走流程) |
 | v1.1.4 | (未走流程) | (未走流程) |
+| v1.1.10 | (本文档建立后首次正式 release) | (累积 dev 合入后) |
 
-v1.1.3/v1.1.4 当时是**跳过流程直接 tag + release**（用户说"后续流程待优化中"）。本文档建立后**任何未来 release 必须走完整流程**。
+### 6.2 已知坑清单
 
----
-
-## 7. 已知坑清单
-
-| 坑 | 触发场景 | 解决 |
-|---|---|---|
-| `gh release create --target + --notes-file` 报 500 | GH API bug | 先 create 空 release 再 edit |
-| `gh pr view 4 --json body` 报 GraphQL 错（Projects deprecation）| gh CLI 2.45 + GH GraphQL 变动 | 用 `gh pr view 4 --json title,body` 加显式字段绕过 |
-| uvicorn `--reload` 模式重复打印 banner | reload 重跑 init_app | 单次进程启动打印一次是预期行为（reload 时算新一次启动）|
-| `BaseHTTPMiddleware` 跨 task ContextVar 失效 | v1.1.3 之前的代码 | Pure ASGI middleware + DAO session refetch（v1.1.3 修）|
-| 3 个 version 源不一致 | v1.1.0-v1.1.3 期间 | v1.1.4 统一对齐 + 本文档约束未来必须三处都改 |
-| RC tag 污染 latest | v1.2.0-rc.1 推送 | 未修（用 semver pattern 排除）|
+| 坑 / 问题 | 触发场景 | 解决方案 / 现状 |
+| --- | --- | --- |
+| `gh release create` 报 500 | 携带 `--target` 与 `--notes-file` 一并创建时 | 改为"先 create 空 release，再 edit 补充信息"。 |
+| `gh pr view` 报 GraphQL 错 | 旧版 GitHub CLI 与 Projects API 弃用冲突 | 使用 `--json title,body` 显式指定字段绕过，或升级 gh cli。 |
+| Reload 模式重复打印 banner | uvicorn `--reload` 模式下 | 预期行为。单次进程启动仅打印一次，reload 被视作新建进程。 |
+| 版本号不统一遗留问题 | 早期 v1.1.0~v1.1.3 未严格同步版本文件 | 已在 v1.1.4 修复对齐，后续发版强制检查 3 处 version 源。 |
+| RC tag 污染 latest | 旧 workflow 推送 `vX.Y.Z-rc.1` 时 | 已用 semver regex `v[0-9]+.[0-9]+.[0-9]+` 过滤，详见 §5。 |
