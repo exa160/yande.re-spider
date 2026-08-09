@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +25,7 @@ class AppConfig(BaseModel):
 
     title: str = "Yande.re Local Picture Manager"
     description: str = "本地图片管理工具，提供图片查询、下载和管理功能"
-    version: str = "1.1.8"
+    version: str = "1.1.10"
     docs_url: str = "/docs"
     redoc_url: str = "/redoc"
 
@@ -33,7 +34,17 @@ app_config = AppConfig()
 
 
 def _get_git_sha() -> str:
-    """获取当前 git commit short SHA，启动 banner 用 (git 不可用时返回 'unknown')"""
+    """获取当前 git commit short SHA。
+
+    优先级：
+    1. frozen 环境：读取 sys._MEIPASS/version.txt（PyInstaller NSIS 打包时注入）
+    2. 开发模式：subprocess 调用 git rev-parse
+    3. 都不可用：返回 "unknown"
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        version_txt = Path(sys._MEIPASS) / "version.txt"
+        if version_txt.exists():
+            return version_txt.read_text(encoding="utf-8").strip() or "unknown"
     if not shutil.which("git"):
         return "unknown"
     try:
@@ -60,6 +71,7 @@ def _print_startup_banner(config: AppConfig) -> None:
     logger.info(f"  Data dir   : {path_constant.data_dir}")
     logger.info(f"  Download   : {path_constant.download_dir}")
     logger.info(f"  Log dir    : {path_constant.log_dir}")
+    logger.info(f"  Config     : {path_constant.config_file}")
     logger.info(f"  Docs       : {config.docs_url}  |  ReDoc: {config.redoc_url}")
     logger.info("=" * 66)
 

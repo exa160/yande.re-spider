@@ -1,8 +1,33 @@
+import os
+import sys
 from enum import Enum
 from http import HTTPStatus
-from pathlib import Path
+from pathlib import Path, PosixPath, WindowsPath
 
 from pydantic import BaseModel, ConfigDict
+
+
+# 用 actual platform class 避免测试 mock os.name='nt' 时 WindowsPath 在 POSIX 抛 NotImplementedError
+_ActualPathCls = PosixPath if sys.platform != "win32" else WindowsPath
+
+
+def _resolve_user_config_dir() -> Path:
+    """用户配置目录（持久、可漫游）。
+
+    优先级：
+    1. YANDE_USER_CONFIG_DIR 环境变量（Docker 等需固定路径的场景）
+    2. Windows: %APPDATA%\\yande-spider
+    3. POSIX: ~/.config/yande-spider
+    """
+    explicit = os.environ.get("YANDE_USER_CONFIG_DIR")
+    if explicit:
+        return _ActualPathCls(explicit)
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return _ActualPathCls(os.path.join(appdata, "yande-spider"))
+        return _ActualPathCls(os.path.join(str(Path.home()), "AppData", "Roaming", "yande-spider"))
+    return Path.home() / ".config" / "yande-spider"
 
 
 # ==================== Pydantic 模型基类 ====================
@@ -27,17 +52,36 @@ class DatabaseTableNameConstant(ConstantModel):
 
 # ==================== 路径配置 ====================
 class PathConstant(ConstantModel):
-    base_dir: Path = Path(__file__).parent.parent.parent
+    install_dir: Path = Path(__file__).parent.parent.parent
+    # user_config_dir 在实例化时立刻解析环境变量，无须手动 _resolve_paths()
+    user_config_dir: Path = Path(_resolve_user_config_dir())
 
-    download_dir: Path = base_dir / "downloads"
+    # 数据/下载/日志：跟随安装目录
+    download_dir: Path = install_dir / "downloads"
     previews_dir: Path = download_dir / "previews"
     originals_dir: Path = download_dir / "originals"
-    config_dir: Path = base_dir / "config"
-    config_file: Path = config_dir / "config.yaml"
-    data_dir: Path = base_dir / "data"
+    data_dir: Path = install_dir / "data"
     sqlite_file: Path = data_dir / "yande_data.db"
-    log_dir: Path = base_dir / "logs"
-    frontend_dist: Path = base_dir / "frontend" / "dist"
+    log_dir: Path = install_dir / "logs"
+
+    # 配置/端口：跟随 user_config_dir（property 派生，frozen 模型无 field factory）
+    @property
+    def config_dir(self) -> Path:
+        return self.user_config_dir / "config"
+
+    @property
+    def config_file(self) -> Path:
+        return self.user_config_dir / "config" / "config.yaml"
+
+    @property
+    def port_file(self) -> Path:
+        return self.user_config_dir / "port"
+
+    # 前端 dist：frozen 时在 _internal/frontend/dist，dev 时在仓库 frontend/dist
+    frontend_dist: Path = install_dir / "frontend" / "dist"
+
+
+path_constant = PathConstant()
 
 
 class YandeAPIConstant(ConstantModel):

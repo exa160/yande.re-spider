@@ -24,7 +24,7 @@
 | 抛出错误 | `raise APIException(ErrMsg.XXX, e=e)` |
 | 新增 DAO | 继承 `BaseDAO`，使用 `self.session` 操作数据库 |
 | 配置常量 | 在 `common/constant.py` 中定义 `PathConstant`、`ErrMsg` 等 |
-| **升级版本** | **改 3 处 version 源**（`package.json` + `pyproject.toml` + `AppConfig.version`）→ commit → tag → `gh release create` → `gh issue create` → `gh pr create --base next`（详见 [docs/release.md](docs/release.md)）|
+| **升级版本 / 发版** | **3 条核心流程线**：dev 合入（feature → next_dev）/ 正式 release（feature → next_dev + version bump → tag/GH Release → next）/ dev 多次合入后的 release，详见 [docs/release.md](docs/release.md) |
 
 ---
 
@@ -42,7 +42,7 @@
 | [docs/constants.md](docs/constants.md) | PathConstant、TaskStatus 等常量定义 |
 | [docs/design.md](docs/design.md) | 架构设计详解 |
 | [docs/tasks.md](docs/tasks.md) | 开发任务追踪 |
-| [docs/release.md](docs/release.md) | **版本升级流程**（三处 version 源 + 启动 banner + Vite 注入 + GH Release + Issue + PR）|
+| [docs/release.md](docs/release.md) | **版本与发布流程**（3 条核心流程线 + 分支保护红线 + 主动 version bump 检查） |
 
 ---
 
@@ -93,21 +93,27 @@
 
 ## 🔐 密钥与敏感信息管理（强制红线）
 
+> **运行时配置文件路径**（由 `PathConstant` 实例化时通过 `_resolve_user_config_dir()` 立即解析）：
+> - POSIX 开发 / 裸机部署：`~/.config/yande-spider/config/config.yaml`
+> - Windows 客户端：`%APPDATA%\yande-spider\config\config.yaml`
+> - Docker：通过 `YANDE_USER_CONFIG_DIR=/app` 环境变量显式指定 → `config_file = /app/config/config.yaml`
+>
+> 仓库内 tracked 的 `backend/config/config.yaml` 和 `config/config.yaml` **均不被运行时读取**，仅作 PyInstaller frozen 资源兜底 placeholder。详见下方「📦 部署模式与配置路径」一节。
+
 ### 规则总览
 
 | 位置 | 内容 | 是否进 git |
 |------|------|-----------|
-| **本地** `config/config.yaml` | 真实密码（用于本地运行） | ❌ **不进**（仅 working tree）|
-| **本地** `config/data.cfg.bak` | 真实密码（备份） | ❌ **不进**（仅 working tree）|
-| **远端** `config/config.yaml` | 占位符 `password: ""` | ✅ 进 |
-| **远端** `config/data.cfg.bak` | 不存在 | ✅ 已删除 |
+| **本地** `backend/config/config.yaml` | 真实密码（用于本地运行） | ❌ **不进**（已被 `.gitignore` 排除，但已 tracked 文件需 `git rm --cached`）|
+| **本地** `backend/config/*.bak` | 真实密码（备份） | ❌ 强制不进（`.gitignore` 规则）|
+| **远端** `backend/config/config.yaml` | 占位符 `password: ""` | ✅ 进 |
 
 ### 红线规则
 
 - ❌ **绝不在 commit / push 中包含真实密码、token、API key、secret、内网 IP 等敏感字段**
-- ✅ **远端仓库所有分支的** `config/config.yaml` 中 `database.password` **必须是** `""` 或占位符
-- ✅ **本地** `config/config.yaml` 保留真实密码用于本地运行
-- ❌ **`config/data.cfg.bak`** 不应存在于任何分支（之前误提交，已清理）
+- ✅ **远端仓库所有分支的** `backend/config/config.yaml` 中 `database.password` **必须是** `""` 或占位符
+- ✅ **本地** `backend/config/config.yaml` 保留真实密码用于本地运行
+- ❌ **`backend/config/*.bak`** 不应存在于任何分支（`.gitignore` 已覆盖）
 
 ### 推送前必查（强制执行）
 
@@ -129,7 +135,7 @@ git diff origin/<base-branch>..HEAD \
 ```yaml
 # ❌ 错误：含真实密码
 database:
-  password: "Max=1616"
+  password: "<真实密码>"
 
 # ✅ 正确：占位符
 database:
@@ -150,12 +156,81 @@ database:
 ### 远端仓库现状
 
 ```
-✅ 所有远端分支的 config/config.yaml 中 password = ""
-✅ config/data.cfg.bak 已从所有分支删除
+✅ 所有远端分支的 backend/config/config.yaml 中 password = ""
+✅ backend/config/*.bak 被 .gitignore 阻塞
 ```
 
 **未来任何分支如有真密钥 → 视为事故，立即清理**。
 
 ---
 
-*最后更新：v1.1.7 release 后增加密钥管理章节*
+## 📦 部署模式与配置路径
+
+> 62f162d（v1.1.10）将 `PathConstant.config_file` 从 `install_dir/config/config.yaml` 拆到了 `user_config_dir/config/config.yaml`，以适配 PyInstaller Windows 客户端跨升级保留配置。但 **Docker / 裸机 server 部署的期望路径仍在 `install_dir`（容器内 `/app`，裸机仓库根）下**。
+>
+> `PathConstant` 在 `constant.py` 模块加载时通过 `_resolve_user_config_dir()` 立即读取 `YANDE_USER_CONFIG_DIR` 环境变量，**无须手动调用任何 resolver 函数**。Python 进程启动 → `constant.py` 加载 → `path_constant = PathConstant()` 实例化时环境变量已就绪 → `path_constant.config_file` 自动正确。
+
+### 三种部署模式的路径解析
+
+| 部署模式 | `install_dir` | `user_config_dir`（默认） | 覆盖方式 |
+|---------|----------------|--------------------------|---------|
+| **开发模式**（`uvicorn service:main_app --reload`） | 仓库根 | `~/.config/yande-spider`（POSIX）/ `%APPDATA%\yande-spider`（Windows） | 无需覆盖 |
+| **PyInstaller 客户端**（Windows NSIS 安装器） | `sys._MEIPASS` 父目录 | `%APPDATA%\yande-spider` | 无需覆盖 |
+| **Docker 服务**（`docker compose up`） | `/app` | **被 `YANDE_USER_CONFIG_DIR=/app` 覆盖** | 见下方 |
+
+**关键区别**：
+
+- 下载/数据/日志 路径跟随 `install_dir`（`downloads/`、`data/`、`logs/`），**始终在 install_dir 下**，Docker 与 dev 模式天然一致。
+- `config.yaml`、`port`（PyInstaller launcher 用）跟随 `user_config_dir`，**必须显式覆盖才能与 Docker volume 挂载对齐**。
+
+### Docker 部署的正确配置
+
+`YANDE_USER_CONFIG_DIR` 的语义是「**用户配置根目录**」（其下还有 `config/` 子目录）。所以要让 `config_file = /app/config/config.yaml`，应设：
+
+```yaml
+# docker-compose.yml（关键片段）
+services:
+  picture-manager:
+    volumes:
+      - ./config:/app/config        # 宿主机 ./config/config.yaml 映射到容器 /app/config
+    environment:
+      - YANDE_USER_CONFIG_DIR=/app  # user_config_dir=/app → config_file=/app/config/config.yaml
+```
+
+**不设 `YANDE_USER_CONFIG_DIR` 的后果**：
+
+- 容器内 `Path.home()` = `/root`，`_resolve_user_config_dir()` 返回 `/root/.config/yande-spider`
+- `config_bootstrap` 会在 `/root/.config/yande-spider/config/config.yaml` 写一个 placeholder
+- 宿主机 `./config/config.yaml` 永远不被读取 → UI 配置的密码/代理全部丢失，容器重启被覆盖
+- 启动 banner 的 `Config:` 行会显示 `/root/.config/yande-spider/config/config.yaml`（一眼能看出来错配）
+
+### 新增/修改路径相关的代码规范
+
+| 操作 | 规范 |
+|------|------|
+| 读取运行时配置路径 | 通过 `path_constant.config_file`，**不要**直接写 `Path('config.yaml')` 或 `Path('~/.config/...')` |
+| 跨部署兼容 | 让 path 在 `_resolve_user_config_dir()` 解析，不绕过 |
+| 自定义部署路径 | 通过 `YANDE_USER_CONFIG_DIR` 环境变量注入，**不要**改代码硬编码 |
+| 加新路径 | 在 `PathConstant` 加字段（跟随 `install_dir` 用类级 default，跟随 `user_config_dir` 用 `@property`） |
+| 路径相关测试 | `backend/tests/test_path_constant.py` 加 case，必须包含 POSIX/Windows/环境变量覆盖三分支 |
+
+### 启动 banner 中的 `Config:` 行
+
+每次启动会在 logger banner 中打印 `Config: <config_file 绝对路径>`，便于第一时间确认路径解析正确：
+
+```
+==================================================================
+  Yande.re Local Picture Manager v1.1.10 (git-ee71d04)
+  Python 3.12.3
+------------------------------------------------------------------
+  Data dir   : /app/data
+  Download   : /app/downloads
+  Log dir    : /app/logs
+  Config     : /app/config/config.yaml   ← Docker 应为这一行
+  Docs       : /docs  |  ReDoc: /redoc
+==================================================================
+```
+
+---
+
+*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节；v1.1.10 拆分 `config_file` 到 `user_config_dir` 后增加部署模式与配置路径章节；v1.1.10 release 复盘：Dev 发布流程迁入 docs/release.md，3 条核心流程线分明，禁止直接 push 到 next/next_dev，未经用户审核禁止 commit/push*
