@@ -362,6 +362,7 @@ const loadError = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
 const currentFavorite = ref(null)
+const queryRef = ref(null)  // template ref 绑定 AdvancedQuery 暴露的 selectFavorite/reset
 
 // 收藏夹模式状态机
 const favoritesView = ref(null)  // null | 'folders' | 'folder-detail'
