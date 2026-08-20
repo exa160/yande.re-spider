@@ -26,11 +26,63 @@ router = APIRouter()
 
 @router.post("/load", response_model=GalleryLoadResponse, summary="加载图库")
 async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
-    """加载图库数据（支持本地/在线模式）"""
-    if request.source == "local":
-        images, total = await asyncio.to_thread(GalleryService.query_local_database, request)
+    """加载图库数据（支持 local / yande / favorites 三种 source）。
+
+    favorites 源：用 favorite_id 定位 folder → 取其 tags → 先查 local；
+    若 include_online=True，再查 yande 并按 id 去重合并（local 优先）。
+    """
+    if request.source == "favorites":
+        from src.dao.favorite_dao import favorite_dao
+
+        folder = (
+            await asyncio.to_thread(favorite_dao.get_by_id, request.favorite_id)
+            if request.favorite_id
+            else None
+        )
+        if not folder:
+            return GalleryLoadResponse(
+                message=ErrMsg.OK.msg,
+                data=[],
+                total=0,
+                page=request.page,
+                page_size=request.page_size,
+                has_more=False,
+            )
+        local_req = request.model_copy(
+            update={
+                "source": "local",
+                "tags": folder.tags or "",
+                "favorite_id": None,
+            }
+        )
+        images, total = await asyncio.to_thread(
+            GalleryService.query_local_database, local_req
+        )
+        if request.include_online:
+            yande_req = request.model_copy(
+                update={
+                    "source": "yande",
+                    "tags": folder.tags or "",
+                    "favorite_id": None,
+                }
+            )
+            yande_images, _ = await asyncio.to_thread(
+                GalleryService.query_yande_api, yande_req
+            )
+            seen = {img.id if isinstance(img, dict) else img.id for img in images}
+            for img in yande_images:
+                img_id = img["id"] if isinstance(img, dict) else img.id
+                if img_id not in seen:
+                    images.append(img)
+                    seen.add(img_id)
+    elif request.source == "local":
+        images, total = await asyncio.to_thread(
+            GalleryService.query_local_database, request
+        )
     else:
-        images, total = await asyncio.to_thread(GalleryService.query_yande_api, request)
+        images, total = await asyncio.to_thread(
+            GalleryService.query_yande_api, request
+        )
 
     has_more = len(images) >= request.page_size
 

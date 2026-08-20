@@ -46,7 +46,15 @@ class GalleryLoadRequest(BaseModel):
     parent_id: Optional[int] = Field(None, description="父贴ID: parent:1234")
     parent_none: bool = Field(False, description="无父贴: parent:none")
     source: Optional[str] = Field(
-        "local", description="数据源: yande=在线, local=本地数据库"
+        "local",
+        description="数据源: yande=在线, local=本地数据库, favorites=收藏夹（用 favorite_id 定位）",
+    )
+    favorite_id: Optional[int] = Field(
+        None, description="source='favorites' 时定位收藏夹的 ID"
+    )
+    include_online: bool = Field(
+        False,
+        description="source='favorites' 时是否同时合并在线内容（与 local 去重合并）",
     )
 
 
