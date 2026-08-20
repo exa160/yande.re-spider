@@ -179,3 +179,37 @@ describe('WaterfallGallery - 预览图加载状态机', () => {
     })
   })
 })
+
+describe('WaterfallGallery itemType=folder', () => {
+  const mkFolder = (id) => ({
+    id,
+    name: `f${id}`,
+    local_count: 10,
+    preview_images: [],
+  })
+
+  it('itemType=folder 时渲染 slot 内容', () => {
+    const folders = [mkFolder(1), mkFolder(2)]
+    const wrapper = mount(WaterfallGallery, {
+      props: {
+        images: folders,
+        itemType: 'folder',
+        loading: false,
+        hasMore: false,
+        selectable: false,
+        selectedImages: [],
+        sourceMode: 'local',
+        saveDataMode: false,
+        isLoadingMore: false,
+        loadError: false,
+        safeMode: false,
+      },
+      slots: {
+        default: '<div class="test-folder-slot">{{ params.folder.name }}</div>',
+      },
+    })
+    expect(wrapper.findAll('.test-folder-slot')).toHaveLength(2)
+    expect(wrapper.text()).toContain('f1')
+    expect(wrapper.text()).toContain('f2')
+  })
+})
