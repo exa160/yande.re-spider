@@ -49,6 +49,7 @@ class FolderPreviewImageMinimal(BaseModel):
     id: int
     width: Optional[int] = None
     height: Optional[int] = None
+    rating: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 
