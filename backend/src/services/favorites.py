@@ -153,13 +153,15 @@ class FavoritesService:
         return favorite_dao.reorder(folder_ids)
 
     @staticmethod
-    def preview_folder(folder_id: int, limit: int = 6) -> Optional[dict]:
-        """
-        预览收藏夹查询结果
+    def preview_folder(
+        folder_id: int, limit: int = 6, random: bool = False
+    ) -> Optional[dict]:
+        """单文件夹预览。
+
         Args:
-            folder_id: 收藏夹ID
-            limit: 预览图片数量
-        TODO: 文件夹目录预览图
+            folder_id: 收藏夹 ID
+            limit: 预览图数量上限
+            random: True 时随机抽样；False 时按当前 sort 排序取前 N 张
         """
         folder = favorite_dao.get_by_id(folder_id)
         if not folder:
@@ -170,17 +172,21 @@ class FavoritesService:
             search_params.page = 1
             search_params.page_size = limit
             with YandeDataRepository() as repo:
-                images, total = repo.query(
-                    query_params=search_params,
-                    downloaded_only=True,
-                )
-
+                if random:
+                    images = repo.query_random_for_tags(
+                        tags=folder.tags or "",
+                        limit=limit,
+                        downloaded_only=True,
+                    )
+                    _, total = repo.query(
+                        query_params=search_params, downloaded_only=True
+                    )
+                else:
+                    images, total = repo.query(
+                        query_params=search_params, downloaded_only=True
+                    )
             FavoritesService._refresh_local_count(folder_id)
-
-            return {
-                "total": total,
-                "preview_images": images[:limit],
-            }
+            return {"total": total, "preview_images": images[:limit]}
         except Exception:
             return None
 
