@@ -44,6 +44,28 @@ class FavoriteDao(BaseDAO):
             .all()
         )
 
+    def list_paginated(self, page: int, page_size: int) -> tuple[list[FavoriteFolder], int]:
+        """分页获取收藏夹，按 sort_order 升序。
+
+        Returns:
+            (items, total): items 为当前页的 FavoriteFolder 列表，total 为总数
+        """
+        from sqlalchemy import func
+
+        total = (
+            self.session.query(func.count(FavoriteFolder.id))
+            .scalar() or 0
+        )
+        offset = (page - 1) * page_size
+        items = (
+            self.session.query(FavoriteFolder)
+            .order_by(FavoriteFolder.sort_order.asc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        return items, total
+
     def update(self, folder_id: int, **kwargs) -> Optional[FavoriteFolder]:
         folder = self.session.query(FavoriteFolder).filter(FavoriteFolder.id == folder_id).first()
         if not folder:
