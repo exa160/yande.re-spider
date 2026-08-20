@@ -9,9 +9,9 @@ export function getAllFolders() {
   return api.get('/favorites')
 }
 
-// 获取收藏夹及图片预览，TODO: 文件夹图标带预览图
-export function getFoldersWithPreview() {
-  return api.get('/favorites/with-preview')
+// 获取收藏夹及精简预览元数据（分页）
+export function getFoldersWithPreview(page = 1, pageSize = 20) {
+  return api.get(`/favorites/with-preview?page=${page}&page_size=${pageSize}`)
 }
 
 // 获取单个收藏夹详情
@@ -74,6 +74,7 @@ export function resetFolderSync(folderId, value = null) {
 
 export default {
   getAllFolders,
+  getFoldersWithPreview,
   getFolder,
   createFolder,
   updateFolder,
