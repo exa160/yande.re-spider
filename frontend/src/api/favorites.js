@@ -10,8 +10,8 @@ export function getAllFolders() {
 }
 
 // 获取收藏夹及精简预览元数据（分页）
-export function getFoldersWithPreview(page = 1, pageSize = 20) {
-  return api.get(`/favorites/with-preview?page=${page}&page_size=${pageSize}`)
+export function getFoldersWithPreview(page = 1, pageSize = 20, tileSize = 'adaptive') {
+  return api.get(`/favorites/with-preview?page=${page}&page_size=${pageSize}&tile_size=${tileSize}`)
 }
 
 // 获取单个收藏夹详情
