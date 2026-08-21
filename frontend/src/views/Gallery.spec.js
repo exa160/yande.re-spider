@@ -294,4 +294,45 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(callArgs[2]).toBe('small')
     expect(callArgs[2]).not.toBe('4')
   })
+
+  it('regression: 切走 favorites → local 时清空 Gallery 自己的 queryParams（避免 stale favorite tags 传给 local 搜索）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    // 1. 进入 favorites
+    wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('favorites')
+
+    // 2. 模拟 folder 进入详情时 AdvancedQuery 注入的 queryParams（含 favorites tags / rating / favorite_id）
+    wrapper.vm.queryParams = {
+      tags: 'sample',
+      rating: ['safe'],
+      favorite_id: 42,
+      source: 'favorites',
+    }
+    expect(wrapper.vm.queryParams.tags).toBe('sample')
+
+    // 3. 切回 local（模拟用户切 tab）
+    wrapper.vm.handleSourceChange('local')
+    await flushPromises()
+
+    // 4. Gallery 自己的 queryParams 应不再残留 favorites tags
+    // handleSearch({}) 会合法地把 source='local' 写回 queryParams，
+    // 所以不能断言完全等于 {}，但 favorites 特有的字段必须清空
+    expect(wrapper.vm.queryParams.tags).toBeUndefined()
+    expect(wrapper.vm.queryParams.rating).toBeUndefined()
+    expect(wrapper.vm.queryParams.favorite_id).toBeUndefined()
+    expect(wrapper.vm.queryParams.source).toBe('local')
+
+    // 5. 额外断言：handleSearch 不会再用旧的 favorites tags 发请求。
+    // api.post mock 已返回 { data: [], has_more: false }，但用 spy 验证调用 payload
+    // 不含 tags / rating / favorite_id 这些 stale 字段
+    const postMock = (await import('@/api')).default.post
+    const lastCall = postMock.mock.calls[postMock.mock.calls.length - 1]
+    const payload = lastCall?.[1] ?? {}
+    expect(payload.tags).toBeUndefined()
+    expect(payload.rating).toBeUndefined()
+    expect(payload.favorite_id).toBeUndefined()
+  })
 })
