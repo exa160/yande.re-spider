@@ -110,6 +110,31 @@ describe('FolderTile', () => {
     })
   })
 
+  it('safeMode=true 且 rating=Explicit 时 <img> 有 safe-blur class', () => {
+    const folder = {
+      id: 1, name: 'f', color: '#000', local_count: 1,
+      preview_images: [{ id: 1000, width: 100, height: 100, rating: 'Explicit' }],
+    }
+    const wrapper = mount(FolderTile, {
+      props: { folder, saveDataMode: false, safeMode: true },
+    })
+    const img = wrapper.find('img')
+    expect(img.exists()).toBe(true)
+    expect(img.classes()).toContain('safe-blur')
+  })
+
+  it('safeMode=true 且 rating=Safe 时 <img> 无 safe-blur class', () => {
+    const folder = {
+      id: 1, name: 'f', color: '#000', local_count: 1,
+      preview_images: [{ id: 1000, width: 100, height: 100, rating: 'Safe' }],
+    }
+    const wrapper = mount(FolderTile, {
+      props: { folder, saveDataMode: false, safeMode: true },
+    })
+    const img = wrapper.find('img')
+    expect(img.classes()).not.toContain('safe-blur')
+  })
+
   // C1 回归测试：多个 FolderTile 实例共存时，每个实例的 cells 都应被独立 observe。
   // 修复前：document.querySelector('.folder-tile') 只命中第一个实例，
   // 第二个 tile 的所有 preview 永远停留在 placeholder 状态。
