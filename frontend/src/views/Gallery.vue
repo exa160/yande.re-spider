@@ -403,6 +403,14 @@ const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
 const savedTileSize = localStorage.getItem('gallery_tile_size')
 const tileSize = ref(VALID_TILE_SIZES.includes(savedTileSize) ? savedTileSize : 'adaptive')
 
+// 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
+// 'adaptive' 透传；其它值 fallback 到原值（防御性）
+const API_TILE_SIZE = {
+  '4': 'small',
+  '6': 'medium',
+  '8': 'large',
+}
+
 // AdvancedQuery mode 计算属性
 //   querySource='favorites' → favorites-folders / favorites-folder-detail
 //   其它 → 'gallery'
@@ -749,7 +757,9 @@ const loadFolders = async (page) => {
   if (folderLoading.value) return
   folderLoading.value = true
   try {
-    const res = await getFoldersWithPreview(page, FOLDER_PAGE_SIZE, tileSize.value)
+    // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
+    const apiTileSize = API_TILE_SIZE[tileSize.value] || tileSize.value
+    const res = await getFoldersWithPreview(page, FOLDER_PAGE_SIZE, apiTileSize)
     const { items, has_more } = res.data
     if (page === 1) {
       allFolders.value = items
