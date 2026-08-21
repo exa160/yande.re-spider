@@ -124,12 +124,13 @@ def test_pagination_total_and_has_more():
     assert len(items2) == 5
 
 
-def test_preview_images_only_id_width_height():
+def test_preview_images_only_minimal_fields():
     _clean()
     _seed_folder(10, "f")
     _seed_yande_data("sample", 10)
     with _request_session_ctx():
         items, _, _ = FavoritesService.get_folders_with_preview(page=1, page_size=20)
     img = items[0].preview_images[0]
-    # 仅暴露 id/width/height；preview_url 字段不应在精简模型中
-    assert set(img.model_dump().keys()) == {"id", "width", "height"}
+    # 精简模型仅暴露 id/width/height/rating；preview_url 等其他字段不应透出
+    # rating 是 Task 1 加上的（前端安全模式判断用）
+    assert set(img.model_dump().keys()) == {"id", "width", "height", "rating"}
