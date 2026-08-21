@@ -48,16 +48,19 @@ const BackButtonStub = {
 
 const AdvancedQueryStub = {
   name: 'AdvancedQuery',
-  props: ['sourceMode'],
-  emits: ['search'],
+  props: ['sourceMode', 'mode', 'lockFavoriteChip'],
+  emits: ['search', 'favorites-filter'],
   template: '<div class="advanced-query-stub"><slot/></div>',
-  // 暴露 selectFavorite / reset 给父组件
+  // 暴露 selectFavorite / reset / resetAdvancedPanel 给父组件
   methods: {
     selectFavorite(folder) {
       this.__selectFavorite?.(folder)
     },
     reset() {
       this.__reset?.()
+    },
+    resetAdvancedPanel() {
+      this.__resetAdvancedPanel?.()
     },
   },
 }
@@ -83,6 +86,8 @@ const factory = () =>
         'el-dialog': { template: '<div><slot/></div>' },
         'el-image-viewer': { template: '<div></div>' },
         'el-image': { template: '<img></div>' },
+        'el-radio-group': { template: '<div class="radio-group-stub"><slot/></div>' },
+        'el-radio-button': { template: '<button class="radio-button-stub"><slot/></button>' },
         // icon 桩
         Connection: { template: '<i></i>' },
         MagicStick: { template: '<i></i>' },
@@ -118,7 +123,7 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(wrapper.vm.favoritesView).toBe('folders')
     expect(wrapper.vm.querySource).toBe('favorites')
     expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20)
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'adaptive')
   })
 
   it('点击 FolderTile → favoritesView="folder-detail" 且调用 queryRef.selectFavorite(folder)', async () => {
@@ -195,5 +200,69 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     await flushPromises()
     bb = wrapper.findComponent({ name: 'BackButton' })
     expect(bb.props('visible')).toBe(false)
+  })
+
+  it('onMounted 从 localStorage 恢复 querySource=favorites', async () => {
+    // 预设 localStorage
+    localStorage.setItem('gallery_source', 'favorites')
+    localStorage.setItem('gallery_tile_size', '6')
+
+    getFoldersWithPreviewMock.mockClear()
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('favorites')
+    expect(wrapper.vm.favoritesView).toBe('folders')
+    expect(wrapper.vm.tileSize).toBe('6')
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, '6')
+  })
+
+  it('handleSourceChange(yande) 离开 favorites 时调用 queryRef.reset + resetAdvancedPanel', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    // 进入 favorites → folders 视图
+    wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('favorites')
+
+    // 注入 reset / resetAdvancedPanel spy
+    const resetSpy = vi.fn()
+    const resetAdvancedPanelSpy = vi.fn()
+    const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
+    advInstance.vm.__reset = resetSpy
+    advInstance.vm.__resetAdvancedPanel = resetAdvancedPanelSpy
+
+    // 切到 yande：触发清空
+    wrapper.vm.handleSourceChange('yande')
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('yande')
+    expect(resetSpy).toHaveBeenCalledTimes(1)
+    expect(resetAdvancedPanelSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('loadFolders 传 tileSize 参数给 getFoldersWithPreview', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    getFoldersWithPreviewMock.mockClear()
+
+    // 设置 tileSize 后触发 loadFolders
+    wrapper.vm.tileSize = '8'
+    wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+
+    expect(wrapper.vm.tileSize).toBe('8')
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, '8')
+
+    // 切换 tileSize 并重新加载（page=2）
+    getFoldersWithPreviewMock.mockClear()
+    wrapper.vm.tileSize = '4'
+    // 模拟切换 tileSize 后手动调 loadFolders 第 2 页
+    await wrapper.vm.loadFolders(2)
+    await flushPromises()
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(2, 20, '4')
   })
 })
