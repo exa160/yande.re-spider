@@ -4,10 +4,12 @@ import FolderTile from './FolderTile.vue'
 
 let observerInstances
 let observedTargets
+let resizeObserverInstances
 
 beforeEach(() => {
   observerInstances = []
   observedTargets = []
+  resizeObserverInstances = []
   globalThis.IntersectionObserver = vi.fn().mockImplementation((cb) => {
     const instance = {
       cb,
@@ -15,6 +17,15 @@ beforeEach(() => {
       disconnect: vi.fn(),
     }
     observerInstances.push(instance)
+    return instance
+  })
+  globalThis.ResizeObserver = vi.fn().mockImplementation((cb) => {
+    const instance = {
+      cb,
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+    }
+    resizeObserverInstances.push(instance)
     return instance
   })
 })
@@ -31,15 +42,21 @@ const mkFolder = (id, previewCount) => ({
   })),
 })
 
-const factory = (props = {}) => mount(FolderTile, {
-  props: { folder: mkFolder(1, 4), saveDataMode: false, ...props },
-  global: {
-    stubs: {
-      'el-icon': { template: '<i><slot/></i>' },
-      'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+const factory = (props = {}, opts = {}) => {
+  const wrapper = mount(FolderTile, {
+    props: { folder: mkFolder(1, 4), saveDataMode: false, ...props },
+    global: {
+      stubs: {
+        'el-icon': { template: '<i><slot/></i>' },
+        'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+      },
     },
-  },
-})
+  })
+  const width = opts.width ?? 500
+  vi.spyOn(wrapper.element, 'offsetWidth', 'get').mockReturnValue(width)
+  resizeObserverInstances.forEach(ro => ro.cb())
+  return wrapper
+}
 
 describe('FolderTile', () => {
   it('渲染文件夹名和数量', () => {
@@ -165,6 +182,28 @@ describe('FolderTile', () => {
     })
     imgsB.forEach(img => {
       expect(img.attributes('src')).toMatch(/^\/api\/v1\/gallery\/cache\/preview\//)
+    })
+  })
+
+  // 像素自适应：后端 tile_size='adaptive' 永远返 8 张，前端按 tile 实际宽度裁剪 4 / 6 / 8 张
+  describe('像素自适应', () => {
+    const renderAtWidth = async (width) => {
+      const folder = mkFolder(1, 8)
+      const wrapper = factory({ folder }, { width })
+      await flushPromises()
+      return wrapper.findAll('img').length
+    }
+
+    it('tile 宽度=500px 时显示 8 张', async () => {
+      expect(await renderAtWidth(500)).toBe(8)
+    })
+
+    it('tile 宽度=350px 时显示 6 张', async () => {
+      expect(await renderAtWidth(350)).toBe(6)
+    })
+
+    it('tile 宽度=200px 时显示 4 张', async () => {
+      expect(await renderAtWidth(200)).toBe(4)
     })
   })
 })
