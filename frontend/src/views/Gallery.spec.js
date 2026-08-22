@@ -335,6 +335,17 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(payload.rating).toBeUndefined()
     expect(payload.favorite_id).toBeUndefined()
   })
+
+  it('safeMode 切换 → localStorage 持久化正确', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.safeMode = false
+    await flushPromises()
+    expect(localStorage.getItem('safe_mode')).toBe('false')
+    wrapper.vm.safeMode = true
+    await flushPromises()
+    expect(localStorage.getItem('safe_mode')).toBe('true')
+  })
 })
 
 describe('Gallery buttonMode (Task 4)', () => {
