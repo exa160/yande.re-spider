@@ -18,7 +18,7 @@
             本地
           </el-button>
           <el-button
-            v-if="querySource !== 'yande'"
+            v-if="buttonMode !== 'hidden' && querySource !== 'yande'"
             :type="querySource === 'favorites' ? 'primary' : ''"
             @click="handleSourceChange('favorites')"
           >
@@ -44,18 +44,6 @@
             <el-icon><MagicStick /></el-icon>
           </el-button>
         </el-tooltip>
-        <!-- 收藏夹文件夹列表视图：tile 尺寸 4 档切换 -->
-        <el-radio-group
-          v-if="querySource === 'favorites' && favoritesView === 'folders'"
-          v-model="tileSize"
-          size="small"
-          class="tile-size-group"
-        >
-          <el-radio-button label="adaptive">自适应</el-radio-button>
-          <el-radio-button label="4">4张</el-radio-button>
-          <el-radio-button label="6">6张</el-radio-button>
-          <el-radio-button label="8">8张</el-radio-button>
-        </el-radio-group>
       </div>
       <!-- 右侧工具按钮 -->
       <div class="toolbar-right" ref="toolbarRightRef">
@@ -109,10 +97,12 @@
     <AdvancedQuery
       @search="handleSearch"
       @favorites-filter="handleFavoritesFilter"
+      @favorites-config-change="handleFavoritesConfigChange"
       ref="queryRef"
       :source-mode="querySource"
       :mode="modeProp"
       :lock-favorite-chip="favoritesView === 'folder-detail'"
+      :favorites-config="{ buttonMode, tileSize }"
     />
 
     <!-- 瀑布流图库组件 -->
@@ -399,9 +389,21 @@ const querySource = ref(localStorage.getItem('gallery_source') || 'local')
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 
 // tile 尺寸：4 档（adaptive 自适应 / 4 / 6 / 8 张）
+// 持久化由 AdvancedQuery 收藏夹 section 负责（key: gallery_favorites_tile_size，
+// 向后兼容旧 key gallery_tile_size）。Gallery 仅持有运行时副本供 loadFolders API 调用。
 const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
-const savedTileSize = localStorage.getItem('gallery_tile_size')
+const savedTileSize = localStorage.getItem('gallery_favorites_tile_size')
+  || localStorage.getItem('gallery_tile_size')
 const tileSize = ref(VALID_TILE_SIZES.includes(savedTileSize) ? savedTileSize : 'adaptive')
+
+// 收藏夹按钮三联开关（hidden/shown/default）
+// 'hidden'  → toolbar 不显示收藏夹按钮
+// 'shown'   → 显示按钮，但默认进 local
+// 'default' → 显示按钮，且默认进 favorites
+// 持久化由 AdvancedQuery 收藏夹 section 负责（key: gallery_favorites_button_mode）
+const VALID_BUTTON_MODES = ['hidden', 'shown', 'default']
+const savedButtonMode = localStorage.getItem('gallery_favorites_button_mode')
+const buttonMode = ref(VALID_BUTTON_MODES.includes(savedButtonMode) ? savedButtonMode : 'shown')
 
 // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
 // 'adaptive' 透传；其它值 fallback 到原值（防御性）
@@ -670,12 +672,7 @@ const stopSaveDataWatch = watch(saveDataMode, (val) => {
 })
 
 const stopSafeModeWatch = watch(safeMode, (val) => {
-  localStorage.setItem('safe_mode', val ? 'true' : 'false')
-})
-
-// tile 尺寸变更持久化
-const stopTileSizeWatch = watch(tileSize, (val) => {
-  localStorage.setItem('gallery_tile_size', val)
+  localStorage.setItem('safe_mode', val ? 'false' : 'true')
 })
 
 // 图片预览
@@ -727,7 +724,6 @@ onUnmounted(() => {
   stopSourceWatch()
   stopSaveDataWatch()
   stopSafeModeWatch()
-  stopTileSizeWatch()
 })
 
 const handleSearch = async (searchData) => {
@@ -809,6 +805,24 @@ const handleBackToFolders = () => {
   favoritesView.value = 'folders'
   queryRef.value?.reset()
   images.value = []
+}
+
+// AdvancedQuery 收藏夹 section 变更回调
+// - 同步本地 buttonMode / tileSize 副本
+// - buttonMode 切到 'default' 且当前不在 favorites 时，触发跳转到 favorites 视图
+const handleFavoritesConfigChange = (config) => {
+  if (!config) return
+  if (config.buttonMode && VALID_BUTTON_MODES.includes(config.buttonMode)) {
+    const prevMode = buttonMode.value
+    buttonMode.value = config.buttonMode
+    // hidden → shown 不会强制跳，default 才会
+    if (config.buttonMode === 'default' && prevMode !== 'default' && querySource.value !== 'favorites') {
+      handleSourceChange('favorites')
+    }
+  }
+  if (config.tileSize && VALID_TILE_SIZES.includes(config.tileSize)) {
+    tileSize.value = config.tileSize
+  }
 }
 
 const handleSourceChange = (newSource) => {
@@ -1064,8 +1078,14 @@ const getDetailUrl = (image) => {
 
 // 页面加载时自动查询本地
 onMounted(() => {
-  // 从 localStorage 恢复的 querySource=favorites 时直接进入 folder 列表视图
-  if (querySource.value === 'favorites') {
+  // buttonMode 决定初始视图：
+  //   'default' → 直接进 favorites（无论 gallery_source 持久化值）
+  //   'shown'/'hidden' → 保持 gallery_source 持久化值（默认 'local'）
+  if (buttonMode.value === 'default') {
+    querySource.value = 'favorites'
+    favoritesView.value = 'folders'
+    loadFolders(1)
+  } else if (querySource.value === 'favorites') {
     favoritesView.value = 'folders'
     loadFolders(1)
   } else {

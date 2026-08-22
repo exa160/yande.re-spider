@@ -48,8 +48,8 @@ const BackButtonStub = {
 
 const AdvancedQueryStub = {
   name: 'AdvancedQuery',
-  props: ['sourceMode', 'mode', 'lockFavoriteChip'],
-  emits: ['search', 'favorites-filter'],
+  props: ['sourceMode', 'mode', 'lockFavoriteChip', 'favoritesConfig'],
+  emits: ['search', 'favorites-filter', 'favorites-config-change'],
   template: '<div class="advanced-query-stub"><slot/></div>',
   // 暴露 selectFavorite / reset / resetAdvancedPanel 给父组件
   methods: {
@@ -78,7 +78,7 @@ const factory = () =>
         DownloadManager: { template: '<div></div>' },
         ConfigPanel: { template: '<div></div>' },
         // Element Plus 通用桩
-        'el-button': { template: '<button><slot/></button>' },
+        'el-button': { template: '<button class="el-button"><slot/></button>' },
         'el-button-group': { template: '<div><slot/></div>' },
         'el-icon': { template: '<i><slot/></i>' },
         'el-tag': { template: '<span><slot/></span>' },
@@ -334,5 +334,82 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(payload.tags).toBeUndefined()
     expect(payload.rating).toBeUndefined()
     expect(payload.favorite_id).toBeUndefined()
+  })
+})
+
+describe('Gallery buttonMode (Task 4)', () => {
+  it('buttonMode=hidden → toolbar 收藏夹按钮不渲染', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'hidden')
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.find('.toolbar-left').text()).not.toContain('收藏夹')
+    expect(wrapper.find('.toolbar-left').text()).toContain('在线')
+    expect(wrapper.find('.toolbar-left').text()).toContain('本地')
+  })
+
+  it('buttonMode=shown → toolbar 收藏夹按钮可见', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'shown')
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.find('.toolbar-left').text()).toContain('收藏夹')
+  })
+
+  it('buttonMode=default → onMounted 默认进入 favorites 视图', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'default')
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.vm.buttonMode).toBe('default')
+    expect(wrapper.vm.querySource).toBe('favorites')
+    expect(wrapper.vm.favoritesView).toBe('folders')
+  })
+
+  it('buttonMode=shown → onMounted 默认进入 local 视图', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'shown')
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.vm.buttonMode).toBe('shown')
+    expect(wrapper.vm.querySource).toBe('local')
+  })
+
+  it('buttonMode 缺省（无 localStorage） → onMounted 默认 local', async () => {
+    localStorage.clear()
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.vm.buttonMode).toBe('shown')
+    expect(wrapper.vm.querySource).toBe('local')
+  })
+
+  it('@favorites-config-change → 更新本地 buttonMode 与 tileSize', async () => {
+    localStorage.clear()
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.vm.buttonMode).toBe('shown')
+    expect(wrapper.vm.tileSize).toBe('adaptive')
+
+    const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
+    advInstance.vm.$emit('favorites-config-change', { buttonMode: 'default', tileSize: '6' })
+    await flushPromises()
+
+    expect(wrapper.vm.buttonMode).toBe('default')
+    expect(wrapper.vm.tileSize).toBe('6')
+  })
+
+  it('@favorites-config-change → 切到 default 时 querySource 跳到 favorites', async () => {
+    localStorage.clear()
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('local')
+
+    const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
+    advInstance.vm.$emit('favorites-config-change', { buttonMode: 'default', tileSize: 'adaptive' })
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('favorites')
+    expect(wrapper.vm.favoritesView).toBe('folders')
   })
 })
