@@ -96,7 +96,7 @@ onMounted(() => {
 
 ## 4. 已适配组件清单（现状快照）
 
-> 以下规则全部位于 `frontend/src/App.vue` 全局 `<style>`（约 330 行）。
+> 以下规则全部位于 `frontend/src/App.vue` 全局 `<style>`（约 450 行）。
 
 ### 4.1 el-button（L249-311）
 
@@ -221,7 +221,39 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 .dark-mode .el-tag.el-tag--info    { background-color: #2d2d3d; color: #d1d5db; }
 ```
 
-### 4.6 其他组件
+### 4.6 el-radio-button（L417-433）
+
+**关键认知**：EP 的单选按钮组（多联开关，如收藏夹配置页 `buttonMode`）的 `.el-radio-button__inner` 默认背景是 `--el-fill-color-blank`（白色，EP 2.13 静态值），暗色模式下不自动适配，会显示**白色方块**。
+
+**驱动变量**：
+- `--el-fill-color-blank`（背景，EP 2.13 静态白色）
+- `--el-text-color-regular`（文字，EP 2.13 静态深色）
+
+**修复**（App.vue 全局样式，3 条规则）：
+
+```css
+/* 未选基底 */
+.dark-mode .el-radio-button__inner {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+/* 首尾按钮圆角处的边框色（EP 写死，需 !important） */
+.dark-mode .el-radio-button:first-child .el-radio-button__inner,
+.dark-mode .el-radio-button:last-child .el-radio-button__inner {
+  border-color: var(--border-color) !important;
+}
+/* hover：未选 hover 文字变蓝（选中色沿用 --el-color-primary，自动跟随项目主色） */
+.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner:hover {
+  color: var(--el-color-primary) !important;
+}
+```
+
+> 选中态 `.is-active .el-radio-button__inner` 的蓝色背景由 EP 内置 `--el-color-primary` 驱动，暗色模式下无需覆盖（已可读）。`!important` 仅用于未选基底，避免与 EP 写死的 background 冲突。
+
+**适配日期**：2026-08-22（v1.1.10 收藏夹设置面板重构后引入）
+
+### 4.7 其他组件
 
 | 组件 | 规则 |
 |------|------|
@@ -232,10 +264,11 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 | el-form-item__label | `color: var(--text-secondary)` |
 | el-alert | `background-color: var(--bg-tertiary)` + `--text-primary` |
 | el-checkbox / el-radio label | `color: var(--text-primary)` |
+| el-radio-button | 见 §4.6 |
 | el-tooltip（light） | `--bg-secondary` + `--border-color` + 阴影 |
 | Config.vue 侧边栏 active | `.dark-mode .config-menu .menu-item.active` → `#1a1a2e` + 柔蓝描边 |
 
-### 4.7 页面局部适配
+### 4.8 页面局部适配
 
 **Download.vue 错误卡片**（组件 scoped 内可直接加）：
 
@@ -295,11 +328,11 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 
 | 文件 | 内容 |
 |------|------|
-| `frontend/src/App.vue` | 全局暗色规则（L106-435）+ `.dark-mode` 挂载逻辑（L2-19）|
+| `frontend/src/App.vue` | 全局暗色规则（L106-450）+ `.dark-mode` 挂载逻辑（L2-19）|
 | `frontend/src/views/Config.vue` | segmented 移动端垂直堆叠逻辑（L368-372）+ 响应式 CSS（L1054-1062）|
 | `frontend/src/views/Download.vue` | card-error 深色适配（L657）|
 | `docs/superpowers/specs/2026-08-05-config-popup-dark-mode-fix-design.md` | 初始设计稿 |
 
 ---
 
-*最后更新：v1.1.9 segmented 移动端适配完成后整理*
+*最后更新：v1.1.10 收藏夹设置面板重构（2026-08-22，el-radio-button 暗色适配 + §4.6 文档化）*
