@@ -4,7 +4,7 @@
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from src.common.constant import ErrMsg
 from src.dao.favorite_dao import favorite_dao
@@ -22,6 +22,7 @@ from src.models.response.favorites import (
     FavoriteFolderResponse,
     FavoriteFolderUpdateResponse,
     FavoriteFoldersResponse,
+    FavoriteFoldersWithPreviewListData,
     FavoriteFoldersWithPreviewResponse,
     FolderCountResponse,
     FolderScheduleStatusData,
@@ -46,22 +47,34 @@ async def get_all_folders() -> FavoriteFoldersResponse:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
 
-@router.get("/with-preview", response_model=FavoriteFoldersWithPreviewResponse, summary="获取所有收藏夹")
-async def get_folders_with_preview() -> FavoriteFoldersWithPreviewResponse:
-    """
-    获取所有收藏夹及其图片数量
-    # TODO: 文件夹图片预览
-        - 考虑到性能问题，可能不适合频繁调用
-        - 访问时会刷新本地数量
-        - 可选接口，单纯获取列表建议调用 /api/favorites 接口
-        - 适用于需要同时展示收藏夹列表和图片预览的场景
-        - 可能会增加接口响应时间，视收藏夹数量和图片数量而定
-        - 前端可根据实际需求选择调用哪个接口
-        - 未来可能增加分页支持以优化性能
+@router.get(
+    "/with-preview",
+    response_model=FavoriteFoldersWithPreviewResponse,
+    summary="获取所有收藏夹（含精简预览元数据，分页）",
+)
+async def get_folders_with_preview(
+    page: int = Query(1, ge=1, description="页码，从 1 开始"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    tile_size: str = Query(
+        "adaptive",
+        description="tile 尺寸：adaptive/small/medium/large",
+        pattern="^(adaptive|small|medium|large)$",
+    ),
+) -> FavoriteFoldersWithPreviewResponse:
+    """分页获取收藏夹及精简预览图元数据（id/width/height/rating）。
+
+    tile_size: 'adaptive' 按 local_count 分档；'small/medium/large' 固定 4/6/8 张。
+    preview_images 不含 preview_url —— 前端通过 `/api/v1/gallery/cache/preview/{id}`
+    复用现有预览缓存接口渲染图片。
     """
     try:
-        folders = FavoritesService.get_folders_with_preview()
-        return FavoriteFoldersWithPreviewResponse(message=ErrMsg.OK.msg, data=folders)
+        items, total, has_more = FavoritesService.get_folders_with_preview(
+            page=page, page_size=page_size, tile_size=tile_size
+        )
+        data = FavoriteFoldersWithPreviewListData(
+            items=items, total=total, has_more=has_more
+        )
+        return FavoriteFoldersWithPreviewResponse(message=ErrMsg.OK.msg, data=data)
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
 
@@ -122,11 +135,22 @@ async def reorder_folders(request: ReorderRequest) -> BaseResponse:
 
 
 @router.get(
-    "/{folder_id}/preview", response_model=FavoriteFolderPreviewResponse, summary="预览收藏夹查询结果"
+    "/{folder_id}/preview",
+    response_model=FavoriteFolderPreviewResponse,
+    summary="预览收藏夹查询结果",
 )
-async def preview_folder(folder_id: int, limit: int = 6) -> FavoriteFolderPreviewResponse:
-    """预览收藏夹查询结果，返回前N张图片"""
-    result = FavoritesService.preview_folder(folder_id, limit)
+async def preview_folder(
+    folder_id: int,
+    limit: int = Query(6, ge=1, le=50, description="预览图数量上限"),
+    random: bool = Query(False, description="True 时随机抽样；默认按当前排序"),
+) -> FavoriteFolderPreviewResponse:
+    """单收藏夹预览。返回完整字段（含 preview_url）。
+
+    # TODO: 后续「我的最爱」功能会用到此接口（单 folder 全量预览）
+    """
+    result = FavoritesService.preview_folder(
+        folder_id=folder_id, limit=limit, random=random
+    )
     if not result:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     return FavoriteFolderPreviewResponse(message=ErrMsg.OK.msg, data=result)

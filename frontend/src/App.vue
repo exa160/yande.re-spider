@@ -415,6 +415,26 @@ html, body {
   color: var(--text-primary);
 }
 
+/* el-radio-button 暗色适配（多联开关，如收藏夹配置 buttonMode / tileSize）
+   关键修复：用 :not(.is-active) 限定未选基底，避免吞掉 EP 选中态的蓝色背景。
+   详见 docs/dark-mode.md §4.6。 */
+.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+  outline-color: var(--border-color);  /* EP 用 outline 而非 border 描边，见 radio-button.scss L26 */
+}
+.dark-mode .el-radio-button:not(.is-active):first-child .el-radio-button__inner,
+.dark-mode .el-radio-button:not(.is-active):last-child .el-radio-button__inner {
+  border-radius: 0;
+}
+/* hover：未选 hover 时文字变蓝 + 背景变深灰（与 el-segmented hover #4a4a4a 一致） */
+.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner:hover {
+  color: var(--el-color-primary);
+  background: #4a4a4a;
+  outline-color: var(--border-color);
+}
+
 /* el-alert 暗色适配 */
 .dark-mode .el-alert {
   background-color: var(--bg-tertiary);

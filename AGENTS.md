@@ -43,6 +43,7 @@
 | [docs/design.md](docs/design.md) | 架构设计详解 |
 | [docs/tasks.md](docs/tasks.md) | 开发任务追踪 |
 | [docs/release.md](docs/release.md) | **版本与发布流程**（3 条核心流程线 + 分支保护红线 + 主动 version bump 检查） |
+| [docs/dark-mode.md](docs/dark-mode.md) | **夜间模式适配方案**（EP 2.13 暗色机制、三大坑、已适配组件清单、新增适配流程、故障速查表） |
 
 ---
 

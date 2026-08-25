@@ -168,10 +168,11 @@
 
       <!-- 高级功能 -->
       <div v-show="activeMenu === 'advanced'" class="config-section">
+        <!-- 缓存更新 section -->
         <div class="advanced-section">
           <div class="advanced-title">缓存更新</div>
           <div class="advanced-desc">从 yande.re API 刷新标签和艺术家信息到本地数据库（首次全量，之后增量）</div>
-          
+
           <div class="cache-stats">
             <div class="stat-item">
               <span class="stat-label">标签缓存</span>
@@ -193,9 +194,9 @@
                   <span class="param-tip" style="color: #E6A23C; margin-left: 8px;">长按全量刷新</span>
                 </div>
               </div>
-              <el-button 
-                type="primary" 
-                @click="handleRefreshTags" 
+              <el-button
+                type="primary"
+                @click="handleRefreshTags"
                 @mousedown.native="startLongPress"
                 @mouseup.native="endLongPress"
                 @mouseleave.native="endLongPress"
@@ -253,6 +254,41 @@
 
           </div>
         </div>
+
+        <!-- 收藏夹 section（卡片化布局，与缓存更新一致） -->
+        <div class="advanced-section">
+          <div class="advanced-title">收藏夹</div>
+          <div class="advanced-desc">配置收藏夹按钮显示与每文件夹预览图数量</div>
+
+          <div class="refresh-controls">
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">主页显示收藏夹</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.buttonMode" size="small">
+                    <el-radio-button label="hidden">关闭</el-radio-button>
+                    <el-radio-button label="shown">开启</el-radio-button>
+                    <el-radio-button label="default">默认显示</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">收藏夹大小</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.tileSize" size="small">
+                    <el-radio-button label="adaptive">自适应</el-radio-button>
+                    <el-radio-button label="4">4张</el-radio-button>
+                    <el-radio-button label="6">6张</el-radio-button>
+                    <el-radio-button label="8">8张</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -266,12 +302,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import PreviewCleanupDialog from '@/components/PreviewCleanupDialog.vue'
 import HeadersEditorDialog from '@/components/HeadersEditorDialog.vue'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
@@ -309,6 +346,23 @@ const databaseConfig = ref({
 
 const saving = ref(false)
 const activeMenu = ref('api')
+
+// 收藏夹 UI 配置（与 Gallery 共享 singleton composable）
+const { buttonMode, tileSize } = useFavoritesConfig()
+// 本地表单：用 composable 初值初始化，watch 同步回 composable
+// （不直接 v-model 到 composable，避免 Gallery 端外部修改造成循环）
+const favoritesForm = reactive({
+  buttonMode: buttonMode.value,
+  tileSize: tileSize.value,
+})
+watch(favoritesForm, (val) => {
+  if (buttonMode.value !== val.buttonMode) {
+    buttonMode.value = val.buttonMode
+  }
+  if (tileSize.value !== val.tileSize) {
+    tileSize.value = val.tileSize
+  }
+})
 
 // 窄屏下代理模式 segmented 垂直堆叠（<540px）
 const SEGMENTED_VERTICAL_BREAKPOINT = 540

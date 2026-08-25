@@ -25,7 +25,7 @@ class AppConfig(BaseModel):
 
     title: str = "Yande.re Local Picture Manager"
     description: str = "本地图片管理工具，提供图片查询、下载和管理功能"
-    version: str = "1.1.10"
+    version: str = "1.2.0"
     docs_url: str = "/docs"
     redoc_url: str = "/redoc"
 
