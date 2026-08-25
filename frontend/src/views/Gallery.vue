@@ -44,6 +44,18 @@
             <el-icon><MagicStick /></el-icon>
           </el-button>
         </el-tooltip>
+        <!-- 收藏夹文件夹列表视图：tile 尺寸 4 档切换 -->
+        <el-radio-group
+          v-if="querySource === 'favorites' && favoritesView === 'folders'"
+          v-model="tileSize"
+          size="small"
+          class="tile-size-group"
+        >
+          <el-radio-button label="adaptive">自适应</el-radio-button>
+          <el-radio-button label="4">4张</el-radio-button>
+          <el-radio-button label="6">6张</el-radio-button>
+          <el-radio-button label="8">8张</el-radio-button>
+        </el-radio-group>
       </div>
       <!-- 右侧工具按钮 -->
       <div class="toolbar-right" ref="toolbarRightRef">
@@ -94,7 +106,14 @@
       :visible="querySource === 'favorites' && favoritesView === 'folder-detail'"
       @click="handleBackToFolders"
     />
-    <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
+    <AdvancedQuery
+      @search="handleSearch"
+      @favorites-filter="handleFavoritesFilter"
+      ref="queryRef"
+      :source-mode="querySource"
+      :mode="modeProp"
+      :lock-favorite-chip="favoritesView === 'folder-detail'"
+    />
 
     <!-- 瀑布流图库组件 -->
     <div class="gallery-content">
@@ -368,6 +387,7 @@ const queryRef = ref(null)  // template ref 绑定 AdvancedQuery 暴露的 selec
 const favoritesView = ref(null)  // null | 'folders' | 'folder-detail'
 const selectedFavoriteFolder = ref(null)
 const currentFolders = ref([])
+const allFolders = ref([])  // 未过滤的完整列表（favorites-filter 用）
 const folderLoading = ref(false)
 const folderHasMore = ref(false)
 const folderPage = ref(1)
@@ -376,6 +396,23 @@ const FOLDER_PAGE_SIZE = 20
 // 从 localStorage 读取保存的设置，默认本地模式
 const querySource = ref(localStorage.getItem('gallery_source') || 'local')
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
+
+// tile 尺寸：4 档（adaptive 自适应 / 4 / 6 / 8 张）
+const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
+const savedTileSize = localStorage.getItem('gallery_tile_size')
+const tileSize = ref(VALID_TILE_SIZES.includes(savedTileSize) ? savedTileSize : 'adaptive')
+
+// AdvancedQuery mode 计算属性
+//   querySource='favorites' → favorites-folders / favorites-folder-detail
+//   其它 → 'gallery'
+const modeProp = computed(() => {
+  if (querySource.value === 'favorites') {
+    return favoritesView.value === 'folder-detail'
+      ? 'favorites-folder-detail'
+      : 'favorites-folders'
+  }
+  return 'gallery'
+})
 
 const previewVisible = ref(false)
 const currentImage = ref(null)
@@ -627,6 +664,11 @@ const stopSafeModeWatch = watch(safeMode, (val) => {
   localStorage.setItem('safe_mode', val ? 'true' : 'false')
 })
 
+// tile 尺寸变更持久化
+const stopTileSizeWatch = watch(tileSize, (val) => {
+  localStorage.setItem('gallery_tile_size', val)
+})
+
 // 图片预览
 
 
@@ -676,14 +718,22 @@ onUnmounted(() => {
   stopSourceWatch()
   stopSaveDataWatch()
   stopSafeModeWatch()
+  stopTileSizeWatch()
 })
 
 const handleSearch = async (searchData) => {
   let params
   if (searchData.mode) {
     params = { ...searchData.params, source: searchData.mode }
+    // source='favorites' 时注入 favorite_id（后端用其定位 folder → 取其 tags）
+    if (searchData.mode === 'favorites' && searchData.favorite?.id) {
+      params.favorite_id = searchData.favorite.id
+    }
   } else {
     params = { ...searchData, source: querySource.value }
+    if (params.source === 'favorites' && searchData.favorite?.id) {
+      params.favorite_id = searchData.favorite.id
+    }
   }
   queryParams.value = params
   currentPage.value = 1
@@ -698,11 +748,13 @@ const loadFolders = async (page) => {
   if (folderLoading.value) return
   folderLoading.value = true
   try {
-    const res = await getFoldersWithPreview(page, FOLDER_PAGE_SIZE)
+    const res = await getFoldersWithPreview(page, FOLDER_PAGE_SIZE, tileSize.value)
     const { items, has_more } = res.data
     if (page === 1) {
+      allFolders.value = items
       currentFolders.value = items
     } else {
+      allFolders.value.push(...items)
       currentFolders.value.push(...items)
     }
     folderHasMore.value = has_more
@@ -712,6 +764,20 @@ const loadFolders = async (page) => {
   } finally {
     folderLoading.value = false
   }
+}
+
+// 收藏夹一级搜索过滤（客户端过滤 currentFolders by name + tags）
+const handleFavoritesFilter = (keyword) => {
+  if (!keyword) {
+    currentFolders.value = [...allFolders.value]
+    return
+  }
+  const k = String(keyword).toLowerCase()
+  currentFolders.value = allFolders.value.filter(f => {
+    const nameMatch = f.name?.toLowerCase().includes(k)
+    const tagsMatch = (typeof f.tags === 'string' ? f.tags : '')?.toLowerCase().includes(k)
+    return nameMatch || tagsMatch
+  })
 }
 
 const handleFolderScrollBottom = () => {
@@ -735,10 +801,19 @@ const handleBackToFolders = () => {
 }
 
 const handleSourceChange = (newSource) => {
+  const prevSource = querySource.value
+
+  // 切走 favorites 时清空 queryRef 状态（避免 stale tags / favorite 残留）
+  if (prevSource === 'favorites' && newSource !== 'favorites') {
+    queryRef.value?.reset()
+    queryRef.value?.resetAdvancedPanel()
+  }
+
   querySource.value = newSource
   favoritesView.value = null
   selectedFavoriteFolder.value = null
   currentFolders.value = []
+  allFolders.value = []
   selectedImages.value = []
   selectAll.value = false
   isIndeterminate.value = false
@@ -974,7 +1049,13 @@ const getDetailUrl = (image) => {
 
 // 页面加载时自动查询本地
 onMounted(() => {
-  handleSearch({})
+  // 从 localStorage 恢复的 querySource=favorites 时直接进入 folder 列表视图
+  if (querySource.value === 'favorites') {
+    favoritesView.value = 'folders'
+    loadFolders(1)
+  } else {
+    handleSearch({})
+  }
   // 窗口尺寸变化时重新计算预览尺寸
   window.addEventListener('resize', () => {
     if (previewVisible.value && currentImage.value) {
@@ -1112,6 +1193,17 @@ html.dark-mode .top-toolbar {
 
 .safe-mode-btn {
   margin-left: 0 !important;
+}
+
+/* tile 尺寸 4 档切换（仅 favorites folders 视图显示） */
+.tile-size-group {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.tile-size-group :deep(.el-radio-button__inner) {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .mode-buttons :deep(.el-button:hover) {
