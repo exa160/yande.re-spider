@@ -672,7 +672,7 @@ const stopSaveDataWatch = watch(saveDataMode, (val) => {
 })
 
 const stopSafeModeWatch = watch(safeMode, (val) => {
-  localStorage.setItem('safe_mode', val ? 'false' : 'true')
+  localStorage.setItem('safe_mode', val ? 'true' : 'false')
 })
 
 // 图片预览
