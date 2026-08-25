@@ -2,8 +2,10 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from loguru import logger
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from src.common.constant import Rating
 from src.models.response.base_response import BaseResponse
 
 
@@ -45,18 +47,44 @@ class FavoriteFolderWithPreview(FavoriteFolder):
 
 
 class FolderPreviewImageMinimal(BaseModel):
-    """收藏夹瀑布流用的精简预览元数据（不含 URL，前端自行拼 /api/v1/gallery/cache/preview/{id}）。"""
+    """收藏夹瀑布流用的精简预览元数据（不含 URL，前端自行拼 /api/v1/gallery/cache/preview/{id}）。
+
+    rating 字段：与主视图 ImageDetail 一致，序列化输出 Rating.display（'Safe'/'Questionable'/'Explicit'），
+    而非数据库原值（'s'/'q'/'e'）。原因：前端 FolderTile.vue 的 safeMode 模糊判断是按 'Safe' 比较的，
+    如果接口返回 's'，则 !== 'Safe' 永远为 true → 安全模式下整个收藏夹预览图全模糊。
+    """
     id: int
     width: Optional[int] = None
     height: Optional[int] = None
-    rating: Optional[str] = None
+    rating: Optional[Rating] = Field(default=None, description="图片评级（s/q/e）")
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('rating', mode='before')
+    @classmethod
+    def coerce_rating(cls, v):
+        """数据库字符串 → Rating 枚举（容错：未知值降级为 R15=q）。"""
+        if v is None or v == '':
+            return None
+        if isinstance(v, Rating):
+            return v
+        try:
+            return Rating(v)
+        except ValueError:
+            logger.warning(f"Unknown rating value: {v!r}, defaulting to Rating.R15 (q)")
+            return Rating.R15
+
+    @field_serializer('rating')
+    def serialize_rating(self, v: Optional[Rating]) -> Optional[str]:
+        """Rating 枚举 → display 字符串（'Safe'/'Questionable'/'Explicit'）。"""
+        if v is None:
+            return None
+        return v.display
 
 
 class FavoriteFolderWithMinimalPreview(FavoriteFolder):
     """带精简预览图的收藏夹模型（瀑布流场景）。"""
     preview_images: list[FolderPreviewImageMinimal] = Field(
-        default_factory=list, description="预览图片元数据（仅 id/width/height）"
+        default_factory=list, description="预览图片元数据（仅 id/width/height/rating）"
     )
 
 
@@ -77,7 +105,11 @@ class FolderCountData(BaseModel):
 
 
 class PreviewImage(BaseModel):
-    """预览图片（接受 YandeData ORM 对象）"""
+    """预览图片（接受 YandeData ORM 对象）。
+
+    rating 字段同样走 Rating 枚举 + display 序列化，与主视图保持一致，
+    避免后续『我的最爱』全量预览功能踩同样的坑。
+    """
     id: int
     tags: Optional[str] = None
     file_url: Optional[str] = None
@@ -89,9 +121,28 @@ class PreviewImage(BaseModel):
     file_ext: Optional[str] = None
     file_size: Optional[int] = None
     down_flag: Optional[bool] = None
-    rating: Optional[str] = None
+    rating: Optional[Rating] = Field(default=None, description="图片评级（s/q/e）")
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('rating', mode='before')
+    @classmethod
+    def coerce_rating(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, Rating):
+            return v
+        try:
+            return Rating(v)
+        except ValueError:
+            logger.warning(f"Unknown rating value: {v!r}, defaulting to Rating.R15 (q)")
+            return Rating.R15
+
+    @field_serializer('rating')
+    def serialize_rating(self, v: Optional[Rating]) -> Optional[str]:
+        if v is None:
+            return None
+        return v.display
 
 
 class PreviewData(BaseModel):
