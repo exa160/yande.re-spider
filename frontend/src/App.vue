@@ -415,6 +415,21 @@ html, body {
   color: var(--text-primary);
 }
 
+/* el-radio-button 暗色适配（多联开关，如收藏夹配置） */
+.dark-mode .el-radio-button__inner {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+.dark-mode .el-radio-button:first-child .el-radio-button__inner,
+.dark-mode .el-radio-button:last-child .el-radio-button__inner {
+  border-color: var(--border-color) !important;
+}
+/* hover：未选 hover 时文字变蓝（选中色沿用 --el-color-primary） */
+.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner:hover {
+  color: var(--el-color-primary) !important;
+}
+
 /* el-alert 暗色适配 */
 .dark-mode .el-alert {
   background-color: var(--bg-tertiary);
