@@ -44,6 +44,28 @@ class FavoriteFolderWithPreview(FavoriteFolder):
     preview_images: list = Field(default_factory=list, description="预览图片列表")
 
 
+class FolderPreviewImageMinimal(BaseModel):
+    """收藏夹瀑布流用的精简预览元数据（不含 URL，前端自行拼 /api/v1/gallery/cache/preview/{id}）。"""
+    id: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FavoriteFolderWithMinimalPreview(FavoriteFolder):
+    """带精简预览图的收藏夹模型（瀑布流场景）。"""
+    preview_images: list[FolderPreviewImageMinimal] = Field(
+        default_factory=list, description="预览图片元数据（仅 id/width/height）"
+    )
+
+
+class FavoriteFoldersWithPreviewListData(BaseModel):
+    """带预览的收藏夹列表响应数据。"""
+    items: list[FavoriteFolderWithMinimalPreview]
+    total: int
+    has_more: bool
+
+
 # ============================================
 # Data sub-models (嵌套用，Pydantic 自动校验)
 # ============================================
@@ -128,8 +150,8 @@ class FavoriteFolderWithPreviewResponse(BaseResponse[FavoriteFolderWithPreview])
     ...
 
 
-class FavoriteFoldersWithPreviewResponse(BaseResponse[list[FavoriteFolderWithPreview]]):
-    """查询响应 - 带图片预览的收藏夹详情列表"""
+class FavoriteFoldersWithPreviewResponse(BaseResponse[FavoriteFoldersWithPreviewListData]):
+    """查询响应 - 带图片预览的收藏夹详情列表（items + total + has_more）"""
     ...
 
 
