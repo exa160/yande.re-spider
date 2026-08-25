@@ -18,76 +18,86 @@
 
     <!-- 瀑布流布局 -->
     <div v-else ref="containerRef" class="waterfall-container" :style="`column-count: ${columnCount}`">
-      <div
-        v-for="image in reorderedImages"
-        :key="image.id"
-        :data-image-id="image.id"
-        class="waterfall-item"
-        :class="{ 
-          'selected': isSelected(image),
-          'image-loaded': loadedImages.has(image.id) || !image.preview_url?.startsWith('http'),
-          'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
-        }"
-        @click="handleImageClick(image)"
-        @touchstart="handleTouchStart(image, $event)"
-        @touchmove="handleTouchMove($event)"
-        @touchend="handleTouchEnd(image, $event)"
-        @contextmenu.prevent="handleLongPress(image)"
-        @mousedown="handleMouseDown(image, $event)"
-        @mouseup="handleMouseUp(image, $event)"
-        @mousemove="handleMouseMove(image, $event)"
-      >
-        <!-- 长按选择提示 -->
-        <div v-if="isSelected(image)" class="selection-indicator">
-          <el-icon><Check /></el-icon>
-        </div>
-
-        <!-- 图片 -->
-        <el-image
+      <!-- image 模式：保持现有渲染逻辑 -->
+      <template v-if="itemType === 'image'">
+        <div
+          v-for="image in reorderedImages"
           :key="image.id"
-          :src="getPreviewUrl(image)"
-          :alt="image.id.toString()"
-          fit="cover"
-          class="waterfall-image"
-          :style="{ height: getPlaceholderHeight(image) + 'px' }"
+          :data-image-id="image.id"
+          class="waterfall-item"
           :class="{
-            'fade-in': !loadingImages.has(image.id) || loadedImages.has(image.id),
-            'safe-blur': safeMode && image.rating !== 'Safe'
+            'selected': isSelected(image),
+            'image-loaded': loadedImages.has(image.id) || !image.preview_url?.startsWith('http'),
+            'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
           }"
-          @error="handleImageError(image)"
-          @load="handleImageLoad(image)"
+          @click="handleImageClick(image)"
+          @touchstart="handleTouchStart(image, $event)"
+          @touchmove="handleTouchMove($event)"
+          @touchend="handleTouchEnd(image, $event)"
+          @contextmenu.prevent="handleLongPress(image)"
+          @mousedown="handleMouseDown(image, $event)"
+          @mouseup="handleMouseUp(image, $event)"
+          @mousemove="handleMouseMove(image, $event)"
         >
-          <template #error>
-            <div class="image-error">
-              <el-icon><Picture /></el-icon>
-            </div>
-          </template>
-          <template #placeholder>
-            <div v-if="loadingImages.has(image.id)" class="image-placeholder skeleton-shimmer"></div>
-          </template>
-        </el-image>
-
-        <!-- 重试按钮 -->
-        <div v-if="shouldShowRetry(image)" class="retry-button" @click="(e) => handleImageRetry(image, e)">
-          <el-icon v-if="retryingImages.has(image.id)" class="is-loading"><Loading /></el-icon>
-          <el-icon v-else><RefreshRight /></el-icon>
-        </div>
-
-        <!-- 图片信息悬浮层 -->
-        <div class="image-info-overlay">
-          <div class="image-info-content">
-            <span class="info-id">ID: {{ image.id }}</span>
-            <span class="info-size">{{ image.width }}x{{ image.height }}</span>
-            <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
-              {{ image.rating }}
-            </el-tag>
-            <div v-if="image.down_flag" class="downloaded-dot"></div>
+          <!-- 长按选择提示 -->
+          <div v-if="isSelected(image)" class="selection-indicator">
+            <el-icon><Check /></el-icon>
           </div>
-        </div>
 
-        <!-- 选中遮罩 -->
-        <div v-if="isSelected(image)" class="selection-overlay"></div>
-      </div>
+          <!-- 图片 -->
+          <el-image
+            :key="image.id"
+            :src="getPreviewUrl(image)"
+            :alt="image.id.toString()"
+            fit="cover"
+            class="waterfall-image"
+            :style="{ height: getPlaceholderHeight(image) + 'px' }"
+            :class="{
+              'fade-in': !loadingImages.has(image.id) || loadedImages.has(image.id),
+              'safe-blur': safeMode && image.rating !== 'Safe'
+            }"
+            @error="handleImageError(image)"
+            @load="handleImageLoad(image)"
+          >
+            <template #error>
+              <div class="image-error">
+                <el-icon><Picture /></el-icon>
+              </div>
+            </template>
+            <template #placeholder>
+              <div v-if="loadingImages.has(image.id)" class="image-placeholder skeleton-shimmer"></div>
+            </template>
+          </el-image>
+
+          <!-- 重试按钮 -->
+          <div v-if="shouldShowRetry(image)" class="retry-button" @click="(e) => handleImageRetry(image, e)">
+            <el-icon v-if="retryingImages.has(image.id)" class="is-loading"><Loading /></el-icon>
+            <el-icon v-else><RefreshRight /></el-icon>
+          </div>
+
+          <!-- 图片信息悬浮层 -->
+          <div class="image-info-overlay">
+            <div class="image-info-content">
+              <span class="info-id">ID: {{ image.id }}</span>
+              <span class="info-size">{{ image.width }}x{{ image.height }}</span>
+              <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
+                {{ image.rating }}
+              </el-tag>
+              <div v-if="image.down_flag" class="downloaded-dot"></div>
+            </div>
+          </div>
+
+          <!-- 选中遮罩 -->
+          <div v-if="isSelected(image)" class="selection-overlay"></div>
+        </div>
+      </template>
+
+      <!-- folder 模式：使用 slot -->
+      <template v-else>
+        <div v-for="item in reorderedImages" :key="item.id" class="folder-slot-wrapper">
+          <slot :folder="item" />
+        </div>
+      </template>
     </div>
 
     <!-- 空状态 -->
@@ -157,6 +167,11 @@ const props = defineProps({
   safeMode: {
     type: Boolean,
     default: false
+  },
+  itemType: {
+    type: String,
+    default: 'image',
+    validator: (v) => ['image', 'folder'].includes(v),
   }
 })
 
@@ -793,6 +808,11 @@ onUnmounted(() => {
 
 .waterfall-container {
   column-gap: 15px;
+}
+
+.folder-slot-wrapper {
+  break-inside: avoid;
+  margin-bottom: 16px;
 }
 
 .waterfall-item {
