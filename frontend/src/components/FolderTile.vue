@@ -12,6 +12,7 @@
           :src="srcEnabled.has(img.id) ? `/api/v1/gallery/cache/preview/${img.id}` : undefined"
           :alt="img.id.toString()"
           loading="lazy"
+          :class="{ 'safe-blur': safeMode && img.rating && img.rating !== 'Safe' }"
         />
         <div v-else class="folder-preview-placeholder">
           <el-icon><Picture /></el-icon>
@@ -32,6 +33,7 @@ import { Picture } from '@element-plus/icons-vue'
 const props = defineProps({
   folder: { type: Object, required: true },
   saveDataMode: { type: Boolean, default: false },
+  safeMode: { type: Boolean, default: false },
 })
 
 defineEmits(['click'])
@@ -183,5 +185,9 @@ watch(() => props.saveDataMode, async (newMode) => {
 
 html.dark-mode .folder-tile {
   background: var(--bg-secondary);
+}
+
+.folder-preview-cell .safe-blur {
+  filter: blur(20px) brightness(var(--safe-blur-brightness, 0.7));
 }
 </style>
