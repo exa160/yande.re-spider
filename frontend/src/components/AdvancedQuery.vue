@@ -1160,7 +1160,8 @@ defineExpose({
     selectedFavorite.value = null
     resetParams()
     showAdvanced.value = false
-  }
+  },
+  selectFavorite,  // 供 Gallery.vue 在 folder-detail 视图调用
 })
 </script>
 
