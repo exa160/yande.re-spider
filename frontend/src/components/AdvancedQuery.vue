@@ -1766,14 +1766,21 @@ html.dark-mode .favorite-dropdown {
   font-size: 13px;
 }
 
-/* Segmented Control 样式 */
+/* Segmented Control 样式 - 与 .search-panel 同源的半透明玻璃风
+   (图片栏 .float-header/底部按钮用的也是 rgba + backdrop-filter 模式) */
 .panel-header {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  background: rgba(var(--bg-secondary-rgb, 255, 255, 255), 0.6);
+}
+
+html.dark-mode .panel-header {
+  background: rgba(var(--bg-secondary-rgb, 45, 45, 45), 0.6);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .segmented-control {
