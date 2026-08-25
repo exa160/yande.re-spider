@@ -215,7 +215,7 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(wrapper.vm.favoritesView).toBe('folders')
     expect(wrapper.vm.tileSize).toBe('6')
     expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, '6')
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'medium')
   })
 
   it('handleSourceChange(yande) 离开 favorites 时调用 queryRef.reset + resetAdvancedPanel', async () => {
@@ -243,26 +243,55 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(resetAdvancedPanelSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('loadFolders 传 tileSize 参数给 getFoldersWithPreview', async () => {
+  it('loadFolders 把 radio label (4/6/8) 映射为契约值 (small/medium/large) 传给 getFoldersWithPreview', async () => {
     const wrapper = factory()
     await flushPromises()
     getFoldersWithPreviewMock.mockClear()
 
-    // 设置 tileSize 后触发 loadFolders
+    // 设置 tileSize='8' 后触发 loadFolders → 契约应为 'large'
     wrapper.vm.tileSize = '8'
     wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
 
     expect(wrapper.vm.tileSize).toBe('8')
     expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, '8')
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'large')
 
-    // 切换 tileSize 并重新加载（page=2）
+    // 切换 tileSize='4' 并重新加载（page=2）→ 契约应为 'small'
     getFoldersWithPreviewMock.mockClear()
     wrapper.vm.tileSize = '4'
-    // 模拟切换 tileSize 后手动调 loadFolders 第 2 页
     await wrapper.vm.loadFolders(2)
     await flushPromises()
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(2, 20, '4')
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(2, 20, 'small')
+
+    // tileSize='6' → 契约应为 'medium'
+    getFoldersWithPreviewMock.mockClear()
+    wrapper.vm.tileSize = '6'
+    await wrapper.vm.loadFolders(1)
+    await flushPromises()
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'medium')
+
+    // 'adaptive' 透传（不在映射表中，原样传递）
+    getFoldersWithPreviewMock.mockClear()
+    wrapper.vm.tileSize = 'adaptive'
+    await wrapper.vm.loadFolders(1)
+    await flushPromises()
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'adaptive')
+  })
+
+  it('regression: radio label="4" 不会原样传给 API（修复前会发 "4" 触发 422）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    getFoldersWithPreviewMock.mockClear()
+
+    wrapper.vm.tileSize = '4'
+    wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+
+    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
+    const callArgs = getFoldersWithPreviewMock.mock.calls[0]
+    // 第三参数（tileSize）必须是契约值 'small'，不能是 raw label '4'
+    expect(callArgs[2]).toBe('small')
+    expect(callArgs[2]).not.toBe('4')
   })
 })
