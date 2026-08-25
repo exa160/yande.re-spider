@@ -55,15 +55,21 @@ async def get_all_folders() -> FavoriteFoldersResponse:
 async def get_folders_with_preview(
     page: int = Query(1, ge=1, description="页码，从 1 开始"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    tile_size: str = Query(
+        "adaptive",
+        description="tile 尺寸：adaptive/small/medium/large",
+        pattern="^(adaptive|small|medium|large)$",
+    ),
 ) -> FavoriteFoldersWithPreviewResponse:
-    """分页获取收藏夹及精简预览图元数据（id/width/height，前端拼 URL）。
+    """分页获取收藏夹及精简预览图元数据（id/width/height/rating）。
 
+    tile_size: 'adaptive' 按 local_count 分档；'small/medium/large' 固定 4/6/8 张。
     preview_images 不含 preview_url —— 前端通过 `/api/v1/gallery/cache/preview/{id}`
     复用现有预览缓存接口渲染图片。
     """
     try:
         items, total, has_more = FavoritesService.get_folders_with_preview(
-            page=page, page_size=page_size
+            page=page, page_size=page_size, tile_size=tile_size
         )
         data = FavoriteFoldersWithPreviewListData(
             items=items, total=total, has_more=has_more

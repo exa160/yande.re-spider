@@ -32,7 +32,13 @@ PREVIEW_COUNT_BY_LOCAL_THRESHOLDS = [
 ]
 
 
-def _preview_count_for_local_count(local_count: int) -> int:
+def _preview_count_for_local_count(local_count: int, tile_size: str = "adaptive") -> int:
+    if tile_size == "small":
+        return 4
+    if tile_size == "medium":
+        return 6
+    if tile_size == "large":
+        return 8
     for threshold, count in PREVIEW_COUNT_BY_LOCAL_THRESHOLDS:
         if (local_count or 0) < threshold:
             return count
@@ -67,13 +73,16 @@ class FavoritesService:
 
     @staticmethod
     def get_folders_with_preview(
-        page: int = 1, page_size: int = 20
+        page: int = 1, page_size: int = 20, tile_size: str = "adaptive"
     ) -> tuple[list[FavoriteFolderWithMinimalPreview], int, bool]:
-        """分页获取收藏夹及精简预览元数据（瀑布流视图）。"""
+        """分页获取收藏夹及精简预览元数据（瀑布流视图）。
+
+        tile_size: 'adaptive' 按 local_count 分档；'small/medium/large' 固定 4/6/8 张。
+        """
         folders, total = favorite_dao.list_paginated(page=page, page_size=page_size)
         items: list[FavoriteFolderWithMinimalPreview] = []
         for f in folders:
-            limit = _preview_count_for_local_count(f.local_count or 0)
+            limit = _preview_count_for_local_count(f.local_count or 0, tile_size)
             preview_meta: list[FolderPreviewImageMinimal] = []
             if f.tags:
                 with YandeDataRepository() as repo:
