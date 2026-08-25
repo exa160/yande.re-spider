@@ -17,6 +17,13 @@
           >
             本地
           </el-button>
+          <el-button
+            v-if="querySource !== 'yande'"
+            :type="querySource === 'favorites' ? 'primary' : ''"
+            @click="handleSourceChange('favorites')"
+          >
+            收藏夹
+          </el-button>
         </el-button-group>
         <el-tooltip content="省流模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button
@@ -83,27 +90,60 @@
     </div>
 
     <!-- 搜索组件（独立于 toolbar） -->
+    <BackButton
+      :visible="querySource === 'favorites' && favoritesView === 'folder-detail'"
+      @click="handleBackToFolders"
+    />
     <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
 
     <!-- 瀑布流图库组件 -->
     <div class="gallery-content">
-      <WaterfallGallery
-        :images="images"
-        :loading="loading"
-        :has-more="hasMore"
-        :is-loading-more="isLoadingMore"
-        :load-error="loadError"
-        :selected-images="selectedImages"
-        :selectable="querySource === 'yande'"
-        :source-mode="querySource"
-        :save-data-mode="saveDataMode"
-        :safe-mode="safeMode"
-        @image-click="handleImageClick"
-        @image-select="handleImageSelect"
-        @load-more="loadMore"
-        @load-error="handleLoadError"
-        @multi-select-start="handleMultiSelectStart"
-      />
+      <!-- 收藏夹文件夹列表 -->
+      <template v-if="querySource === 'favorites' && favoritesView === 'folders'">
+        <WaterfallGallery
+          item-type="folder"
+          :images="currentFolders"
+          :loading="folderLoading"
+          :has-more="folderHasMore"
+          :is-loading-more="false"
+          :load-error="false"
+          :selected-images="[]"
+          :selectable="false"
+          :source-mode="'favorites'"
+          :save-data-mode="saveDataMode"
+          :safe-mode="safeMode"
+          @load-more="handleFolderScrollBottom"
+        >
+          <template #default="{ folder }">
+            <FolderTile
+              :folder="folder"
+              :save-data-mode="saveDataMode"
+              @click="handleFolderClick"
+            />
+          </template>
+        </WaterfallGallery>
+      </template>
+
+      <!-- 普通瀑布流（在线 / 本地 / 文件夹图片） -->
+      <template v-else>
+        <WaterfallGallery
+          :images="images"
+          :loading="loading"
+          :has-more="hasMore"
+          :is-loading-more="isLoadingMore"
+          :load-error="loadError"
+          :selected-images="selectedImages"
+          :selectable="querySource === 'yande'"
+          :source-mode="querySource"
+          :save-data-mode="saveDataMode"
+          :safe-mode="safeMode"
+          @image-click="handleImageClick"
+          @image-select="handleImageSelect"
+          @load-more="loadMore"
+          @load-error="handleLoadError"
+          @multi-select-start="handleMultiSelectStart"
+        />
+      </template>
     </div>
 
     <!-- 左下角多选操作栏 -->
@@ -306,11 +346,13 @@ import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
+import FolderTile from '@/components/FolderTile.vue'
+import BackButton from '@/components/BackButton.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
-import { updateOnlineCount, updateLocalCount, refreshOnlineCount } from '@/api/favorites'
+import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
 
 const images = ref([])
 const loading = ref(false)
@@ -320,6 +362,15 @@ const loadError = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
 const currentFavorite = ref(null)
+
+// 收藏夹模式状态机
+const favoritesView = ref(null)  // null | 'folders' | 'folder-detail'
+const selectedFavoriteFolder = ref(null)
+const currentFolders = ref([])
+const folderLoading = ref(false)
+const folderHasMore = ref(false)
+const folderPage = ref(1)
+const FOLDER_PAGE_SIZE = 20
 
 // 从 localStorage 读取保存的设置，默认本地模式
 const querySource = ref(localStorage.getItem('gallery_source') || 'local')
@@ -642,16 +693,65 @@ const handleSearch = async (searchData) => {
   await loadImages()
 }
 
+const loadFolders = async (page) => {
+  if (folderLoading.value) return
+  folderLoading.value = true
+  try {
+    const res = await getFoldersWithPreview(page, FOLDER_PAGE_SIZE)
+    const { items, has_more } = res.data
+    if (page === 1) {
+      currentFolders.value = items
+    } else {
+      currentFolders.value.push(...items)
+    }
+    folderHasMore.value = has_more
+    folderPage.value = page
+  } catch (e) {
+    ElMessage.error('加载收藏夹失败：' + (e?.message || '未知错误'))
+  } finally {
+    folderLoading.value = false
+  }
+}
+
+const handleFolderScrollBottom = () => {
+  if (folderHasMore.value && !folderLoading.value) {
+    loadFolders(folderPage.value + 1)
+  }
+}
+
+const handleFolderClick = (folder) => {
+  selectedFavoriteFolder.value = folder
+  favoritesView.value = 'folder-detail'
+  // 复用 AdvancedQuery 的 selectFavorite 设置搜索栏状态
+  queryRef.value?.selectFavorite(folder)
+}
+
+const handleBackToFolders = () => {
+  selectedFavoriteFolder.value = null
+  favoritesView.value = 'folders'
+  queryRef.value?.reset()
+  images.value = []
+}
+
 const handleSourceChange = (newSource) => {
   querySource.value = newSource
-  selectedImages.value = []  // 清空选择
+  favoritesView.value = null
+  selectedFavoriteFolder.value = null
+  currentFolders.value = []
+  selectedImages.value = []
   selectAll.value = false
   isIndeterminate.value = false
+
+  if (newSource === 'favorites') {
+    favoritesView.value = 'folders'
+    loadFolders(1)
+    return
+  }
+
   if (Object.keys(queryParams.value).length > 0) {
     queryParams.value.source = newSource
     handleSearch(queryParams.value)
   } else {
-    // 初始加载
     handleSearch({})
   }
 }
