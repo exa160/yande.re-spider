@@ -19,20 +19,20 @@ beforeEach(() => {
   })
 })
 
-const mkFolder = (previewCount) => ({
-  id: 1,
-  name: '风景',
+const mkFolder = (id, previewCount) => ({
+  id,
+  name: `folder_${id}`,
   color: '#409EFF',
   local_count: 42,
   preview_images: Array.from({ length: previewCount }, (_, i) => ({
-    id: 1000 + i,
+    id: id * 1000 + i,
     width: 100,
     height: 100,
   })),
 })
 
 const factory = (props = {}) => mount(FolderTile, {
-  props: { folder: mkFolder(4), saveDataMode: false, ...props },
+  props: { folder: mkFolder(1, 4), saveDataMode: false, ...props },
   global: {
     stubs: {
       'el-icon': { template: '<i><slot/></i>' },
@@ -44,7 +44,7 @@ const factory = (props = {}) => mount(FolderTile, {
 describe('FolderTile', () => {
   it('渲染文件夹名和数量', () => {
     const wrapper = factory()
-    expect(wrapper.text()).toContain('风景')
+    expect(wrapper.text()).toContain('folder_1')
     expect(wrapper.text()).toContain('42')
   })
 
@@ -72,11 +72,11 @@ describe('FolderTile', () => {
   })
 
   it('gridCols 根据 preview_images 数量计算', () => {
-    const w4 = factory({ folder: mkFolder(4) })
+    const w4 = factory({ folder: mkFolder(1, 4) })
     expect(w4.vm.gridCols).toBe(2)  // 4 张 → 2 列
-    const w6 = factory({ folder: mkFolder(6) })
+    const w6 = factory({ folder: mkFolder(1, 6) })
     expect(w6.vm.gridCols).toBe(3)
-    const w8 = factory({ folder: mkFolder(8) })
+    const w8 = factory({ folder: mkFolder(1, 8) })
     expect(w8.vm.gridCols).toBe(4)
   })
 
@@ -84,13 +84,14 @@ describe('FolderTile', () => {
     const wrapper = factory({ saveDataMode: true })
     await flushPromises()
 
-    // happy-dom 不挂 wrapper 到 document.body，组件 onMounted 的 document.querySelector 拿不到根，
-    // 这里手动 observe 当前 tile 自身的 cells 来模拟首屏可见
+    // 修复 C1 后：onMounted 使用 tileRef 引用实例根，不再需要手动 observe 兼容层。
+    // happy-dom 会把单个组件挂载到独立的 document 片段，tileRef.value 即 wrapper.element，
+    // onMounted 会自动 observe 当前 tile 自身的 cells 来模拟首屏可见。
     const cells = Array.from(wrapper.element.querySelectorAll('[data-image-id]'))
     expect(cells.length).toBe(4)
-    const observer = observerInstances[0]
-    cells.forEach(cell => observer.observe(cell))
 
+    // 触发 IntersectionObserver 回调，把这些 cell 标记为可见
+    const observer = observerInstances[0]
     observer.cb(cells.map(el => ({ isIntersecting: true, target: el })))
     await flushPromises()
 
@@ -106,6 +107,39 @@ describe('FolderTile', () => {
     expect(imgs.length).toBe(4)
     imgs.forEach((img, i) => {
       expect(img.attributes('src')).toBe(`/api/v1/gallery/cache/preview/${1000 + i}`)
+    })
+  })
+
+  // C1 回归测试：多个 FolderTile 实例共存时，每个实例的 cells 都应被独立 observe。
+  // 修复前：document.querySelector('.folder-tile') 只命中第一个实例，
+  // 第二个 tile 的所有 preview 永远停留在 placeholder 状态。
+  // 修复后：使用 instance-scoped template ref (tileRef)，每个 tile 的 cells 都被各自的 observer 注册。
+  it('C1 回归：多个实例共存时，每个 tile 的 cells 都应被各自的 observer 注册', async () => {
+    const wrapperA = factory({ folder: mkFolder(1, 4) })
+    const wrapperB = factory({ folder: mkFolder(2, 6) })
+
+    await flushPromises()
+
+    // 应有 2 个 observer 实例（每个 FolderTile 各自一个）
+    expect(observerInstances.length).toBe(2)
+
+    // 每个 observer.observe 调用应来自自己 tile 的 cells（不会跨实例 observe）
+    // 模拟所有 observed targets 进入视口
+    observerInstances[0].cb(observedTargets.map(el => ({ isIntersecting: true, target: el })))
+    observerInstances[1].cb(observedTargets.map(el => ({ isIntersecting: true, target: el })))
+    await flushPromises()
+    await flushPromises()
+
+    // 两个 tile 的 <img> 都应拿到 src（不再卡在 placeholder）
+    const imgsA = wrapperA.findAll('img')
+    const imgsB = wrapperB.findAll('img')
+    expect(imgsA.length).toBe(4)
+    expect(imgsB.length).toBe(6)
+    imgsA.forEach(img => {
+      expect(img.attributes('src')).toMatch(/^\/api\/v1\/gallery\/cache\/preview\//)
+    })
+    imgsB.forEach(img => {
+      expect(img.attributes('src')).toMatch(/^\/api\/v1\/gallery\/cache\/preview\//)
     })
   })
 })

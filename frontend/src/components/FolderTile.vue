@@ -1,5 +1,5 @@
 <template>
-  <div class="folder-tile" @click="$emit('click', folder)">
+  <div ref="tileRef" class="folder-tile" @click="$emit('click', folder)">
     <div class="folder-preview-grid" :style="`--cols: ${gridCols}`">
       <div
         v-for="img in folder.preview_images"
@@ -44,6 +44,7 @@ const MAX_PREVIEW_CONCURRENT = 10
 const loadingQueue = ref([])
 const srcEnabled = ref(new Set())
 const visibleIds = ref(new Set())
+const tileRef = ref(null)
 let observer = null
 
 const gridCols = computed(() => {
@@ -85,7 +86,9 @@ const setupObserver = () => {
 onMounted(() => {
   setupObserver()
   // 观察所有当前已挂载的 cell（首屏可见时立即进入队列）
-  const root = document.querySelector('.folder-tile')
+  // 必须用实例作用域的 template ref（tileRef）而非 document.querySelector，
+  // 否则多个 FolderTile 共存时只有第一个 tile 的 cells 被 observe（C1 bug）。
+  const root = tileRef.value
   if (!root || !observer) return
   const cells = root.querySelectorAll('[data-image-id]')
   cells.forEach(cell => observer.observe(cell))
