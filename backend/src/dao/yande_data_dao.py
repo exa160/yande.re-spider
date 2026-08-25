@@ -207,6 +207,37 @@ class YandeDataRepository(BaseDAO):
         stmt = select(func.max(YandeData.id)).filter(*filter_funcs)
         return self.session.execute(stmt).scalar_one_or_none()
 
+    def query_random_for_tags(
+        self,
+        tags: str,
+        limit: int,
+        downloaded_only: bool = True,
+    ) -> List[YandeData]:
+        """按 tags 过滤，随机抽样 limit 条图片。
+
+        Args:
+            tags: 标签字符串（与 query() 使用同一 _tag_filter 解析）
+            limit: 抽样上限
+            downloaded_only: True 时仅返回 down_flag=True 的图片（收藏夹预览场景）
+
+        Returns:
+            随机排序的 YandeData 列表，最多 limit 条；无匹配返回空列表
+        """
+        filter_funcs = []
+        if tags and tags.strip():
+            tag_cond = self._tag_filter(tags)
+            if tag_cond is not None:
+                filter_funcs.append(tag_cond)
+        if downloaded_only:
+            filter_funcs.append(YandeData.down_flag.is_(True))
+        stmt = (
+            select(YandeData)
+            .filter(*filter_funcs)
+            .order_by(func.random())
+            .limit(limit)
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
     def insert(self, data: dict) -> bool:
         try:
             record = YandeData(**data)
