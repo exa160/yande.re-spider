@@ -28,7 +28,6 @@ vi.mock('@/api/favorites', () => ({
 
 beforeEach(() => {
   getFoldersWithPreviewMock.mockClear()
-  // localStorage 在 happy-dom 默认可用；显式清空避免其它测试残留
   localStorage.clear()
   // Gallery.onMounted 中用 ResizeObserver
   globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -48,8 +47,8 @@ const BackButtonStub = {
 
 const AdvancedQueryStub = {
   name: 'AdvancedQuery',
-  props: ['sourceMode', 'mode', 'lockFavoriteChip', 'favoritesConfig'],
-  emits: ['search', 'favorites-filter', 'favorites-config-change'],
+  props: ['sourceMode', 'mode', 'lockFavoriteChip'],
+  emits: ['search', 'favorites-filter'],
   template: '<div class="advanced-query-stub"><slot/></div>',
   // 暴露 selectFavorite / reset / resetAdvancedPanel 给父组件
   methods: {
@@ -395,29 +394,38 @@ describe('Gallery buttonMode (Task 4)', () => {
     expect(wrapper.vm.querySource).toBe('local')
   })
 
-  it('@favorites-config-change → 更新本地 buttonMode 与 tileSize', async () => {
+  it('useFavoritesConfig composable: buttonMode/tileSize 运行时变更 → Gallery 反应并持久化', async () => {
     localStorage.clear()
     const wrapper = factory()
     await flushPromises()
     expect(wrapper.vm.buttonMode).toBe('shown')
     expect(wrapper.vm.tileSize).toBe('adaptive')
 
-    const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
-    advInstance.vm.$emit('favorites-config-change', { buttonMode: 'default', tileSize: '6' })
+    // 模拟 Config.vue 通过 composable 写入新值
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { buttonMode, tileSize } = useFavoritesConfig()
+    buttonMode.value = 'default'
+    tileSize.value = '6'
     await flushPromises()
 
+    // Gallery 端 composable 是同 singleton → 应同步更新
     expect(wrapper.vm.buttonMode).toBe('default')
     expect(wrapper.vm.tileSize).toBe('6')
+
+    // composable watcher 写回 localStorage
+    expect(localStorage.getItem('gallery_favorites_button_mode')).toBe('default')
+    expect(localStorage.getItem('gallery_favorites_tile_size')).toBe('6')
   })
 
-  it('@favorites-config-change → 切到 default 时 querySource 跳到 favorites', async () => {
+  it('useFavoritesConfig composable: buttonMode=default 运行时变更 → querySource 跳到 favorites', async () => {
     localStorage.clear()
     const wrapper = factory()
     await flushPromises()
     expect(wrapper.vm.querySource).toBe('local')
 
-    const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
-    advInstance.vm.$emit('favorites-config-change', { buttonMode: 'default', tileSize: 'adaptive' })
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { buttonMode } = useFavoritesConfig()
+    buttonMode.value = 'default'
     await flushPromises()
 
     expect(wrapper.vm.querySource).toBe('favorites')

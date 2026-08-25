@@ -96,13 +96,10 @@
     />
     <AdvancedQuery
       @search="handleSearch"
-      @favorites-filter="handleFavoritesFilter"
-      @favorites-config-change="handleFavoritesConfigChange"
       ref="queryRef"
       :source-mode="querySource"
       :mode="modeProp"
       :lock-favorite-chip="favoritesView === 'folder-detail'"
-      :favorites-config="{ buttonMode, tileSize }"
     />
 
     <!-- 瀑布流图库组件 -->
@@ -363,6 +360,7 @@ import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 const images = ref([])
 const loading = ref(false)
@@ -388,22 +386,11 @@ const FOLDER_PAGE_SIZE = 20
 const querySource = ref(localStorage.getItem('gallery_source') || 'local')
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 
-// tile 尺寸：4 档（adaptive 自适应 / 4 / 6 / 8 张）
-// 持久化由 AdvancedQuery 收藏夹 section 负责（key: gallery_favorites_tile_size，
-// 向后兼容旧 key gallery_tile_size）。Gallery 仅持有运行时副本供 loadFolders API 调用。
-const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
-const savedTileSize = localStorage.getItem('gallery_favorites_tile_size')
-  || localStorage.getItem('gallery_tile_size')
-const tileSize = ref(VALID_TILE_SIZES.includes(savedTileSize) ? savedTileSize : 'adaptive')
-
-// 收藏夹按钮三联开关（hidden/shown/default）
-// 'hidden'  → toolbar 不显示收藏夹按钮
-// 'shown'   → 显示按钮，但默认进 local
-// 'default' → 显示按钮，且默认进 favorites
-// 持久化由 AdvancedQuery 收藏夹 section 负责（key: gallery_favorites_button_mode）
-const VALID_BUTTON_MODES = ['hidden', 'shown', 'default']
-const savedButtonMode = localStorage.getItem('gallery_favorites_button_mode')
-const buttonMode = ref(VALID_BUTTON_MODES.includes(savedButtonMode) ? savedButtonMode : 'shown')
+// 收藏夹 UI 配置（singleton composable，跨组件共享 + localStorage 持久化）
+// - buttonMode: 'hidden' / 'shown' / 'default'（default → 进首页直接跳 favorites）
+// - tileSize:   'adaptive' / '4' / '6' / '8'
+// 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
+const { buttonMode, tileSize } = useFavoritesConfig()
 
 // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
 // 'adaptive' 透传；其它值 fallback 到原值（防御性）
@@ -675,6 +662,14 @@ const stopSafeModeWatch = watch(safeMode, (val) => {
   localStorage.setItem('safe_mode', val ? 'true' : 'false')
 })
 
+// 收藏夹配置由 composable 全局共享：buttonMode 切到 'default' 时跳转到 favorites 视图
+// （取代原 AdvancedQuery 的 @favorites-config-change 回调，触发源迁到 Config.vue）
+watch(buttonMode, (newMode, oldMode) => {
+  if (newMode === 'default' && oldMode !== 'default' && querySource.value !== 'favorites') {
+    handleSourceChange('favorites')
+  }
+})
+
 // 图片预览
 
 
@@ -773,20 +768,7 @@ const loadFolders = async (page) => {
   }
 }
 
-// 收藏夹一级搜索过滤（客户端过滤 currentFolders by name + tags）
-const handleFavoritesFilter = (keyword) => {
-  if (!keyword) {
-    currentFolders.value = [...allFolders.value]
-    return
-  }
-  const k = String(keyword).toLowerCase()
-  currentFolders.value = allFolders.value.filter(f => {
-    const nameMatch = f.name?.toLowerCase().includes(k)
-    const tagsMatch = (typeof f.tags === 'string' ? f.tags : '')?.toLowerCase().includes(k)
-    return nameMatch || tagsMatch
-  })
-}
-
+// 收藏夹一级搜索过滤已迁到 AdvancedQuery 内部处理（c6330bb 前的旧逻辑不再使用）
 const handleFolderScrollBottom = () => {
   if (folderHasMore.value && !folderLoading.value) {
     loadFolders(folderPage.value + 1)
@@ -807,24 +789,8 @@ const handleBackToFolders = () => {
   images.value = []
 }
 
-// AdvancedQuery 收藏夹 section 变更回调
-// - 同步本地 buttonMode / tileSize 副本
-// - buttonMode 切到 'default' 且当前不在 favorites 时，触发跳转到 favorites 视图
-const handleFavoritesConfigChange = (config) => {
-  if (!config) return
-  if (config.buttonMode && VALID_BUTTON_MODES.includes(config.buttonMode)) {
-    const prevMode = buttonMode.value
-    buttonMode.value = config.buttonMode
-    // hidden → shown 不会强制跳，default 才会
-    if (config.buttonMode === 'default' && prevMode !== 'default' && querySource.value !== 'favorites') {
-      handleSourceChange('favorites')
-    }
-  }
-  if (config.tileSize && VALID_TILE_SIZES.includes(config.tileSize)) {
-    tileSize.value = config.tileSize
-  }
-}
-
+// 收藏夹配置现由 useFavoritesConfig composable 全局共享，
+// Config.vue（高级功能 tab）修改后 Gallery 自动响应
 const handleSourceChange = (newSource) => {
   const prevSource = querySource.value
 
