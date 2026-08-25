@@ -2,7 +2,7 @@
   <div ref="tileRef" class="folder-tile" @click="$emit('click', folder)">
     <div class="folder-preview-grid" :style="`--cols: ${gridCols}`">
       <div
-        v-for="img in folder.preview_images"
+        v-for="img in displayedImages"
         :key="img.id"
         :data-image-id="img.id"
         class="folder-preview-cell"
@@ -48,9 +48,35 @@ const srcEnabled = ref(new Set())
 const visibleIds = ref(new Set())
 const tileRef = ref(null)
 let observer = null
+let resizeObserver = null
+
+// 后端 tile_size='adaptive' 永远返 8 张，前端按 tile 实际宽度裁剪显示 4 / 6 / 8 张。
+// 阈值 [最小宽度, 显示张数]，从大到小匹配；不命中兜底 4 张。
+const ADAPTIVE_THRESHOLDS = [
+  [450, 8],
+  [300, 6],
+  [0, 4],
+]
+const displayCount = ref(8)
+
+const measureTileWidth = () => {
+  if (!tileRef.value) return
+  const w = tileRef.value.offsetWidth
+  for (const [minW, count] of ADAPTIVE_THRESHOLDS) {
+    if (w >= minW) {
+      displayCount.value = count
+      return
+    }
+  }
+  displayCount.value = 4
+}
+
+const displayedImages = computed(() =>
+  (props.folder.preview_images || []).slice(0, displayCount.value)
+)
 
 const gridCols = computed(() => {
-  const n = props.folder.preview_images?.length || 0
+  const n = displayedImages.value.length
   if (n <= 4) return 2
   if (n <= 6) return 3
   return 4  // 8 张 → 4 列
@@ -86,6 +112,7 @@ const setupObserver = () => {
 }
 
 onMounted(() => {
+  measureTileWidth()
   setupObserver()
   // 观察所有当前已挂载的 cell（首屏可见时立即进入队列）
   // 必须用实例作用域的 template ref（tileRef）而非 document.querySelector，
@@ -94,11 +121,19 @@ onMounted(() => {
   if (!root || !observer) return
   const cells = root.querySelectorAll('[data-image-id]')
   cells.forEach(cell => observer.observe(cell))
+
+  // ResizeObserver 监听 tile 宽度变化，触发重新裁剪
+  if (typeof ResizeObserver !== 'undefined' && tileRef.value) {
+    resizeObserver = new ResizeObserver(() => measureTileWidth())
+    resizeObserver.observe(tileRef.value)
+  }
 })
 
 onUnmounted(() => {
   observer?.disconnect()
   observer = null
+  resizeObserver?.disconnect()
+  resizeObserver = null
 })
 
 // 监听 folder 变化，防御性重置内部状态（虽 folder 一般不会变）
