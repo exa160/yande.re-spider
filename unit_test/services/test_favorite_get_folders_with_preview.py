@@ -6,6 +6,11 @@
 - 服务方法 get_folders_with_preview 直接使用 favorite_dao.list_paginated()，需要 session。
 - 本测试用 _request_session_ctx 临时设置 _request_session contextvar，让单例 DAO 在测试中可用。
 - _clean / _seed_* 用 `with X as dao:` 模式各自打开 session，与 brief 原型一致。
+
+说明：
+- tile_size='adaptive'（默认）永远返 8 张（前端按 tile 宽度像素裁剪显示 4/6/8 张），
+  与 local_count 大小无关。以下三个 test_count_tier_* 用例都用 default adaptive，
+  验证「不分档」的新契约。
 """
 import sys
 from contextlib import contextmanager
@@ -79,7 +84,8 @@ def _seed_yande_data(tag: str, count: int, start_id: int = 5000) -> None:
             repo.session.add(rec)
 
 
-def test_count_tier_small_folder_returns_4():
+def test_adaptive_returns_8_for_small_local_count():
+    """adaptive + local_count=10（<50 旧档）→ 现统一返 8，不分档"""
     _clean()
     _seed_folder(10, "small_folder")
     _seed_yande_data("sample", 10)
@@ -87,19 +93,21 @@ def test_count_tier_small_folder_returns_4():
         items, total, has_more = FavoritesService.get_folders_with_preview(page=1, page_size=20)
     assert total == 1
     assert has_more is False
-    assert len(items[0].preview_images) == 4
+    assert len(items[0].preview_images) == 8
 
 
-def test_count_tier_medium_folder_returns_6():
+def test_adaptive_returns_8_for_medium_local_count():
+    """adaptive + local_count=100（50-199 旧档）→ 现统一返 8，不分档"""
     _clean()
     _seed_folder(100, "medium_folder")
     _seed_yande_data("sample", 100)
     with _request_session_ctx():
         items, _, _ = FavoritesService.get_folders_with_preview(page=1, page_size=20)
-    assert len(items[0].preview_images) == 6
+    assert len(items[0].preview_images) == 8
 
 
-def test_count_tier_large_folder_returns_8():
+def test_adaptive_returns_8_for_large_local_count():
+    """adaptive + local_count=300（≥200 旧档）→ 仍返 8（与新契约一致）"""
     _clean()
     _seed_folder(300, "large_folder")
     _seed_yande_data("sample", 300)

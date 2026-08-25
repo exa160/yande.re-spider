@@ -1,7 +1,7 @@
 """验证 /favorites/with-preview 的 tile_size 参数决定预览图数
 
 Spec: tile_size ∈ {adaptive, small, medium, large}
-- adaptive: 按 local_count 分档（<50→4, 50-199→6, ≥200→8）
+- adaptive: 永远返 8（前端按 tile 实际宽度像素裁剪 4/6/8 张显示）
 - small: 固定 4
 - medium: 固定 6
 - large: 固定 8
@@ -116,16 +116,20 @@ def test_tile_size_large_returns_8():
     assert len(items[0].preview_images) == 8
 
 
-def test_tile_size_adaptive_uses_local_count():
-    """local_count=100 → adaptive 应返回 6（50-199 档）"""
+def test_tile_size_adaptive_always_returns_8():
+    """tile_size='adaptive' 不再按 local_count 分档，永远返 8 张
+
+    即便 local_count=10（旧版 adaptive 会返 4），现在也必须返 8——后端只给上限，
+    实际显示张数由前端 FolderTile 按 tile 实际宽度像素裁剪。
+    """
     _clean()
-    _seed_folder(100, "ts_adaptive")
-    _seed_yande_data("tile_test_tag", 100)
+    _seed_folder(10, "ts_adaptive")
+    _seed_yande_data("tile_test_tag", 10)
     with _request_session_ctx():
         items, _, _ = FavoritesService.get_folders_with_preview(
             page=1, page_size=20, tile_size="adaptive"
         )
-    assert len(items[0].preview_images) == 6
+    assert len(items[0].preview_images) == 8
 
 
 # ---------- API 路由层 ----------

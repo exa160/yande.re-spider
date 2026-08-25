@@ -24,14 +24,6 @@ from src.models.response.favorites import (
 )
 
 
-# 瀑布流预览图数量分档：(local_count 上限, 预览张数)
-PREVIEW_COUNT_BY_LOCAL_THRESHOLDS = [
-    (50, 4),
-    (200, 6),
-    (float("inf"), 8),
-]
-
-
 def _preview_count_for_local_count(local_count: int, tile_size: str = "adaptive") -> int:
     if tile_size == "small":
         return 4
@@ -39,9 +31,7 @@ def _preview_count_for_local_count(local_count: int, tile_size: str = "adaptive"
         return 6
     if tile_size == "large":
         return 8
-    for threshold, count in PREVIEW_COUNT_BY_LOCAL_THRESHOLDS:
-        if (local_count or 0) < threshold:
-            return count
+    # adaptive：前端按 tile 宽度像素裁剪，后端统一返 8 张作为上限
     return 8
 
 
@@ -77,7 +67,8 @@ class FavoritesService:
     ) -> tuple[list[FavoriteFolderWithMinimalPreview], int, bool]:
         """分页获取收藏夹及精简预览元数据（瀑布流视图）。
 
-        tile_size: 'adaptive' 按 local_count 分档；'small/medium/large' 固定 4/6/8 张。
+        tile_size: 'adaptive' 永远返 8 张（前端按 tile 宽度像素裁剪 4/6/8 张）；
+        'small/medium/large' 固定 4/6/8 张。
         """
         folders, total = favorite_dao.list_paginated(page=page, page_size=page_size)
         items: list[FavoriteFolderWithMinimalPreview] = []
