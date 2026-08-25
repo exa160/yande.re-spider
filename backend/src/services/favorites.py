@@ -17,7 +17,26 @@ from src.models.request.favorites import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
 )
-from src.models.response.favorites import FavoriteFolder, FavoriteFolderWithPreview
+from src.models.response.favorites import (
+    FavoriteFolder,
+    FavoriteFolderWithMinimalPreview,
+    FolderPreviewImageMinimal,
+)
+
+
+# 瀑布流预览图数量分档：(local_count 上限, 预览张数)
+PREVIEW_COUNT_BY_LOCAL_THRESHOLDS = [
+    (50, 4),
+    (200, 6),
+    (float("inf"), 8),
+]
+
+
+def _preview_count_for_local_count(local_count: int) -> int:
+    for threshold, count in PREVIEW_COUNT_BY_LOCAL_THRESHOLDS:
+        if (local_count or 0) < threshold:
+            return count
+    return 8
 
 
 class FavoritesService:
@@ -47,34 +66,32 @@ class FavoritesService:
         return folders
 
     @staticmethod
-    def get_folders_with_preview() -> List[FavoriteFolderWithPreview]:
-        """获取所有收藏夹及随机预览图片"""
-        folders = favorite_dao.get_all()
-        return [
-            FavoriteFolderWithPreview(
-                id=f.id,
-                name=f.name,
-                tags=f.tags,
-                color=f.color,
-                icon=f.icon,
-                sort_order=f.sort_order,
-                local_count=f.local_count or 0,
-                online_count=f.online_count or 0,
-                last_refresh=f.last_refresh,
-                created_at=f.created_at,
-                updated_at=f.updated_at,
-                schedule_enabled=f.schedule_enabled,
-                schedule_cron=f.schedule_cron,
-                schedule_mode=f.schedule_mode,
-                schedule_max_images=f.schedule_max_images,
-                last_scheduled_at=f.last_scheduled_at,
-                last_schedule_status=f.last_schedule_status,
-                last_schedule_stats=f.last_schedule_stats,
-                last_synced_id=f.last_synced_id,
-                preview_images=[],
+    def get_folders_with_preview(
+        page: int = 1, page_size: int = 20
+    ) -> tuple[list[FavoriteFolderWithMinimalPreview], int, bool]:
+        """分页获取收藏夹及精简预览元数据（瀑布流视图）。"""
+        folders, total = favorite_dao.list_paginated(page=page, page_size=page_size)
+        items: list[FavoriteFolderWithMinimalPreview] = []
+        for f in folders:
+            limit = _preview_count_for_local_count(f.local_count or 0)
+            preview_meta: list[FolderPreviewImageMinimal] = []
+            if f.tags:
+                with YandeDataRepository() as repo:
+                    sampled = repo.query_random_for_tags(
+                        tags=f.tags, limit=limit, downloaded_only=True
+                    )
+                preview_meta = [
+                    FolderPreviewImageMinimal.model_validate(img)
+                    for img in sampled
+                ]
+            items.append(
+                FavoriteFolderWithMinimalPreview(
+                    **FavoriteFolder.model_validate(f).model_dump(),
+                    preview_images=preview_meta,
+                )
             )
-            for f in folders
-        ]
+        has_more = page * page_size < total
+        return items, total, has_more
 
     @staticmethod
     def create_folder(folder: FavoriteFolderCreate) -> FavoriteFolder:
