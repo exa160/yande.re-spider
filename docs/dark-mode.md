@@ -221,7 +221,7 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 .dark-mode .el-tag.el-tag--info    { background-color: #2d2d3d; color: #d1d5db; }
 ```
 
-### 4.6 el-radio-button（L417-433）
+### 4.6 el-radio-button（L417-444）
 
 **关键认知**：EP 的单选按钮组（多联开关，如收藏夹配置页 `buttonMode`）的 `.el-radio-button__inner` 默认背景是 `--el-fill-color-blank`（白色，EP 2.13 静态值），暗色模式下不自动适配，会显示**白色方块**。
 
@@ -229,29 +229,60 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 - `--el-fill-color-blank`（背景，EP 2.13 静态白色）
 - `--el-text-color-regular`（文字，EP 2.13 静态深色）
 
-**修复**（App.vue 全局样式，3 条规则）：
+**EP 选中态选择器**（来自 `node_modules/element-plus/theme-chalk/src/radio-button.scss` L72-95）：
 
 ```css
-/* 未选基底 */
-.dark-mode .el-radio-button__inner {
-  background: var(--bg-tertiary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-color) !important;
-}
-/* 首尾按钮圆角处的边框色（EP 写死，需 !important） */
-.dark-mode .el-radio-button:first-child .el-radio-button__inner,
-.dark-mode .el-radio-button:last-child .el-radio-button__inner {
-  border-color: var(--border-color) !important;
-}
-/* hover：未选 hover 文字变蓝（选中色沿用 --el-color-primary，自动跟随项目主色） */
-.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner:hover {
-  color: var(--el-color-primary) !important;
+.el-radio-button.is-active .el-radio-button__original-radio:not(:disabled)+.el-radio-button__inner {
+  color: var(--el-radio-button-checked-text-color, var(--el-color-white));
+  background-color: var(--el-radio-button-checked-bg-color, var(--el-color-primary));
+  border-color: var(--el-radio-button-checked-border-color, var(--el-color-primary));
+  box-shadow: -1px 0 0 0 var(--el-radio-button-checked-border-color, var(--el-color-primary));
 }
 ```
 
-> 选中态 `.is-active .el-radio-button__inner` 的蓝色背景由 EP 内置 `--el-color-primary` 驱动，暗色模式下无需覆盖（已可读）。`!important` 仅用于未选基底，避免与 EP 写死的 background 冲突。
+特异性 **(0,5,0)**，**无 `!important`**。
 
-**适配日期**：2026-08-22（v1.1.10 收藏夹设置面板重构后引入）
+**修复**（App.vue 全局样式，3 条规则）：
+
+```css
+/* 未选基底：加 :not(.is-active) 限定，避免覆盖 EP 选中态蓝色 */
+.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+  outline-color: var(--border-color);  /* EP 用 outline 而非 border 描边 */
+}
+/* 首尾按钮圆角重置（EP 自带 first/last 圆角，深色下保持一致） */
+.dark-mode .el-radio-button:not(.is-active):first-child .el-radio-button__inner,
+.dark-mode .el-radio-button:not(.is-active):last-child .el-radio-button__inner {
+  border-radius: 0;
+}
+/* hover：未选 hover 文字变蓝 + 背景变深灰（与 el-segmented 一致） */
+.dark-mode .el-radio-button:not(.is-active) .el-radio-button__inner:hover {
+  color: var(--el-color-primary);
+  background: #4a4a4a;
+  outline-color: var(--border-color);
+}
+```
+
+**关键修复点**：去掉所有 `!important` + 加 `:not(.is-active)` 限定未选基底。
+
+| 状态 | 规则 | 特异性 | 胜出 | 视觉效果 |
+|------|------|--------|------|----------|
+| 未选基底 | App.vue `:not(.is-active)` 覆盖 | (0,4,0) | ✅ App.vue | 深灰底 + 浅字 |
+| **选中态** | EP `.is-active ... + .__inner` | (0,5,0) | ✅ EP | **蓝色底 + 白字** |
+| 未选 hover | App.vue `:not(.is-active):hover` | (0,5,0) | ✅ App.vue | 深灰底 + 蓝字 |
+
+**为什么不能用 `!important`**：`!important` 优先级 > 无 `!important`，无论特异性高低。
+若给未选基底的覆盖加 `!important`，会吞掉 EP 选中态（无 `!important`）的蓝色 → 选中态变深灰，无法区分。
+
+**参考实现差异**：
+- `el-segmented`（§4.2）选中态由 CSS 变量 `--el-segmented-item-selected-bg-color` 驱动，覆盖变量不会冲突 → 不需要 `:not(.is-selected)` 限定
+- `el-radio-button` 选中态由类名选择器驱动，覆盖属性会被 `!important` 吞掉 → 必须 `:not(.is-active)` 限定
+
+**适配日期**：
+- 2026-08-22（v1.1.10）：初版，仅覆盖未选基底
+- 2026-08-25（v1.1.11）：修复选中态蓝色丢失 + hover 加背景反馈
 
 ### 4.7 其他组件
 
@@ -316,6 +347,8 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 | hover 无视觉变化 | `--el-color-primary-light-3` 是浅色值 | 用绝对色值（`#1d4ed8`）覆盖 hover |
 | hover 字与背景同色 | `--el-segmented-item-hover-color` 误设为背景色 | 设为文字色 `var(--text-primary)` |
 | segmented 选中滑块颜色不变 | 未设 `--el-segmented-item-selected-bg-color`（只设了 `-active-`） | 补设 `-selected-` 变量 |
+| **el-radio-button 选中态丢失蓝色** | **覆盖规则用 `!important`，吞掉 EP `.is-active` 选择器（无 `!important`，特异性 0,5,0）的蓝色背景** | **去掉 `!important` + 加 `:not(.is-active)` 限定未选基底** |
+| el-radio-button hover 无视觉反馈 | 只改 `color`，未改 `background` | hover 加 `background: #4a4a4a`（与 el-segmented 一致） |
 | 表格局部白色 | 只覆盖了 `.el-table`，漏了 cell/body/fixed-patch | 逐层覆盖（见 §4.4） |
 | 分页白色 | 只改 `color`，未改 `--el-pagination-bg-color` | 覆盖变量 + btn/pager 元素 |
 | 标签白色 | 无 `.el-tag` 暗色规则 | 按 type 各配深色版 |
@@ -335,4 +368,4 @@ EP 表格**多层元素各自有白底**，需逐层覆盖：
 
 ---
 
-*最后更新：v1.1.10 收藏夹设置面板重构（2026-08-22，el-radio-button 暗色适配 + §4.6 文档化）*
+*最后更新：v1.1.11 el-radio-button 选中态蓝色丢失修复（2026-08-25，去掉 `!important` + 加 `:not(.is-active)` 限定 + hover 加背景反馈，更新 §4.6 与 §6）*
