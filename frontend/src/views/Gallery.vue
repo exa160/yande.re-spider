@@ -818,6 +818,10 @@ const handleSourceChange = (newSource) => {
   if (prevSource === 'favorites' && newSource !== 'favorites') {
     queryRef.value?.reset()
     queryRef.value?.resetAdvancedPanel()
+    // Gallery 自己的 queryParams 也需要清空——folder-detail 期间
+    // AdvancedQuery 通过 handleSearch 注入的 favorites tags / favorite_id 不能
+    // 残留用于后续 local/yande 搜索（与 AdvancedQuery 内部 queryParams 是两份独立状态）
+    queryParams.value = {}
   }
 
   querySource.value = newSource
