@@ -168,27 +168,6 @@
       <!-- 高级筛选面板 -->
       <el-collapse-transition>
         <div v-if="showAdvanced" class="advanced-panel">
-          <!-- 收藏夹 section（所有 mode 都显示） -->
-          <div class="favorites-section panel-row">
-            <div class="row-item">
-              <label>主页显示收藏夹</label>
-              <el-radio-group v-model="localButtonMode" size="small">
-                <el-radio-button label="hidden">关闭</el-radio-button>
-                <el-radio-button label="shown">开启</el-radio-button>
-                <el-radio-button label="default">默认显示</el-radio-button>
-              </el-radio-group>
-            </div>
-            <div class="row-item">
-              <label>收藏夹大小</label>
-              <el-radio-group v-model="localTileSize" size="small" class="tile-size-radios">
-                <el-radio-button label="adaptive">自适应</el-radio-button>
-                <el-radio-button label="4">4张</el-radio-button>
-                <el-radio-button label="6">6张</el-radio-button>
-                <el-radio-button label="8">8张</el-radio-button>
-              </el-radio-group>
-            </div>
-          </div>
-
           <!-- mode=favorites-folder-detail 专属行：是否展示在线内容 -->
           <div v-if="mode === 'favorites-folder-detail'" class="panel-row include-online-row">
             <div class="row-item">
@@ -397,14 +376,9 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  // 收藏夹 section 配置（可选 — Gallery 可传入同步；缺省走 localStorage）
-  favoritesConfig: {
-    type: Object,
-    default: () => null,
-  },
 })
 
-const emit = defineEmits(['search', 'favorites-filter', 'favorites-config-change'])
+const emit = defineEmits(['search', 'favorites-filter'])
 
 // 收藏夹相关
 const showFavoritePanel = ref(false)
@@ -906,40 +880,6 @@ const selectedFavorite = ref(null)
 // 二级页面（favorites-folder-detail）专用：是否合并在线内容
 const includeOnline = ref(false)
 
-// 收藏夹 section 内部 state —— 从 localStorage / props 初始化
-const VALID_BUTTON_MODES = ['hidden', 'shown', 'default']
-const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
-
-const loadInitialButtonMode = () => {
-  const fromProps = props.favoritesConfig?.buttonMode
-  if (fromProps && VALID_BUTTON_MODES.includes(fromProps)) return fromProps
-  const stored = localStorage.getItem('gallery_favorites_button_mode')
-  return VALID_BUTTON_MODES.includes(stored) ? stored : 'shown'
-}
-
-const loadInitialTileSize = () => {
-  const fromProps = props.favoritesConfig?.tileSize
-  if (fromProps && VALID_TILE_SIZES.includes(fromProps)) return fromProps
-  // 向后兼容：旧 key 'gallery_tile_size' → 迁移到新 key
-  const stored = localStorage.getItem('gallery_favorites_tile_size')
-    || localStorage.getItem('gallery_tile_size')
-  return VALID_TILE_SIZES.includes(stored) ? stored : 'adaptive'
-}
-
-const localButtonMode = ref(loadInitialButtonMode())
-const localTileSize = ref(loadInitialTileSize())
-
-// 监听变化：写 localStorage + emit 给父组件（持久化由 AdvancedQuery 自身负责）
-watch(localButtonMode, (val) => {
-  localStorage.setItem('gallery_favorites_button_mode', val)
-  emit('favorites-config-change', { buttonMode: val, tileSize: localTileSize.value })
-})
-
-watch(localTileSize, (val) => {
-  localStorage.setItem('gallery_favorites_tile_size', val)
-  emit('favorites-config-change', { buttonMode: localButtonMode.value, tileSize: val })
-})
-
 // 选项配置
 const ratingOptions = [
   { label: 'Safe', value: 's' },
@@ -1294,20 +1234,6 @@ defineExpose({
     includeOnline.value = !!val
     handleSearch()
   },
-  // 写入收藏夹 section 配置（按钮模式 / tile 尺寸），用于父组件同步
-  setFavoritesConfig: (config) => {
-    if (config?.buttonMode && VALID_BUTTON_MODES.includes(config.buttonMode)) {
-      localButtonMode.value = config.buttonMode
-    }
-    if (config?.tileSize && VALID_TILE_SIZES.includes(config.tileSize)) {
-      localTileSize.value = config.tileSize
-    }
-  },
-  // 读出当前收藏夹 section 配置
-  getFavoritesConfig: () => ({
-    buttonMode: localButtonMode.value,
-    tileSize: localTileSize.value,
-  }),
   selectFavorite,  // 供 Gallery.vue 在 folder-detail 视图调用
 })
 </script>
