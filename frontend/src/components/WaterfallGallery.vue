@@ -95,7 +95,7 @@
       <!-- folder 模式：使用 slot -->
       <template v-else>
         <div v-for="item in reorderedImages" :key="item.id" class="folder-slot-wrapper">
-          <slot :folder="item" />
+          <slot :folder="item" :safe-mode="safeMode" />
         </div>
       </template>
     </div>

@@ -137,6 +137,7 @@
             <FolderTile
               :folder="folder"
               :save-data-mode="saveDataMode"
+              :safe-mode="safeMode"
               @click="handleFolderClick"
             />
           </template>
