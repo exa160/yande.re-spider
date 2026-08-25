@@ -269,3 +269,136 @@ describe('AdvancedQuery.vue defineExpose', () => {
     expect(wrapper.vm.selectedFavorite).toBeNull()
   })
 })
+
+/**
+ * 收藏夹 section（spec §3.1, §3.2）
+ *  - 所有 mode（gallery/favorites-folders/favorites-folder-detail）都显示
+ *  - 主页显示收藏夹 三联开关（hidden/shown/default）
+ *  - 收藏夹大小 4 档（adaptive/4/6/8）
+ *  - 变化时 emit favorites-config-change + 写 localStorage
+ *  - 暴露 setFavoritesConfig / getFavoritesConfig
+ */
+describe('AdvancedQuery.vue 收藏夹 section', () => {
+  beforeEach(() => {
+    globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+      unobserve: vi.fn(),
+    }))
+    // 每个 case 用干净 localStorage 启动
+    localStorage.clear()
+  })
+
+  // 打开 advanced-panel（点 Setting 按钮 / mode=favorites-folders 无按钮则直接置 ref）
+  const openAdvancedPanel = async (wrapper) => {
+    const advancedBtn = wrapper.findAll('button').find(b => b.element.title?.includes('Setting'))
+    if (advancedBtn) {
+      await advancedBtn.trigger('click')
+    } else {
+      wrapper.vm.showAdvanced = true
+    }
+    await flushPromises()
+  }
+
+  it('mode=gallery 显示 .favorites-section', async () => {
+    const wrapper = factory({ mode: 'gallery' })
+    await openAdvancedPanel(wrapper)
+    expect(wrapper.find('.favorites-section').exists()).toBe(true)
+  })
+
+  it('mode=favorites-folders 显示 .favorites-section', async () => {
+    const wrapper = factory({ mode: 'favorites-folders' })
+    await openAdvancedPanel(wrapper)
+    expect(wrapper.find('.favorites-section').exists()).toBe(true)
+  })
+
+  it('mode=favorites-folder-detail 显示 .favorites-section', async () => {
+    const wrapper = factory({ mode: 'favorites-folder-detail' })
+    await openAdvancedPanel(wrapper)
+    expect(wrapper.find('.favorites-section').exists()).toBe(true)
+  })
+
+  it('收藏夹 section 含「主页显示收藏夹」三联开关 + 「收藏夹大小」4 档 radio', async () => {
+    const wrapper = factory()
+    await openAdvancedPanel(wrapper)
+    const section = wrapper.find('.favorites-section')
+    expect(section.exists()).toBe(true)
+    const text = section.text()
+    expect(text).toContain('主页显示收藏夹')
+    expect(text).toContain('收藏夹大小')
+    expect(text).toContain('关闭')
+    expect(text).toContain('开启')
+    expect(text).toContain('默认显示')
+    expect(text).toContain('自适应')
+    expect(text).toContain('4张')
+    expect(text).toContain('6张')
+    expect(text).toContain('8张')
+  })
+
+  it('tile-size-radios 含 4 个 radio', async () => {
+    const wrapper = factory()
+    await openAdvancedPanel(wrapper)
+    const sizeRadios = wrapper.findAll('.favorites-section .tile-size-radios .el-radio-button-stub')
+    expect(sizeRadios.length).toBe(4)
+  })
+
+  it('改变 localButtonMode 触发 favorites-config-change emit', async () => {
+    const wrapper = factory()
+    await openAdvancedPanel(wrapper)
+    wrapper.vm.localButtonMode = 'hidden'
+    await flushPromises()
+
+    expect(wrapper.emitted('favorites-config-change')).toBeTruthy()
+    const last = wrapper.emitted('favorites-config-change').at(-1)[0]
+    expect(last.buttonMode).toBe('hidden')
+  })
+
+  it('改变 localTileSize 触发 favorites-config-change emit', async () => {
+    const wrapper = factory()
+    await openAdvancedPanel(wrapper)
+    wrapper.vm.localTileSize = '8'
+    await flushPromises()
+
+    expect(wrapper.emitted('favorites-config-change')).toBeTruthy()
+    const last = wrapper.emitted('favorites-config-change').at(-1)[0]
+    expect(last.tileSize).toBe('8')
+  })
+
+  it('localButtonMode 变化同步到 localStorage (gallery_favorites_button_mode)', async () => {
+    const wrapper = factory()
+    await openAdvancedPanel(wrapper)
+    wrapper.vm.localButtonMode = 'default'
+    await flushPromises()
+
+    expect(localStorage.getItem('gallery_favorites_button_mode')).toBe('default')
+  })
+
+  it('localTileSize 变化同步到 localStorage (gallery_favorites_tile_size)', async () => {
+    const wrapper = factory()
+    await openAdvancedPanel(wrapper)
+    wrapper.vm.localTileSize = '6'
+    await flushPromises()
+
+    expect(localStorage.getItem('gallery_favorites_tile_size')).toBe('6')
+  })
+
+  it('暴露 setFavoritesConfig(config) — 写入本地 state', async () => {
+    const wrapper = factory()
+    expect(typeof wrapper.vm.setFavoritesConfig).toBe('function')
+
+    wrapper.vm.setFavoritesConfig({ buttonMode: 'hidden', tileSize: '4' })
+    await flushPromises()
+
+    expect(wrapper.vm.localButtonMode).toBe('hidden')
+    expect(wrapper.vm.localTileSize).toBe('4')
+  })
+
+  it('暴露 getFavoritesConfig() — 返回当前 state', async () => {
+    const wrapper = factory()
+    expect(typeof wrapper.vm.getFavoritesConfig).toBe('function')
+
+    const config = wrapper.vm.getFavoritesConfig()
+    expect(config).toHaveProperty('buttonMode')
+    expect(config).toHaveProperty('tileSize')
+  })
+})
