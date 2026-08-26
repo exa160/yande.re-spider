@@ -9,19 +9,24 @@
  * - watch 监听变化写回 localStorage（持久化）
  *
  * localStorage keys:
- *   gallery_favorites_button_mode : 'hidden' | 'shown' | 'default'
- *   gallery_favorites_tile_size   : 'adaptive' | '4' | '6' | '8'
+ *   gallery_favorites_button_mode    : 'hidden' | 'shown' | 'default'
+ *   gallery_favorites_tile_size      : 'adaptive' | '4' | '6' | '8'
+ *   gallery_favorites_preview_order  : 'random' | 'asc' | 'desc'
+ *   gallery_favorites_include_online : 'true' | 'false'
  */
 import { ref, watch } from 'vue'
 
 // 模块级状态（singleton）：所有调用共享同一组 ref
 const buttonMode = ref('shown')
 const tileSize = ref('adaptive')
+const previewOrder = ref('random')
+const includeOnline = ref(false)
 let initialized = false
 
 // 合法值白名单（防御性：localStorage 可能被外部篡改）
 const VALID_BUTTON_MODES = ['hidden', 'shown', 'default']
 const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
+const VALID_PREVIEW_ORDERS = ['random', 'asc', 'desc']
 
 function readFromLocalStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return
@@ -38,12 +43,28 @@ function readFromLocalStorage() {
   if (VALID_TILE_SIZES.includes(savedSize)) {
     tileSize.value = savedSize
   }
+
+  previewOrder.value = 'random'
+  const savedOrder = window.localStorage.getItem('gallery_favorites_preview_order')
+  if (VALID_PREVIEW_ORDERS.includes(savedOrder)) {
+    previewOrder.value = savedOrder
+  }
+
+  includeOnline.value = false
+  const savedIncludeOnline = window.localStorage.getItem('gallery_favorites_include_online')
+  if (savedIncludeOnline === 'true') {
+    includeOnline.value = true
+  }
 }
 
 function writeToLocalStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return
   window.localStorage.setItem('gallery_favorites_button_mode', buttonMode.value)
   window.localStorage.setItem('gallery_favorites_tile_size', tileSize.value)
+  window.localStorage.setItem('gallery_favorites_preview_order', previewOrder.value)
+  window.localStorage.setItem(
+    'gallery_favorites_include_online', includeOnline.value ? 'true' : 'false'
+  )
 }
 
 /**
@@ -52,7 +73,12 @@ function writeToLocalStorage() {
  * 首次调用时从 localStorage 初始化，并启动持久化 watcher；
  * 后续调用直接返回已初始化的 refs（同 module-level singleton）。
  *
- * @returns {{ buttonMode: Ref<string>, tileSize: Ref<string> }}
+ * @returns {{
+ *   buttonMode: Ref<string>,
+ *   tileSize: Ref<string>,
+ *   previewOrder: Ref<string>,
+ *   includeOnline: Ref<boolean>
+ * }}
  */
 export function useFavoritesConfig() {
   readFromLocalStorage()
@@ -61,7 +87,9 @@ export function useFavoritesConfig() {
     initialized = true
     watch(buttonMode, writeToLocalStorage)
     watch(tileSize, writeToLocalStorage)
+    watch(previewOrder, writeToLocalStorage)
+    watch(includeOnline, writeToLocalStorage)
   }
 
-  return { buttonMode, tileSize }
+  return { buttonMode, tileSize, previewOrder, includeOnline }
 }

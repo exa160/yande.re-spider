@@ -103,8 +103,8 @@
     <!-- 空状态 -->
     <el-empty v-if="!loading && images.length === 0 && !loadError" description="暂无图片" />
 
-    <!-- 加载更多 -->
-    <div v-if="(hasMore || loadError) && !loading" ref="loadMoreRef" class="load-more">
+    <!-- 加载更多：v-show 替代 v-if，保证 DOM 节点稳定，让 IntersectionObserver 始终挂在同一个元素上 -->
+    <div v-show="(hasMore || loadError) && !loading" ref="loadMoreRef" class="load-more">
       <el-button
         @click="handleLoadMoreClick"
         :disabled="loadingMore"

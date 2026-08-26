@@ -172,10 +172,14 @@
           <div v-if="mode === 'favorites-folder-detail'" class="panel-row include-online-row">
             <div class="row-item">
               <label>是否展示在线内容</label>
-              <el-switch
+              <el-radio-group
                 v-model="includeOnline"
+                size="small"
                 @change="handleIncludeOnlineChange"
-              />
+              >
+                <el-radio-button :label="false">否</el-radio-button>
+                <el-radio-button :label="true">是</el-radio-button>
+              </el-radio-group>
             </div>
           </div>
 
@@ -355,6 +359,7 @@ import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plu
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAllFolders, createFolder, updateFolder, deleteFolder, resetFolderSync } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import FavoritePanel from './FavoritePanel.vue'
 
 const props = defineProps({
@@ -878,7 +883,9 @@ const selectedTags = ref([])
 const selectedFavorite = ref(null)
 
 // 二级页面（favorites-folder-detail）专用：是否合并在线内容
-const includeOnline = ref(false)
+// includeOnline 是全局用户偏好，从 useFavoritesConfig composable 读取。
+// Config.vue 高级功能同样可以切换，Gallery folder-list 也会读到同一份状态。
+const { includeOnline } = useFavoritesConfig()
 
 // 选项配置
 const ratingOptions = [
@@ -1215,19 +1222,25 @@ const applyAndSearch = () => {
 // 暴露方法供父组件调用
 defineExpose({
   // 完全重置（含 selectedFavorite）—— 父组件切 tab 时调用
+  // 注意：includeOnline 现在是 useFavoritesConfig composable 里的全局 ref，
+  // 这里不再重置（切走 favorites 时由 handleSourceChange 的 queryParams.value={} 处理）
   reset: () => {
     searchText.value = ''
     selectedTags.value = []
     selectedFavorite.value = null
     resetParams()
     showAdvanced.value = false
-    includeOnline.value = false
   },
   // 只重置 queryParams + 关闭 advanced-panel —— 父组件切收藏夹详情/FolderID 变更时用，
   // 保留 selectedFavorite 不变（用户仍在二级详情中）
   resetAdvancedPanel: () => {
     resetParams()
     showAdvanced.value = false
+  },
+  // 静默清空 selectedFavorite —— handleBackToFolders 专用，避免触发空搜索请求
+  // （普通 clearSelectedFavorite 会 handleSearch()，但返回 folder-list 时不需要再搜一次）
+  _clearSelectedFavoriteNoSearch: () => {
+    selectedFavorite.value = null
   },
   // 设置 includeOnline 并触发搜索 —— 父组件可调用
   setIncludeOnline: (val) => {

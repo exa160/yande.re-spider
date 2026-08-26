@@ -96,6 +96,7 @@
     />
     <AdvancedQuery
       @search="handleSearch"
+      @favorites-filter="handleFavoritesFilter"
       ref="queryRef"
       :source-mode="querySource"
       :mode="modeProp"
@@ -376,11 +377,14 @@ const queryRef = ref(null)  // template ref 绑定 AdvancedQuery 暴露的 selec
 const favoritesView = ref(null)  // null | 'folders' | 'folder-detail'
 const selectedFavoriteFolder = ref(null)
 const currentFolders = ref([])
-const allFolders = ref([])  // 未过滤的完整列表（favorites-filter 用）
 const folderLoading = ref(false)
 const folderHasMore = ref(false)
 const folderPage = ref(1)
 const FOLDER_PAGE_SIZE = 20
+// 收藏夹一级搜索关键字（受 AdvancedQuery 的 favorites-filter emit 驱动）。
+// 服务端按 folder.name / folder.tags 模糊匹配，多 token 之间 OR 关系。
+const folderKeyword = ref('')
+let folderSearchDebounce = null
 
 // 从 localStorage 读取保存的设置，默认本地模式
 const querySource = ref(localStorage.getItem('gallery_source') || 'local')
@@ -389,8 +393,10 @@ const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 // 收藏夹 UI 配置（singleton composable，跨组件共享 + localStorage 持久化）
 // - buttonMode: 'hidden' / 'shown' / 'default'（default → 进首页直接跳 favorites）
 // - tileSize:   'adaptive' / '4' / '6' / '8'
+// - previewOrder: 'random' / 'desc' / 'asc'（控制 with-preview 返回的预览图顺序）
+// - includeOnline: bool（控制 with-preview 是否返回未下载图片；Config.vue 高级功能开关）
 // 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
-const { buttonMode, tileSize } = useFavoritesConfig()
+const { buttonMode, tileSize, previewOrder, includeOnline } = useFavoritesConfig()
 
 // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
 // 'adaptive' 透传；其它值 fallback 到原值（防御性）
@@ -670,6 +676,28 @@ watch(buttonMode, (newMode, oldMode) => {
   }
 })
 
+// previewOrder 改变时，在收藏夹列表视图重新加载第一页（用户切换顺序后立即生效）
+watch(previewOrder, () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }
+})
+
+// includeOnline 改变时，在收藏夹列表视图重新加载第一页（用户在 Config.vue 高级功能切换后立即生效）
+// 注意：folder-detail 视图（搜索主图）由 AdvancedQuery 内 handleSearch 走 /gallery/load 触发，
+// 本 watch 只负责 folder-list（favorites-folders 模式）的预览图元数据刷新。
+watch(includeOnline, () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }
+})
+
 // 图片预览
 
 
@@ -750,13 +778,22 @@ const loadFolders = async (page) => {
   try {
     // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
     const apiTileSize = API_TILE_SIZE[tileSize.value] || tileSize.value
-    const res = await getFoldersWithPreview(page, FOLDER_PAGE_SIZE, apiTileSize)
+    // previewOrder / includeOnline 从 useFavoritesConfig composable 取
+    // （用户在 Config.vue 高级功能设置）
+    const previewOrderVal = previewOrder.value || 'random'
+    const includeOnlineVal = includeOnline.value === true
+    const res = await getFoldersWithPreview(
+      page,
+      FOLDER_PAGE_SIZE,
+      apiTileSize,
+      folderKeyword.value,
+      previewOrderVal,
+      includeOnlineVal
+    )
     const { items, has_more } = res.data
     if (page === 1) {
-      allFolders.value = items
       currentFolders.value = items
     } else {
-      allFolders.value.push(...items)
       currentFolders.value.push(...items)
     }
     folderHasMore.value = has_more
@@ -768,11 +805,25 @@ const loadFolders = async (page) => {
   }
 }
 
-// 收藏夹一级搜索过滤已迁到 AdvancedQuery 内部处理（c6330bb 前的旧逻辑不再使用）
+// 收藏夹加载更多：folderHasMore 在 server 端控制（基于 total + page_size）
 const handleFolderScrollBottom = () => {
   if (folderHasMore.value && !folderLoading.value) {
     loadFolders(folderPage.value + 1)
   }
+}
+
+// AdvancedQuery 在 mode='favorites-folders' 输入框变化时 emit 'favorites-filter'
+// 200ms debounce 后回调查后端，重置分页到第 1 页。
+const handleFavoritesFilter = (value) => {
+  const keyword = (value || '').trim()
+  if (folderSearchDebounce) clearTimeout(folderSearchDebounce)
+  folderSearchDebounce = setTimeout(() => {
+    folderKeyword.value = keyword
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }, 200)
 }
 
 const handleFolderClick = (folder) => {
@@ -785,8 +836,17 @@ const handleFolderClick = (folder) => {
 const handleBackToFolders = () => {
   selectedFavoriteFolder.value = null
   favoritesView.value = 'folders'
-  queryRef.value?.reset()
+  // 不调 reset()（reset 会清 searchText/selectedTags/queryParams，进入 folder-list 不需要这些）
+  // 改用更精细的清理：resetAdvancedPanel 仅清 queryParams + 关闭面板，再用静默方法清 selectedFavorite
+  // 这样 includeOnline 等全局偏好保留（composable 持久化），且不触发空搜索请求
+  queryRef.value?.resetAdvancedPanel()
+  queryRef.value?._clearSelectedFavoriteNoSearch?.()
   images.value = []
+  // 用户在 folder-detail 可能改过 includeOnline，返回时刷新 folder-list 让新设置生效
+  folderPage.value = 1
+  currentFolders.value = []
+  folderHasMore.value = false
+  loadFolders(1)
 }
 
 // 收藏夹配置现由 useFavoritesConfig composable 全局共享，
@@ -808,7 +868,11 @@ const handleSourceChange = (newSource) => {
   favoritesView.value = null
   selectedFavoriteFolder.value = null
   currentFolders.value = []
-  allFolders.value = []
+  folderKeyword.value = ''
+  if (folderSearchDebounce) {
+    clearTimeout(folderSearchDebounce)
+    folderSearchDebounce = null
+  }
   selectedImages.value = []
   selectAll.value = false
   isIndeterminate.value = false
