@@ -238,6 +238,42 @@ class YandeDataRepository(BaseDAO):
         )
         return list(self.session.execute(stmt).scalars().all())
 
+    def query_preview_for_tags(
+        self,
+        tags: str,
+        limit: int,
+        downloaded_only: bool = True,
+        order: str = "random",
+    ) -> List[YandeData]:
+        """按 tags 过滤，返回 limit 条图片（收藏夹预览元数据用）。
+
+        与 query_random_for_tags 区别：order 可控，性能关键路径上避免 func.random()
+        （func.random() 在 SQLite 上没有索引可用，需 O(n) 排序；desc/asc 走主键索引毫秒返回）。
+
+        Args:
+            tags: 标签字符串（与 query() 使用同一 _tag_filter 解析）
+            limit: 上限
+            downloaded_only: True 时仅返回 down_flag=True 的图片
+            order: 'random'（默认，func.random 抽样）
+                   'desc'（按 id 倒序，最新优先）
+                   'asc'（按 id 正序，最早优先）
+        """
+        filter_funcs = []
+        if tags and tags.strip():
+            tag_cond = self._tag_filter(tags)
+            if tag_cond is not None:
+                filter_funcs.append(tag_cond)
+        if downloaded_only:
+            filter_funcs.append(YandeData.down_flag.is_(True))
+        stmt = select(YandeData).filter(*filter_funcs).limit(limit)
+        if order == "desc":
+            stmt = stmt.order_by(YandeData.id.desc())
+        elif order == "asc":
+            stmt = stmt.order_by(YandeData.id.asc())
+        else:  # random 或未知值兜底为 random
+            stmt = stmt.order_by(func.random())
+        return list(self.session.execute(stmt).scalars().all())
+
     def insert(self, data: dict) -> bool:
         try:
             record = YandeData(**data)

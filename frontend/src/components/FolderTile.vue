@@ -9,10 +9,11 @@
       >
         <img
           v-if="!saveDataMode"
-          :src="srcEnabled.has(img.id) ? `/api/v1/gallery/cache/preview/${img.id}` : undefined"
+          :src="srcEnabled.has(img.id) ? previewUrl(img.id) : undefined"
           :alt="img.id.toString()"
           loading="lazy"
           :class="{ 'safe-blur': safeMode && img.rating && img.rating !== 'Safe' }"
+          @error="handlePreviewError(img.id)"
         />
         <div v-else class="folder-preview-placeholder">
           <el-icon><Picture /></el-icon>
@@ -29,6 +30,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
+import api from '@/api'
 
 const props = defineProps({
   folder: { type: Object, required: true },
@@ -37,6 +39,50 @@ const props = defineProps({
 })
 
 defineEmits(['click'])
+
+// 预览图 URL 策略：所有模式统一用 /cache/preview/{id}（最便宜的路径）
+// 缓存命中直接返回文件；缓存未命中走 @error fallback chain：
+//   1. /cache/preview/local/{id}（缓存未命中 + 有本地原图 → 从原图生成）
+//   2. /cache/preview/fetch/{id}（无本地原图 → 远端下载并缓存，未来「我的最爱」收藏未下载图时启用）
+// cache-buster 时间戳（previewCacheBuster）让 <img> 在 fallback 写盘后重新请求 /cache/preview/{id}。
+//
+// 修复前 FolderTile 硬编码 /cache/preview/{id}，收藏夹预览场景下大量 404；
+// 原 handleCellError 只是 srcEnabled 重置，没有真正 fallback —— 本次重写。
+const previewUrl = (imageId) => {
+  const ts = previewCacheBuster.value.get(imageId)
+  return `/api/v1/gallery/cache/preview/${imageId}${ts ? `?ts=${ts}` : ''}`
+}
+
+// fallback chain 防重入：同一 image_id 多个 <img> 同时失败时只触发一次链
+const fallbackInFlight = ref(new Set())
+// cache-buster：fallback 写盘后给 URL 加时间戳让浏览器绕过缓存重新请求 /cache/preview/{id}
+// 用 Map 而非普通对象，确保 Vue 3 响应式追踪（Map.set 触发 reactivity）
+const previewCacheBuster = ref(new Map())
+
+const handlePreviewError = async (imageId) => {
+  if (fallbackInFlight.value.has(imageId)) return
+  fallbackInFlight.value.add(imageId)
+  try {
+    // 步骤 1：尝试本地生成（缓存未命中 + 有本地原图）
+    try {
+      await api.get(`/gallery/cache/preview/local/${imageId}`)
+      // /local/ 成功后文件已写盘，加时间戳让 <img> 重新请求 /cache/preview/{id}
+      previewCacheBuster.value.set(imageId, Date.now())
+      return
+    } catch (_) {
+      // /local/ 失败（无本地原图），继续试 /fetch/
+    }
+    // 步骤 2：尝试远端下载（无本地原图 → 远端下载并缓存）
+    try {
+      await api.get(`/gallery/cache/preview/fetch/${imageId}`)
+      previewCacheBuster.value.set(imageId, Date.now())
+    } catch (_) {
+      // 两步都失败：保持原 broken 图状态，不打扰用户
+    }
+  } finally {
+    fallbackInFlight.value.delete(imageId)
+  }
+}
 
 // 与 WaterfallGallery.vue 保持一致的并发门控模式：
 // srcEnabled 是「真实 URL 准入白名单」，只有 ID 加入此 Set 后 <img> 才会请求真实 URL。

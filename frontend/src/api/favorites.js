@@ -9,9 +9,24 @@ export function getAllFolders() {
   return api.get('/favorites')
 }
 
-// 获取收藏夹及精简预览元数据（分页）
-export function getFoldersWithPreview(page = 1, pageSize = 20, tileSize = 'adaptive') {
-  return api.get(`/favorites/with-preview?page=${page}&page_size=${pageSize}&tile_size=${tileSize}`)
+// 获取收藏夹及精简预览元数据（分页 + 关键字搜索 + 预览图顺序 + 是否包含在线图）
+export function getFoldersWithPreview(
+  page = 1,
+  pageSize = 20,
+  tileSize = 'adaptive',
+  keyword = '',
+  previewOrder = 'random',
+  includeOnline = false
+) {
+  const params = new URLSearchParams({
+    page,
+    page_size: pageSize,
+    tile_size: tileSize,
+    preview_order: previewOrder,
+  })
+  if (keyword) params.set('keyword', keyword)
+  if (includeOnline) params.set('include_online', 'true')
+  return api.get(`/favorites/with-preview?${params.toString()}`)
 }
 
 // 获取单个收藏夹详情

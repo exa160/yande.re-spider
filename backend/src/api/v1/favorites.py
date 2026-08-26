@@ -60,16 +60,39 @@ async def get_folders_with_preview(
         description="tile 尺寸：adaptive/small/medium/large",
         pattern="^(adaptive|small|medium|large)$",
     ),
+    keyword: str = Query(
+        "",
+        description="搜索关键字（按 folder.name / folder.tags 模糊匹配，多 token 之间 OR 关系）",
+    ),
+    preview_order: str = Query(
+        "random",
+        description="预览图顺序：random=随机抽样，desc=按 ID 倒序（最新优先），asc=按 ID 正序（最早优先）",
+        pattern="^(random|asc|desc)$",
+    ),
+    include_online: bool = Query(
+        False,
+        description="True 时预览图包含未下载的在线图片（与 Config.vue 高级功能的「收藏夹预览包含未下载图片」开关联动）",
+    ),
 ) -> FavoriteFoldersWithPreviewResponse:
     """分页获取收藏夹及精简预览图元数据（id/width/height/rating）。
 
     tile_size: 'adaptive' 按 local_count 分档；'small/medium/large' 固定 4/6/8 张。
+    keyword: 模糊搜索关键字（收藏夹名 / tags 任一 token 命中即匹配，OR 关系）。
+    preview_order: 预览图排序方式；random 在大数据集上较慢（func.random 全表扫描），
+                    desc/asc 走主键索引，毫秒级返回。
+    include_online: True 时预览图同时包含未下载图片（未来「我的最爱」支持收藏未下载图时启用）。
     preview_images 不含 preview_url —— 前端通过 `/api/v1/gallery/cache/preview/{id}`
     复用现有预览缓存接口渲染图片。
     """
     try:
+        kw = keyword.strip() if keyword else ""
         items, total, has_more = FavoritesService.get_folders_with_preview(
-            page=page, page_size=page_size, tile_size=tile_size
+            page=page,
+            page_size=page_size,
+            tile_size=tile_size,
+            keyword=kw or None,
+            preview_order=preview_order,
+            include_online=include_online,
         )
         data = FavoriteFoldersWithPreviewListData(
             items=items, total=total, has_more=has_more
