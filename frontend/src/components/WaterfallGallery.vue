@@ -196,8 +196,14 @@ const failedImages = ref(new Set())
 const loadingImages = ref(new Set())
 const loadedImages = ref(new Set())
 const retryingImages = ref(new Set())
-const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
+
+// 自动 fallback 链：与 FolderTile.handlePreviewError 一致
+// fallbackInFlight：同一 image_id 防重入（多个 trigger 同时触发只跑一次链）
+const fallbackInFlight = ref(new Set())
+// previewCacheBuster：fallback 写盘后给 URL 加时间戳让 <el-image> 重新请求 /cache/preview/{id}
+// 用 Map 而非普通对象，确保 Vue 3 响应式追踪（Map.set 触发 reactivity）
+const previewCacheBuster = ref(new Map())
 
 // 懒加载并发控制：限制同时加载的预览图数量，FIFO 顺序
 const MAX_PREVIEW_CONCURRENT = 10
@@ -329,7 +335,7 @@ watch(() => props.images.length, () => {
     loadingImages.value.clear()
     loadedImages.value.clear()
     retryingImages.value.clear()
-    retrySuccessImages.value.clear()
+    previewCacheBuster.value.clear()
     srcEnabled.value.clear()
     loadingQueue.value = []
     return
@@ -632,8 +638,8 @@ const getPreviewUrl = (image) => {
   if (!isLoaded && (props.saveDataMode || !srcEnabled.value.has(image.id))) {
     return ''
   }
-  const retryTs = retrySuccessImages.value.get(image.id)
-  const tsSuffix = retryTs ? `?ts=${retryTs}` : ''
+  const cacheBusterTs = previewCacheBuster.value.get(image.id)
+  const tsSuffix = cacheBusterTs ? `?ts=${cacheBusterTs}` : ''
 
   if (props.sourceMode === 'local') {
     if (image.preview_url) {
@@ -644,10 +650,56 @@ const getPreviewUrl = (image) => {
   return `/api/v1/gallery/cache/preview/fetch/${image.id}${tsSuffix}`
 }
 
-const handleImageError = (image) => {
+// 自动 fallback 链：与 FolderTile.handlePreviewError 一致
+// 步骤 1：/cache/preview/local/{id}（缓存未命中 + 有本地原图 → 从原图生成）
+// 步骤 2：/cache/preview/fetch/{id}（无本地原图 → 远端下载并缓存）
+// 成功通过 previewCacheBuster 触发 <el-image> 重新请求 /cache/preview/{id}
+const runFallbackChain = async (image) => {
+  if (fallbackInFlight.value.has(image.id)) {
+    return 'in_flight'
+  }
+  fallbackInFlight.value.add(image.id)
+
+  try {
+    try {
+      await api.get(`/gallery/cache/preview/local/${image.id}`)
+      previewCacheBuster.value.set(image.id, Date.now())
+      return 'success'
+    } catch (_) {
+      // /local/ 失败（无本地原图或非图片），继续试 /fetch/
+    }
+
+    try {
+      await api.get(`/gallery/cache/preview/fetch/${image.id}`)
+      previewCacheBuster.value.set(image.id, Date.now())
+      return 'success'
+    } catch (_) {
+      return 'failed'
+    }
+  } finally {
+    fallbackInFlight.value.delete(image.id)
+  }
+}
+
+const handleImageError = async (image) => {
   loadingImages.value.delete(image.id)
-  failedImages.value.add(image.id)
-  loadedImages.value.delete(image.id)
+
+  // 自动 fallback 链：与 FolderTile.handlePreviewError 一致
+  // 步骤 1：/cache/preview/local/{id}（无网络依赖，本地原图生成）
+  // 步骤 2：/cache/preview/fetch/{id}（远端下载并缓存）
+  // 成功后通过 previewCacheBuster 触发 <el-image> 重新请求 /cache/preview/{id}
+  const result = await runFallbackChain(image)
+
+  if (result === 'success') {
+    // 链路成功：cache-buster 已写入，等待 <el-image> @load 自动重载
+    loadedImages.value.add(image.id)
+    failedImages.value.delete(image.id)
+  } else if (result === 'failed') {
+    failedImages.value.add(image.id)
+    loadedImages.value.delete(image.id)
+  }
+  // 'in_flight'：其他 trigger 已在跑，无需更新状态
+
   processQueue()  // 释放一个并发槽位，处理队列中下一个
 }
 
@@ -655,7 +707,7 @@ const handleImageLoad = (image) => {
   loadingImages.value.delete(image.id)
   loadedImages.value.add(image.id)
   failedImages.value.delete(image.id)
-  retrySuccessImages.value.delete(image.id)
+  previewCacheBuster.value.delete(image.id)  // 加载成功后清除 cache-buster
   processQueue()  // 释放一个并发槽位，处理队列中下一个
 }
 
@@ -673,29 +725,20 @@ const handleImageRetry = async (image, event) => {
   srcEnabled.value.add(image.id)  // 重试时直接启用 src（绕过队列）
   loadingImages.value.add(image.id)
 
-  let apiSuccess = false
-  if (props.sourceMode === 'local') {
-    try {
-      await api.get(`/gallery/cache/preview/local/${image.id}`)
-      apiSuccess = true
-    } catch (e) {
-      ElMessage.error('生成缩略图失败')
-    }
-  } else {
-    try {
-      await api.get(`/gallery/cache/preview/fetch/${image.id}`)
-      apiSuccess = true
-    } catch (e) {
-      ElMessage.error('缓存预览图失败')
-    }
-  }
+  // 复用自动 fallback 链：先尝试本地生成，再尝试远端下载
+  const result = await runFallbackChain(image)
 
   retryingImages.value.delete(image.id)
 
-  if (!apiSuccess) {
+  if (result === 'failed') {
     failedImages.value.add(image.id)
+    ElMessage.error('恢复预览图失败')
+  } else if (result === 'success') {
+    // 链路成功：cache-buster 已写入，等待 <el-image> @load
+    loadedImages.value.add(image.id)
+    failedImages.value.delete(image.id)
   }
-  // 如果 API 成功，等待 el-image 的 load/error 事件处理状态
+  // 'in_flight'：其他 trigger 已在跑
 }
 
 // 使用 IntersectionObserver 监听加载更多元素
