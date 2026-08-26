@@ -576,10 +576,10 @@ describe('Gallery.vue waterfallSourceMode (favorites 内浏览加载策略)', ()
     expect(wrapper.vm.waterfallSourceMode).toBe('local')
   })
 
-  it('favorites-folder-detail + includeOnline=true → waterfallSourceMode="favorites"', async () => {
+  it('favorites-folder-detail + includeOnline=true → waterfallSourceMode="local"（远端由 fallback 链兜底）', async () => {
     const wrapper = factory()
     await enterFolderDetail(wrapper, true)
-    expect(wrapper.vm.waterfallSourceMode).toBe('favorites')
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
   })
 
   it('favorites-folders（文件夹列表）视图 → waterfallSourceMode="favorites"', async () => {

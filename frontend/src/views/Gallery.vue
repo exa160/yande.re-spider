@@ -419,14 +419,14 @@ const modeProp = computed(() => {
 })
 
 // WaterfallGallery 实际加载策略 sourceMode
-//   - favorites-folder-detail + includeOnline=false → 'local'
-//     （收藏夹内全是已下载图，走本地缓存/生成路径，复用本地瀑布流的体验）
-//   - favorites-folder-detail + includeOnline=true → 'favorites'
-//     （混入未下载在线图，需走远端 fetch 兜底）
+//   - favorites-folder-detail → 'local'
+//     复用本地瀑布流的 L1 静态缓存 / L2 本地生成路径；
+//     远端下载由 WaterfallGallery.runFallbackChain（步骤 2 /cache/preview/fetch/）
+//     在本地两步都失败时兜底，无需按 includeOnline 分流。
 //   - 其他场景 → 透传 querySource
 const waterfallSourceMode = computed(() => {
   if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') {
-    return includeOnline.value ? 'favorites' : 'local'
+    return 'local'
   }
   return querySource.value
 })
