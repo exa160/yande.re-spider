@@ -558,3 +558,61 @@ describe('Gallery buttonMode (Task 4)', () => {
     expect(wrapper.vm.folderKeyword).toBe('')
   })
 })
+
+describe('Gallery.vue waterfallSourceMode (favorites 内浏览加载策略)', () => {
+  const enterFolderDetail = async (wrapper, includeOnline = false) => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { includeOnline: incRef } = useFavoritesConfig()
+    incRef.value = includeOnline
+    await wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    await wrapper.vm.handleFolderClick({ id: 100, name: 'test_folder', tags: 'tag_a' })
+    await flushPromises()
+  }
+
+  it('favorites-folder-detail + includeOnline=false → waterfallSourceMode="local"', async () => {
+    const wrapper = factory()
+    await enterFolderDetail(wrapper, false)
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+
+  it('favorites-folder-detail + includeOnline=true → waterfallSourceMode="local"（远端由 fallback 链兜底）', async () => {
+    const wrapper = factory()
+    await enterFolderDetail(wrapper, true)
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+
+  it('favorites-folders（文件夹列表）视图 → waterfallSourceMode="favorites"', async () => {
+    const wrapper = factory()
+    await wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    expect(wrapper.vm.favoritesView).toBe('folders')
+    expect(wrapper.vm.waterfallSourceMode).toBe('favorites')
+  })
+
+  it('querySource="local" → waterfallSourceMode="local"（透传）', async () => {
+    localStorage.setItem('gallery_source', 'local')
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('local')
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+
+  it('querySource="yande" → waterfallSourceMode="yande"（透传）', async () => {
+    localStorage.setItem('gallery_source', 'yande')
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('yande')
+    expect(wrapper.vm.waterfallSourceMode).toBe('yande')
+  })
+
+  it('切走 favorites → querySource=local 时 waterfallSourceMode 跟着切到 local', async () => {
+    const wrapper = factory()
+    await enterFolderDetail(wrapper, false)
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+    await wrapper.vm.handleSourceChange('local')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('local')
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+})

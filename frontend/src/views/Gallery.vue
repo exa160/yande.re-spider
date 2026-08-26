@@ -142,7 +142,7 @@
           :load-error="loadError"
           :selected-images="selectedImages"
           :selectable="querySource === 'yande'"
-          :source-mode="querySource"
+          :source-mode="waterfallSourceMode"
           :save-data-mode="saveDataMode"
           :safe-mode="safeMode"
           @image-click="handleImageClick"
@@ -416,6 +416,19 @@ const modeProp = computed(() => {
       : 'favorites-folders'
   }
   return 'gallery'
+})
+
+// WaterfallGallery 实际加载策略 sourceMode
+//   - favorites-folder-detail → 'local'
+//     复用本地瀑布流的 L1 静态缓存 / L2 本地生成路径；
+//     远端下载由 WaterfallGallery.runFallbackChain（步骤 2 /cache/preview/fetch/）
+//     在本地两步都失败时兜底，无需按 includeOnline 分流。
+//   - 其他场景 → 透传 querySource
+const waterfallSourceMode = computed(() => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') {
+    return 'local'
+  }
+  return querySource.value
 })
 
 const previewVisible = ref(false)
