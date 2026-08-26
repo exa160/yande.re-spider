@@ -305,11 +305,10 @@
               <div class="refresh-info">
                 <div class="refresh-name">收藏夹预览包含未下载图片</div>
                 <div class="refresh-params">
-                  <el-switch
-                    v-model="favoritesForm.includeOnline"
-                    active-text="开启"
-                    inactive-text="关闭"
-                  />
+                  <el-radio-group v-model="favoritesForm.includeOnline" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
                 </div>
               </div>
             </div>

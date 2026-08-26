@@ -172,10 +172,14 @@
           <div v-if="mode === 'favorites-folder-detail'" class="panel-row include-online-row">
             <div class="row-item">
               <label>是否展示在线内容</label>
-              <el-switch
+              <el-radio-group
                 v-model="includeOnline"
+                size="small"
                 @change="handleIncludeOnlineChange"
-              />
+              >
+                <el-radio-button :label="false">否</el-radio-button>
+                <el-radio-button :label="true">是</el-radio-button>
+              </el-radio-group>
             </div>
           </div>
 

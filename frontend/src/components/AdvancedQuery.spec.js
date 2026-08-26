@@ -54,7 +54,10 @@ const elementStubs = {
     emits: ['update:modelValue'],
   },
   'el-radio-group': { template: '<div class="el-radio-group-stub"><slot/></div>' },
-  'el-radio-button': { template: '<label class="el-radio-button-stub"><slot/></label>' },
+  'el-radio-button': {
+      props: ['label'],
+      template: '<label class="el-radio-button-stub radio-button-stub" :data-label="String(label)"><slot/></label>',
+    },
   'el-select': {
     template: '<div class="el-select-stub"><slot/></div>',
     props: ['modelValue'],
@@ -155,8 +158,9 @@ describe('AdvancedQuery.vue mode 三态', () => {
     // advanced-panel 应展开 + 包含"是否展示在线内容"label
     expect(wrapper.find('.advanced-panel').exists()).toBe(true)
     expect(wrapper.text()).toContain('是否展示在线内容')
-    // el-switch 至少存在一个
-    expect(wrapper.find('.el-switch-stub').exists()).toBe(true)
+    const onlineRadios = wrapper.findAll('.radio-button-stub')
+    expect(onlineRadios.some((r) => r.attributes('data-label') === 'false')).toBe(true)
+    expect(onlineRadios.some((r) => r.attributes('data-label') === 'true')).toBe(true)
   })
 
   it('mode=favorites-folders 不应显示 favorite-detail 专属的"在线内容"开关 label', () => {

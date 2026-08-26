@@ -63,7 +63,7 @@ const factory = () =>
         },
         'el-radio-button': {
           props: ['label'],
-          template: '<button class="radio-button-stub" :data-label="label"><slot/></button>',
+          template: '<button class="radio-button-stub" :data-label="String(label)"><slot/></button>',
         },
         'el-button': { template: '<button><slot/></button>' },
         'el-input': { template: '<input>' },
@@ -177,5 +177,32 @@ describe('Config.vue 收藏夹 section（高级功能 tab）', () => {
     // localStorage 持久化
     expect(localStorage.getItem('gallery_favorites_button_mode')).toBe('default')
     expect(localStorage.getItem('gallery_favorites_tile_size')).toBe('6')
+  })
+
+  it('includeOnline 是二联开关（关闭/开启）而非 el-switch', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.findAll('.menu-item').find((el) => el.text() === '高级功能').trigger('click')
+    await flushPromises()
+
+    // includeOnline 二联开关：false / true 两个 radio-button
+    const labels = wrapper.findAll('.radio-button-stub').map((b) => b.attributes('data-label'))
+    expect(labels).toContain('false')
+    expect(labels).toContain('true')
+  })
+
+  it('includeOnline 修改 → 写入 composable 与 localStorage', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.findAll('.menu-item').find((el) => el.text() === '高级功能').trigger('click')
+    await flushPromises()
+
+    wrapper.vm.favoritesForm.includeOnline = true
+    await flushPromises()
+
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { includeOnline } = useFavoritesConfig()
+    expect(includeOnline.value).toBe(true)
+    expect(localStorage.getItem('gallery_favorites_include_online')).toBe('true')
   })
 })
