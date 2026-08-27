@@ -36,6 +36,12 @@ vi.mock('@/api/favorites', () => ({
 const mountedWrappers = []
 
 beforeEach(async () => {
+  // 清理之前测试遗留的 wrapper → 清理 component-scope watch(buttonMode) / watch(querySource)
+  // 避免 readFromLocalStorage 在新测试 mount 时同步修改 module-level buttonMode 触发之前 wrapper
+  // 的 watch，调 handleSourceChange('favorites') → 写 localStorage gallery_source='favorites' 污染。
+  // module-scope refs (buttonMode 等) 和 useFavoritesConfig 内部的 watch(buttonMode, writeToLocalStorage)
+  // 仍然存活，但后者只写 gallery_favorites_* key，不影响 querySource 持久化测试。
+  mountedWrappers.forEach((w) => w.unmount())
   mountedWrappers.length = 0
   getFoldersWithPreviewMock.mockClear()
   localStorage.clear()
@@ -83,7 +89,12 @@ const factory = () => {
       stubs: {
         BackButton: BackButtonStub,
         AdvancedQuery: AdvancedQueryStub,
-        WaterfallGallery: { template: '<div class="waterfall-stub"><slot/></div>' },
+        WaterfallGallery: {
+          name: 'WaterfallGallery',
+          props: ['images', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'itemType', 'sourceMode', 'selectable', 'selectedImages', 'saveDataMode', 'safeMode'],
+          emits: ['load-more', 'load-error', 'image-click', 'image-select', 'multi-select-start'],
+          template: '<div class="waterfall-stub"><slot/></div>',
+        },
         FolderTile: {
           template: '<div class="folder-tile-stub" @click="$emit(\'click\', { id: 1, name: \'stub_folder\', tags: \'foo\' })">stub_tile</div>',
         },
@@ -389,14 +400,14 @@ describe('Gallery buttonMode (Task 4)', () => {
     expect(wrapper.find('.toolbar-left').text()).toContain('收藏夹')
   })
 
-  it('buttonMode=default → onMounted 默认进入 favorites 视图', async () => {
+  it('buttonMode=default → onMounted 不再强制进 favorites（保持 gallery_source 持久化值）', async () => {
     localStorage.setItem('gallery_favorites_button_mode', 'default')
     const wrapper = factory()
     await flushPromises()
 
     expect(wrapper.vm.buttonMode).toBe('default')
-    expect(wrapper.vm.querySource).toBe('favorites')
-    expect(wrapper.vm.favoritesView).toBe('folders')
+    expect(wrapper.vm.querySource).toBe('local')
+    expect(wrapper.vm.favoritesView).toBeNull()
   })
 
   it('buttonMode=shown → onMounted 默认进入 local 视图', async () => {
@@ -614,5 +625,142 @@ describe('Gallery.vue waterfallSourceMode (favorites 内浏览加载策略)', ()
     await flushPromises()
     expect(wrapper.vm.querySource).toBe('local')
     expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+})
+
+// =============================================================================
+// 收藏夹一级浏览（B1/B2 bug 回归契约）
+// =============================================================================
+// 背景：
+//   B1 — Gallery.vue 在收藏夹文件夹实例上把 :is-loading-more 硬编码为 false，
+//        WaterfallGallery 内部 loadingMore 唯一复位通道（watch isLoadingMore prop）
+//        被切断 → 点击"加载更多"后按钮永久卡"加载中…"、第二次点击无响应。
+//   B2 — loadFolders 对 page>1 也设置 folderLoading=true，导致 WaterfallGallery
+//        顶层 v-if skeleton 切换，瀑布流 DOM 整页卸载 → 重建（"全刷"）。
+// 期望契约（修复后必须满足）：
+//   - folder 模式下 WaterfallGallery 的 :is-loading-more 必须真值绑定，loadFolders
+//     执行期间为 true，结束后回归 false。
+//   - folder 模式 page>1 加载时 WaterfallGallery 的 :loading 必须保持 false（不应
+//     触发 skeleton 全屏卸载），只有 page=1 才置 loading=true。
+// =============================================================================
+describe('Gallery.vue 收藏夹一级浏览加载更多契约（B1/B2 回归）', () => {
+  const enterFoldersView = async (wrapper) => {
+    wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+  }
+
+  it('B1 folder 模式 loadFolders 执行期间 WaterfallGallery 的 isLoadingMore 必须为 true', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await enterFoldersView(wrapper)
+
+    wrapper.vm.folderPage = 1
+    wrapper.vm.folderHasMore = true
+
+    let resolvePromise
+    getFoldersWithPreviewMock.mockImplementationOnce(
+      () => new Promise((r) => { resolvePromise = r })
+    )
+
+    wrapper.vm.handleFolderScrollBottom()
+    await flushPromises()
+
+    const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
+    expect(wfg.props('isLoadingMore')).toBe(true)
+
+    resolvePromise({
+      data: {
+        items: [{ id: 1, name: 'f1', local_count: 0, preview_images: [] }],
+        total: 10,
+        has_more: true,
+      },
+    })
+    await flushPromises()
+
+    const wfgAfter = wrapper.findComponent({ name: 'WaterfallGallery' })
+    expect(wfgAfter.props('isLoadingMore')).toBe(false)
+  })
+
+  it('B2 folder 模式 page>1 加载时 WaterfallGallery 的 loading prop 必须保持 false（不触发 skeleton 全刷）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await enterFoldersView(wrapper)
+
+    wrapper.vm.folderPage = 1
+    wrapper.vm.folderHasMore = true
+
+    let resolvePromise
+    getFoldersWithPreviewMock.mockImplementationOnce(
+      () => new Promise((r) => { resolvePromise = r })
+    )
+
+    wrapper.vm.handleFolderScrollBottom()
+    await flushPromises()
+
+    const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
+    expect(wfg.props('loading')).toBe(false)
+
+    resolvePromise({
+      data: {
+        items: [{ id: 1, name: 'f1', local_count: 0, preview_images: [] }],
+        total: 10,
+        has_more: false,
+      },
+    })
+    await flushPromises()
+  })
+})
+
+// =============================================================================
+// Gallery.vue querySource 初始化保持契约（onMounted 不再强制覆盖）
+// =============================================================================
+// 背景：
+//   旧行为（cfaa12bd / 0b04ffeb, 2026-08-25 引入）：onMounted 中有
+//     if (buttonMode.value === 'default') { querySource.value = 'favorites' }
+//   导致用户每次刷新都被强制跳到 favorites，无法保持上次选择的 source。
+//   新行为：onMounted 不再根据 buttonMode 强制覆盖 querySource，统一保持
+//   gallery_source 持久化值（默认 'local'）。
+//   buttonMode='default' 仍保留运行时切换语义：用户在 Config.vue 改 buttonMode 到
+//   'default' 时由 Gallery.vue:686-690 的 watch(buttonMode) 触发跳 favorites。
+//
+// 此测试块保护保持契约：
+//   - buttonMode='default' + gallery_source=任意 → mount 后 querySource 保持 localStorage 值
+//   - buttonMode='shown'/'hidden' + gallery_source=任意 → mount 后 querySource 保持 localStorage 值
+// =============================================================================
+describe('Gallery.vue querySource 初始化保持契约', () => {
+  it('buttonMode=default + gallery_source=local → mount 后 querySource 保持 local（不再强制跳 favorites）', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'default')
+    localStorage.setItem('gallery_source', 'local')
+
+    const wrapper = factory()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('local')
+    expect(localStorage.getItem('gallery_source')).toBe('local')
+  })
+
+  it('buttonMode=shown + gallery_source=yande → mount 后 querySource 保持 yande', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'shown')
+    localStorage.setItem('gallery_source', 'yande')
+
+    const wrapper = factory()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('yande')
+    expect(localStorage.getItem('gallery_source')).toBe('yande')
+  })
+
+  it('buttonMode=shown + gallery_source=local → mount 后 querySource 保持 local（用户最常用场景）', async () => {
+    localStorage.setItem('gallery_favorites_button_mode', 'shown')
+    localStorage.setItem('gallery_source', 'local')
+
+    const wrapper = factory()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('local')
+    expect(localStorage.getItem('gallery_source')).toBe('local')
   })
 })
