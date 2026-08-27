@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import List, Optional, Type
 
+from sqlalchemy import func, or_
+
 from src.dao.database import BaseDAO
 from src.models.database.yande import FavoriteFolder
 
@@ -43,6 +45,72 @@ class FavoriteDao(BaseDAO):
             .order_by(FavoriteFolder.sort_order.asc())
             .all()
         )
+
+    def list_paginated(self, page: int, page_size: int) -> tuple[list[FavoriteFolder], int]:
+        """分页获取收藏夹，按 sort_order 升序。
+
+        Returns:
+            (items, total): items 为当前页的 FavoriteFolder 列表，total 为总数
+        """
+        total = (
+            self.session.query(func.count(FavoriteFolder.id))
+            .scalar() or 0
+        )
+        offset = (page - 1) * page_size
+        items = (
+            self.session.query(FavoriteFolder)
+            .order_by(FavoriteFolder.sort_order.asc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        return items, total
+
+    def search_paginated(
+        self, page: int, page_size: int, keyword: str
+    ) -> tuple[list[FavoriteFolder], int]:
+        """分页搜索收藏夹，按 name / tags 模糊匹配（不区分大小写）。
+
+        Args:
+            keyword: 搜索关键字，空格分隔的 token 按 OR 关系匹配（任一 token 命中 name 或 tags 即可）
+
+        Returns:
+            (items, total): items 为当前页，total 为匹配总数（供前端 has_more 计算）
+        """
+        kw = (keyword or "").strip()
+        if not kw:
+            return self.list_paginated(page=page, page_size=page_size)
+
+        tokens = [t for t in kw.split() if t]
+        if not tokens:
+            return self.list_paginated(page=page, page_size=page_size)
+
+        # 任一 token 命中 name 或 tags 即视为匹配（多 token 是 OR，不是 AND）
+        # 用 SQL LIKE 双侧通配实现 'contains' 语义
+        filters = []
+        for t in tokens:
+            pat = f"%{t}%"
+            filters.append(
+                or_(
+                    FavoriteFolder.name.ilike(pat),
+                    FavoriteFolder.tags.ilike(pat),
+                )
+            )
+        cond = or_(*filters)
+
+        total = (
+            self.session.query(func.count(FavoriteFolder.id)).filter(cond).scalar() or 0
+        )
+        offset = (page - 1) * page_size
+        items = (
+            self.session.query(FavoriteFolder)
+            .filter(cond)
+            .order_by(FavoriteFolder.sort_order.asc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        return items, total
 
     def update(self, folder_id: int, **kwargs) -> Optional[FavoriteFolder]:
         folder = self.session.query(FavoriteFolder).filter(FavoriteFolder.id == folder_id).first()

@@ -19,7 +19,9 @@
                 class="input-tag favorite-tag"
               >
                 <span class="input-tag-text" :title="'★ ' + selectedFavorite.name">★ {{ selectedFavorite.name }}</span>
-                <el-icon class="input-tag-close" @click.stop="clearSelectedFavorite"><Close /></el-icon>
+                <!-- 二级页面（lockFavoriteChip=true）：X 替换为 🔒，不可关闭 -->
+                <el-icon v-if="!lockFavoriteChip" class="input-tag-close" @click.stop="clearSelectedFavorite"><Close /></el-icon>
+                <span v-else class="lock-icon" title="锁定收藏夹">🔒</span>
               </span>
               <span
                 v-for="tag in selectedTags"
@@ -34,19 +36,21 @@
           <el-input
             class="search-input"
             v-model="searchText"
-            :placeholder="selectedTags.length > 0 ? '继续输入标签...' : '输入标签搜索（用空格分隔，+tag包含 -tag排除）'"
+            :placeholder="searchPlaceholder"
             @keyup.enter="handleTagInput"
+            @input="handleSearchInputChange"
             clearable
           />
         </div>
         <div class="search-actions">
-          <el-button circle size="small" @click="toggleFavoritePanel">
+          <el-button circle size="small" title="收藏夹" @click="toggleFavoritePanel">
             <el-icon><Folder /></el-icon>
           </el-button>
-          <el-button circle size="small" @click="toggleAdvanced">
+          <!-- 高级面板触发器：mode=favorites-folders 时隐藏（保持 Setting 按钮不渲染） -->
+          <el-button v-if="mode !== 'favorites-folders'" circle size="small" title="Setting" @click="toggleAdvanced">
             <el-icon><Setting /></el-icon>
           </el-button>
-          <el-button circle size="small" @click="collapse">
+          <el-button circle size="small" title="Collapse" @click="collapse">
             <el-icon><Minus /></el-icon>
           </el-button>
         </div>
@@ -164,6 +168,21 @@
       <!-- 高级筛选面板 -->
       <el-collapse-transition>
         <div v-if="showAdvanced" class="advanced-panel">
+          <!-- mode=favorites-folder-detail 专属行：是否展示在线内容 -->
+          <div v-if="mode === 'favorites-folder-detail'" class="panel-row include-online-row">
+            <div class="row-item">
+              <label>是否展示在线内容</label>
+              <el-radio-group
+                v-model="includeOnline"
+                size="small"
+                @change="handleIncludeOnlineChange"
+              >
+                <el-radio-button :label="false">否</el-radio-button>
+                <el-radio-button :label="true">是</el-radio-button>
+              </el-radio-group>
+            </div>
+          </div>
+
           <!-- 第一行：上传者、评分、格式 -->
           <div class="panel-row">
             <div class="row-item">
@@ -340,16 +359,31 @@ import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plu
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAllFolders, createFolder, updateFolder, deleteFolder, resetFolderSync } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import FavoritePanel from './FavoritePanel.vue'
 
 const props = defineProps({
   sourceMode: {
     type: String,
     default: 'local'
-  }
+  },
+  // 三态模式：
+  //   'gallery'                  → 原行为（保留 advanced-panel trigger）
+  //   'favorites-folders'        → 隐藏 advanced-panel trigger；一级搜索 emit 'favorites-filter'
+  //   'favorites-folder-detail'  → 保留 advanced-panel + 顶部"在线内容"开关；folder chip 锁定
+  mode: {
+    type: String,
+    default: 'gallery',
+    validator: (v) => ['gallery', 'favorites-folders', 'favorites-folder-detail'].includes(v),
+  },
+  // folder chip 是否锁定（二级页面入口时为 true，替换 X 关闭按钮为 🔒）
+  lockFavoriteChip: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['search'])
+const emit = defineEmits(['search', 'favorites-filter'])
 
 // 收藏夹相关
 const showFavoritePanel = ref(false)
@@ -848,6 +882,11 @@ const selectedTags = ref([])
 // 选中的收藏夹
 const selectedFavorite = ref(null)
 
+// 二级页面（favorites-folder-detail）专用：是否合并在线内容
+// includeOnline 是全局用户偏好，从 useFavoritesConfig composable 读取。
+// Config.vue 高级功能同样可以切换，Gallery folder-list 也会读到同一份状态。
+const { includeOnline } = useFavoritesConfig()
+
 // 选项配置
 const ratingOptions = [
   { label: 'Safe', value: 's' },
@@ -1143,7 +1182,35 @@ const buildOnlineParams = () => {
 const handleSearch = () => {
   const mode = props.sourceMode || 'local'
   const params = mode === 'local' ? buildLocalParams() : buildOnlineParams()
+  // 二级页面 includeOnline 时把标志位传给父组件 / 后端
+  if (mode === 'favorites') {
+    params.include_online = includeOnline.value
+  }
   emit('search', { mode, params, favorite: selectedFavorite.value })
+}
+
+// 搜索框 placeholder —— favorites-folders 模式改为"搜索收藏夹名称或标签"
+const searchPlaceholder = computed(() => {
+  if (props.mode === 'favorites-folders') {
+    return '搜索收藏夹名称或标签'
+  }
+  if (selectedTags.value.length > 0) {
+    return '继续输入标签...'
+  }
+  return '输入标签搜索（用空格分隔，+tag包含 -tag排除）'
+})
+
+// 搜索框 input 事件 —— favorites-folders 一级搜索走 emit 'favorites-filter'
+const handleSearchInputChange = (value) => {
+  if (props.mode === 'favorites-folders') {
+    emit('favorites-filter', value)
+  }
+}
+
+// 是否展示在线内容 switch 变更 —— 触发搜索
+const handleIncludeOnlineChange = (val) => {
+  includeOnline.value = val
+  handleSearch()
 }
 
 // 应用并搜索
@@ -1154,13 +1221,33 @@ const applyAndSearch = () => {
 
 // 暴露方法供父组件调用
 defineExpose({
+  // 完全重置（含 selectedFavorite）—— 父组件切 tab 时调用
+  // 注意：includeOnline 现在是 useFavoritesConfig composable 里的全局 ref，
+  // 这里不再重置（切走 favorites 时由 handleSourceChange 的 queryParams.value={} 处理）
   reset: () => {
     searchText.value = ''
     selectedTags.value = []
     selectedFavorite.value = null
     resetParams()
     showAdvanced.value = false
-  }
+  },
+  // 只重置 queryParams + 关闭 advanced-panel —— 父组件切收藏夹详情/FolderID 变更时用，
+  // 保留 selectedFavorite 不变（用户仍在二级详情中）
+  resetAdvancedPanel: () => {
+    resetParams()
+    showAdvanced.value = false
+  },
+  // 静默清空 selectedFavorite —— handleBackToFolders 专用，避免触发空搜索请求
+  // （普通 clearSelectedFavorite 会 handleSearch()，但返回 folder-list 时不需要再搜一次）
+  _clearSelectedFavoriteNoSearch: () => {
+    selectedFavorite.value = null
+  },
+  // 设置 includeOnline 并触发搜索 —— 父组件可调用
+  setIncludeOnline: (val) => {
+    includeOnline.value = !!val
+    handleSearch()
+  },
+  selectFavorite,  // 供 Gallery.vue 在 folder-detail 视图调用
 })
 </script>
 
@@ -1692,14 +1779,21 @@ html.dark-mode .favorite-dropdown {
   font-size: 13px;
 }
 
-/* Segmented Control 样式 */
+/* Segmented Control 样式 - 与 .search-panel 同源的半透明玻璃风
+   (图片栏 .float-header/底部按钮用的也是 rgba + backdrop-filter 模式) */
 .panel-header {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  background: rgba(var(--bg-secondary-rgb, 255, 255, 255), 0.6);
+}
+
+html.dark-mode .panel-header {
+  background: rgba(var(--bg-secondary-rgb, 45, 45, 45), 0.6);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .segmented-control {

@@ -17,6 +17,13 @@
           >
             本地
           </el-button>
+          <el-button
+            v-if="buttonMode !== 'hidden' && querySource !== 'yande'"
+            :type="querySource === 'favorites' ? 'primary' : ''"
+            @click="handleSourceChange('favorites')"
+          >
+            收藏夹
+          </el-button>
         </el-button-group>
         <el-tooltip content="省流模式" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
           <el-button
@@ -83,27 +90,68 @@
     </div>
 
     <!-- 搜索组件（独立于 toolbar） -->
-    <AdvancedQuery @search="handleSearch" ref="queryRef" :source-mode="querySource" />
+    <BackButton
+      :visible="querySource === 'favorites' && favoritesView === 'folder-detail'"
+      @click="handleBackToFolders"
+    />
+    <AdvancedQuery
+      @search="handleSearch"
+      @favorites-filter="handleFavoritesFilter"
+      ref="queryRef"
+      :source-mode="querySource"
+      :mode="modeProp"
+      :lock-favorite-chip="favoritesView === 'folder-detail'"
+    />
 
     <!-- 瀑布流图库组件 -->
     <div class="gallery-content">
-      <WaterfallGallery
-        :images="images"
-        :loading="loading"
-        :has-more="hasMore"
-        :is-loading-more="isLoadingMore"
-        :load-error="loadError"
-        :selected-images="selectedImages"
-        :selectable="querySource === 'yande'"
-        :source-mode="querySource"
-        :save-data-mode="saveDataMode"
-        :safe-mode="safeMode"
-        @image-click="handleImageClick"
-        @image-select="handleImageSelect"
-        @load-more="loadMore"
-        @load-error="handleLoadError"
-        @multi-select-start="handleMultiSelectStart"
-      />
+      <!-- 收藏夹文件夹列表 -->
+      <template v-if="querySource === 'favorites' && favoritesView === 'folders'">
+        <WaterfallGallery
+          item-type="folder"
+          :images="currentFolders"
+          :loading="folderLoading"
+          :has-more="folderHasMore"
+          :is-loading-more="isLoadingMore"
+          :load-error="false"
+          :selected-images="[]"
+          :selectable="false"
+          :source-mode="'favorites'"
+          :save-data-mode="saveDataMode"
+          :safe-mode="safeMode"
+          @load-more="loadMoreFolders"
+        >
+          <template #default="{ folder }">
+            <FolderTile
+              :folder="folder"
+              :save-data-mode="saveDataMode"
+              :safe-mode="safeMode"
+              @click="handleFolderClick"
+            />
+          </template>
+        </WaterfallGallery>
+      </template>
+
+      <!-- 普通瀑布流（在线 / 本地 / 文件夹图片） -->
+      <template v-else>
+        <WaterfallGallery
+          :images="images"
+          :loading="loading"
+          :has-more="hasMore"
+          :is-loading-more="isLoadingMore"
+          :load-error="loadError"
+          :selected-images="selectedImages"
+          :selectable="querySource === 'yande'"
+          :source-mode="waterfallSourceMode"
+          :save-data-mode="saveDataMode"
+          :safe-mode="safeMode"
+          @image-click="handleImageClick"
+          @image-select="handleImageSelect"
+          @load-more="loadMore"
+          @load-error="handleLoadError"
+          @multi-select-start="handleMultiSelectStart"
+        />
+      </template>
     </div>
 
     <!-- 左下角多选操作栏 -->
@@ -306,11 +354,14 @@ import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu } from '@element-plus/icons-vue'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
+import FolderTile from '@/components/FolderTile.vue'
+import BackButton from '@/components/BackButton.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
-import { updateOnlineCount, updateLocalCount, refreshOnlineCount } from '@/api/favorites'
+import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 const images = ref([])
 const loading = ref(false)
@@ -320,10 +371,64 @@ const loadError = ref(false)
 const currentPage = ref(1)
 const queryParams = ref({})
 const currentFavorite = ref(null)
+const queryRef = ref(null)  // template ref 绑定 AdvancedQuery 暴露的 selectFavorite/reset
+
+// 收藏夹模式状态机
+const favoritesView = ref(null)  // null | 'folders' | 'folder-detail'
+const selectedFavoriteFolder = ref(null)
+const currentFolders = ref([])
+const folderLoading = ref(false)
+const folderHasMore = ref(false)
+const folderPage = ref(1)
+// 收藏夹一级搜索关键字（受 AdvancedQuery 的 favorites-filter emit 驱动）。
+// 服务端按 folder.name / folder.tags 模糊匹配，多 token 之间 OR 关系。
+const folderKeyword = ref('')
+let folderSearchDebounce = null
 
 // 从 localStorage 读取保存的设置，默认本地模式
 const querySource = ref(localStorage.getItem('gallery_source') || 'local')
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
+
+// 收藏夹 UI 配置（singleton composable，跨组件共享 + localStorage 持久化）
+// - buttonMode: 'hidden' / 'shown' / 'default'（default → 进首页直接跳 favorites）
+// - tileSize:   'adaptive' / '4' / '6' / '8'
+// - previewOrder: 'random' / 'desc' / 'asc'（控制 with-preview 返回的预览图顺序）
+// - includeOnline: bool（控制 with-preview 是否返回未下载图片；Config.vue 高级功能开关）
+// 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
+const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize } = useFavoritesConfig()
+
+// 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
+// 'adaptive' 透传；其它值 fallback 到原值（防御性）
+const API_TILE_SIZE = {
+  '4': 'small',
+  '6': 'medium',
+  '8': 'large',
+}
+
+// AdvancedQuery mode 计算属性
+//   querySource='favorites' → favorites-folders / favorites-folder-detail
+//   其它 → 'gallery'
+const modeProp = computed(() => {
+  if (querySource.value === 'favorites') {
+    return favoritesView.value === 'folder-detail'
+      ? 'favorites-folder-detail'
+      : 'favorites-folders'
+  }
+  return 'gallery'
+})
+
+// WaterfallGallery 实际加载策略 sourceMode
+//   - favorites-folder-detail → 'local'
+//     复用本地瀑布流的 L1 静态缓存 / L2 本地生成路径；
+//     远端下载由 WaterfallGallery.runFallbackChain（步骤 2 /cache/preview/fetch/）
+//     在本地两步都失败时兜底，无需按 includeOnline 分流。
+//   - 其他场景 → 透传 querySource
+const waterfallSourceMode = computed(() => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') {
+    return 'local'
+  }
+  return querySource.value
+})
 
 const previewVisible = ref(false)
 const currentImage = ref(null)
@@ -575,6 +680,46 @@ const stopSafeModeWatch = watch(safeMode, (val) => {
   localStorage.setItem('safe_mode', val ? 'true' : 'false')
 })
 
+// 收藏夹配置由 composable 全局共享：buttonMode 切到 'default' 时跳转到 favorites 视图
+// （取代原 AdvancedQuery 的 @favorites-config-change 回调，触发源迁到 Config.vue）
+watch(buttonMode, (newMode, oldMode) => {
+  if (newMode === 'default' && oldMode !== 'default' && querySource.value !== 'favorites') {
+    handleSourceChange('favorites')
+  }
+})
+
+// previewOrder 改变时，在收藏夹列表视图重新加载第一页（用户切换顺序后立即生效）
+watch(previewOrder, () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }
+})
+
+// includeOnline 改变时，在收藏夹列表视图重新加载第一页（用户在 Config.vue 高级功能切换后立即生效）
+// 注意：folder-detail 视图（搜索主图）由 AdvancedQuery 内 handleSearch 走 /gallery/load 触发，
+// 本 watch 只负责 folder-list（favorites-folders 模式）的预览图元数据刷新。
+watch(includeOnline, () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }
+})
+
+// folderPageSize 改变时重新加载第一页（与 previewOrder / includeOnline 一致：用户切换立即生效）
+watch(folderPageSize, () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }
+})
+
 // 图片预览
 
 
@@ -630,8 +775,15 @@ const handleSearch = async (searchData) => {
   let params
   if (searchData.mode) {
     params = { ...searchData.params, source: searchData.mode }
+    // source='favorites' 时注入 favorite_id（后端用其定位 folder → 取其 tags）
+    if (searchData.mode === 'favorites' && searchData.favorite?.id) {
+      params.favorite_id = searchData.favorite.id
+    }
   } else {
     params = { ...searchData, source: querySource.value }
+    if (params.source === 'favorites' && searchData.favorite?.id) {
+      params.favorite_id = searchData.favorite.id
+    }
   }
   queryParams.value = params
   currentPage.value = 1
@@ -642,16 +794,144 @@ const handleSearch = async (searchData) => {
   await loadImages()
 }
 
+const loadFolders = async (page) => {
+  // isFirstPage 守卫：仅在加载第一页时切换 loading 状态以触发 skeleton
+  // page>1 时通过 loadMoreFolders → isLoadingMore 通道管理「加载中…」按钮，
+  // 避免 set folderLoading=true 触发 WaterfallGallery 顶层 v-if 卸载整个瀑布流 DOM
+  const isFirstPage = page === 1 || folderPage.value === 1
+  if (isFirstPage) {
+    folderLoading.value = true
+  }
+  try {
+    // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
+    const apiTileSize = API_TILE_SIZE[tileSize.value] || tileSize.value
+    // previewOrder / includeOnline 从 useFavoritesConfig composable 取
+    // （用户在 Config.vue 高级功能设置）
+    const previewOrderVal = previewOrder.value || 'random'
+    const includeOnlineVal = includeOnline.value === true
+    const res = await getFoldersWithPreview(
+      page,
+      folderPageSize.value,
+      apiTileSize,
+      folderKeyword.value,
+      previewOrderVal,
+      includeOnlineVal
+    )
+    const { items, has_more } = res.data
+    if (page === 1) {
+      currentFolders.value = items
+    } else {
+      currentFolders.value.push(...items)
+    }
+    folderHasMore.value = has_more
+    folderPage.value = page
+  } catch (e) {
+    ElMessage.error('加载收藏夹失败：' + (e?.message || '未知错误'))
+    throw e  // 让 loadMoreFolders 能 catch 回退 folderPage
+  } finally {
+    if (isFirstPage) {
+      folderLoading.value = false
+    }
+  }
+}
+
+// 收藏夹加载更多：folderHasMore 在 server 端控制（基于 total + page_size）
+const handleFolderScrollBottom = () => {
+  if (folderHasMore.value && !folderLoading.value) {
+    loadMoreFolders()
+  }
+}
+
+// 与 image 模式 loadMore 对称：先自增 page，再调 loadFolders；
+// loadFolders 在 isFirstPage=false 时不会 set folderLoading=true → 不会触发 skeleton 全刷
+// 复用 image 模式共享的 isLoadingMore ref（两个 WaterfallGallery 实例 v-if/v-else 互斥渲染，无冲突）
+const loadMoreFolders = async () => {
+  if (isLoadingMore.value) return
+  isLoadingMore.value = true
+  folderPage.value++
+  try {
+    await loadFolders(folderPage.value)
+  } catch {
+    folderPage.value--
+  }
+  isLoadingMore.value = false
+}
+
+// AdvancedQuery 在 mode='favorites-folders' 输入框变化时 emit 'favorites-filter'
+// 200ms debounce 后回调查后端，重置分页到第 1 页。
+const handleFavoritesFilter = (value) => {
+  const keyword = (value || '').trim()
+  if (folderSearchDebounce) clearTimeout(folderSearchDebounce)
+  folderSearchDebounce = setTimeout(() => {
+    folderKeyword.value = keyword
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }, 200)
+}
+
+const handleFolderClick = (folder) => {
+  selectedFavoriteFolder.value = folder
+  favoritesView.value = 'folder-detail'
+  // 复用 AdvancedQuery 的 selectFavorite 设置搜索栏状态
+  queryRef.value?.selectFavorite(folder)
+}
+
+const handleBackToFolders = () => {
+  selectedFavoriteFolder.value = null
+  favoritesView.value = 'folders'
+  // 不调 reset()（reset 会清 searchText/selectedTags/queryParams，进入 folder-list 不需要这些）
+  // 改用更精细的清理：resetAdvancedPanel 仅清 queryParams + 关闭面板，再用静默方法清 selectedFavorite
+  // 这样 includeOnline 等全局偏好保留（composable 持久化），且不触发空搜索请求
+  queryRef.value?.resetAdvancedPanel()
+  queryRef.value?._clearSelectedFavoriteNoSearch?.()
+  images.value = []
+  // 用户在 folder-detail 可能改过 includeOnline，返回时刷新 folder-list 让新设置生效
+  folderPage.value = 1
+  currentFolders.value = []
+  folderHasMore.value = false
+  loadFolders(1)
+}
+
+// 收藏夹配置现由 useFavoritesConfig composable 全局共享，
+// Config.vue（高级功能 tab）修改后 Gallery 自动响应
 const handleSourceChange = (newSource) => {
+  const prevSource = querySource.value
+
+  // 切走 favorites 时清空 queryRef 状态（避免 stale tags / favorite 残留）
+  if (prevSource === 'favorites' && newSource !== 'favorites') {
+    queryRef.value?.reset()
+    queryRef.value?.resetAdvancedPanel()
+    // Gallery 自己的 queryParams 也需要清空——folder-detail 期间
+    // AdvancedQuery 通过 handleSearch 注入的 favorites tags / favorite_id 不能
+    // 残留用于后续 local/yande 搜索（与 AdvancedQuery 内部 queryParams 是两份独立状态）
+    queryParams.value = {}
+  }
+
   querySource.value = newSource
-  selectedImages.value = []  // 清空选择
+  favoritesView.value = null
+  selectedFavoriteFolder.value = null
+  currentFolders.value = []
+  folderKeyword.value = ''
+  if (folderSearchDebounce) {
+    clearTimeout(folderSearchDebounce)
+    folderSearchDebounce = null
+  }
+  selectedImages.value = []
   selectAll.value = false
   isIndeterminate.value = false
+
+  if (newSource === 'favorites') {
+    favoritesView.value = 'folders'
+    loadFolders(1)
+    return
+  }
+
   if (Object.keys(queryParams.value).length > 0) {
     queryParams.value.source = newSource
     handleSearch(queryParams.value)
   } else {
-    // 初始加载
     handleSearch({})
   }
 }
@@ -873,7 +1153,17 @@ const getDetailUrl = (image) => {
 
 // 页面加载时自动查询本地
 onMounted(() => {
-  handleSearch({})
+  // 行为变更：mount 阶段不再根据 buttonMode 强制覆盖 querySource
+  //   之前 buttonMode='default' 会强制 querySource = 'favorites'，无视 gallery_source 持久化值
+  //   现统一保持 gallery_source 持久化值（默认 'local'）
+  // buttonMode='default' 仍保留运行时切换语义：用户在 Config.vue 改 buttonMode 到 'default' 时
+  //   由 Gallery.vue:686-690 的 watch(buttonMode) 触发跳 favorites
+  if (querySource.value === 'favorites') {
+    favoritesView.value = 'folders'
+    loadFolders(1)
+  } else {
+    handleSearch({})
+  }
   // 窗口尺寸变化时重新计算预览尺寸
   window.addEventListener('resize', () => {
     if (previewVisible.value && currentImage.value) {
@@ -1011,6 +1301,17 @@ html.dark-mode .top-toolbar {
 
 .safe-mode-btn {
   margin-left: 0 !important;
+}
+
+/* tile 尺寸 4 档切换（仅 favorites folders 视图显示） */
+.tile-size-group {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.tile-size-group :deep(.el-radio-button__inner) {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .mode-buttons :deep(.el-button:hover) {

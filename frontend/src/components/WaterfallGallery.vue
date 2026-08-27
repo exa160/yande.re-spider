@@ -17,84 +17,106 @@
     </div>
 
     <!-- 瀑布流布局 -->
-    <div v-else ref="containerRef" class="waterfall-container" :style="`column-count: ${columnCount}`">
-      <div
-        v-for="image in reorderedImages"
-        :key="image.id"
-        :data-image-id="image.id"
-        class="waterfall-item"
-        :class="{ 
-          'selected': isSelected(image),
-          'image-loaded': loadedImages.has(image.id) || !image.preview_url?.startsWith('http'),
-          'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
-        }"
-        @click="handleImageClick(image)"
-        @touchstart="handleTouchStart(image, $event)"
-        @touchmove="handleTouchMove($event)"
-        @touchend="handleTouchEnd(image, $event)"
-        @contextmenu.prevent="handleLongPress(image)"
-        @mousedown="handleMouseDown(image, $event)"
-        @mouseup="handleMouseUp(image, $event)"
-        @mousemove="handleMouseMove(image, $event)"
-      >
-        <!-- 长按选择提示 -->
-        <div v-if="isSelected(image)" class="selection-indicator">
-          <el-icon><Check /></el-icon>
-        </div>
-
-        <!-- 图片 -->
-        <el-image
-          :key="image.id"
-          :src="getPreviewUrl(image)"
-          :alt="image.id.toString()"
-          fit="cover"
-          class="waterfall-image"
-          :style="{ height: getPlaceholderHeight(image) + 'px' }"
-          :class="{
-            'fade-in': !loadingImages.has(image.id) || loadedImages.has(image.id),
-            'safe-blur': safeMode && image.rating !== 'Safe'
-          }"
-          @error="handleImageError(image)"
-          @load="handleImageLoad(image)"
+    <div v-else ref="containerRef" class="waterfall-container">
+      <!-- image 模式：保持现有渲染逻辑 -->
+      <template v-if="itemType === 'image'">
+        <div
+          v-for="(column, colIndex) in reorderedColumns"
+          :key="`col-${colIndex}`"
+          class="waterfall-column"
         >
-          <template #error>
-            <div class="image-error">
-              <el-icon><Picture /></el-icon>
+          <div
+            v-for="image in column"
+            :key="image.id"
+            :data-image-id="image.id"
+            class="waterfall-item"
+            :class="{
+              'selected': isSelected(image),
+              'image-loaded': loadedImages.has(image.id) || !image.preview_url?.startsWith('http'),
+              'touch-focused': touchFocusedId === image.id || mouseFocusedId === image.id
+            }"
+            @click="handleImageClick(image)"
+            @touchstart="handleTouchStart(image, $event)"
+            @touchmove="handleTouchMove($event)"
+            @touchend="handleTouchEnd(image, $event)"
+            @contextmenu.prevent="handleLongPress(image)"
+            @mousedown="handleMouseDown(image, $event)"
+            @mouseup="handleMouseUp(image, $event)"
+            @mousemove="handleMouseMove(image, $event)"
+          >
+            <!-- 长按选择提示 -->
+            <div v-if="isSelected(image)" class="selection-indicator">
+              <el-icon><Check /></el-icon>
             </div>
-          </template>
-          <template #placeholder>
-            <div v-if="loadingImages.has(image.id)" class="image-placeholder skeleton-shimmer"></div>
-          </template>
-        </el-image>
 
-        <!-- 重试按钮 -->
-        <div v-if="shouldShowRetry(image)" class="retry-button" @click="(e) => handleImageRetry(image, e)">
-          <el-icon v-if="retryingImages.has(image.id)" class="is-loading"><Loading /></el-icon>
-          <el-icon v-else><RefreshRight /></el-icon>
-        </div>
+            <!-- 图片 -->
+            <el-image
+              :key="image.id"
+              :src="getPreviewUrl(image)"
+              :alt="image.id.toString()"
+              fit="cover"
+              class="waterfall-image"
+              :style="{ height: getPlaceholderHeight(image) + 'px' }"
+              :class="{
+                'fade-in': !loadingImages.has(image.id) || loadedImages.has(image.id),
+                'safe-blur': safeMode && image.rating !== 'Safe'
+              }"
+              @error="handleImageError(image)"
+              @load="handleImageLoad(image)"
+            >
+              <template #error>
+                <div class="image-error">
+                  <el-icon><Picture /></el-icon>
+                </div>
+              </template>
+              <template #placeholder>
+                <div v-if="loadingImages.has(image.id)" class="image-placeholder skeleton-shimmer"></div>
+              </template>
+            </el-image>
 
-        <!-- 图片信息悬浮层 -->
-        <div class="image-info-overlay">
-          <div class="image-info-content">
-            <span class="info-id">ID: {{ image.id }}</span>
-            <span class="info-size">{{ image.width }}x{{ image.height }}</span>
-            <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
-              {{ image.rating }}
-            </el-tag>
-            <div v-if="image.down_flag" class="downloaded-dot"></div>
+            <!-- 重试按钮 -->
+            <div v-if="shouldShowRetry(image)" class="retry-button" @click="(e) => handleImageRetry(image, e)">
+              <el-icon v-if="retryingImages.has(image.id)" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><RefreshRight /></el-icon>
+            </div>
+
+            <!-- 图片信息悬浮层 -->
+            <div class="image-info-overlay">
+              <div class="image-info-content">
+                <span class="info-id">ID: {{ image.id }}</span>
+                <span class="info-size">{{ image.width }}x{{ image.height }}</span>
+                <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
+                  {{ image.rating }}
+                </el-tag>
+                <div v-if="image.down_flag" class="downloaded-dot"></div>
+              </div>
+            </div>
+
+            <!-- 选中遮罩 -->
+            <div v-if="isSelected(image)" class="selection-overlay"></div>
           </div>
         </div>
+      </template>
 
-        <!-- 选中遮罩 -->
-        <div v-if="isSelected(image)" class="selection-overlay"></div>
-      </div>
+      <!-- folder 模式：使用 slot -->
+      <template v-else>
+        <div
+          v-for="(column, colIndex) in reorderedColumns"
+          :key="`col-${colIndex}`"
+          class="waterfall-column"
+        >
+          <div v-for="item in column" :key="item.id" class="folder-slot-wrapper">
+            <slot :folder="item" :safe-mode="safeMode" />
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- 空状态 -->
     <el-empty v-if="!loading && images.length === 0 && !loadError" description="暂无图片" />
 
-    <!-- 加载更多 -->
-    <div v-if="(hasMore || loadError) && !loading" ref="loadMoreRef" class="load-more">
+    <!-- 加载更多：v-show 替代 v-if，保证 DOM 节点稳定，让 IntersectionObserver 始终挂在同一个元素上 -->
+    <div v-show="(hasMore || loadError) && !loading" ref="loadMoreRef" class="load-more">
       <el-button
         @click="handleLoadMoreClick"
         :disabled="loadingMore"
@@ -157,6 +179,11 @@ const props = defineProps({
   safeMode: {
     type: Boolean,
     default: false
+  },
+  itemType: {
+    type: String,
+    default: 'image',
+    validator: (v) => ['image', 'folder'].includes(v),
   }
 })
 
@@ -181,8 +208,14 @@ const failedImages = ref(new Set())
 const loadingImages = ref(new Set())
 const loadedImages = ref(new Set())
 const retryingImages = ref(new Set())
-const retrySuccessImages = ref(new Map())
 const displayedImages = ref([])
+
+// 自动 fallback 链：与 FolderTile.handlePreviewError 一致
+// fallbackInFlight：同一 image_id 防重入（多个 trigger 同时触发只跑一次链）
+const fallbackInFlight = ref(new Set())
+// previewCacheBuster：fallback 写盘后给 URL 加时间戳让 <el-image> 重新请求 /cache/preview/{id}
+// 用 Map 而非普通对象，确保 Vue 3 响应式追踪（Map.set 触发 reactivity）
+const previewCacheBuster = ref(new Map())
 
 // 懒加载并发控制：限制同时加载的预览图数量，FIFO 顺序
 const MAX_PREVIEW_CONCURRENT = 10
@@ -267,9 +300,17 @@ const getColumnCount = (width) => {
 
 const estimateImageHeight = (image) => {
   if (image.width && image.height) {
+    // image 模式：按比例估算（基准宽度 200）
+    // 绝对高度差一个常数倍（200 vs 实际列宽）不影响最短列比较，packing 顺序仍正确
     return (200 / image.width) * image.height
   }
-  return 200
+  // folder 模式：FolderTile 实际用固定 aspect-ratio 4/3 + object-fit cover 渲染预览图，
+  // 图片区高度 = 列宽 × 0.75，与 preview 图本身宽高比无关。
+  // 之前用 preview 宽高比估算产生虚假高度差异 → 短列优先 packing 决策失真 → 各列底部参差。
+  const gap = 15
+  const columnWidth = (containerWidth.value - gap * (columnCount.value - 1)) / columnCount.value
+  // 图片区（4:3）+ 文字区（padding 16 + 单行内容约 20，取 36 留余量）
+  return columnWidth * 0.75 + 36
 }
 
 // 计算骨架屏占位图高度（基于图片宽高比和列宽）
@@ -284,11 +325,11 @@ const getPlaceholderHeight = (image) => {
   return 200
 }
 
-const reorderedImages = computed(() => {
+const reorderedColumns = computed(() => {
   const cols = columnCount.value
   const colHeights = Array(cols).fill(0)
   const colArrays = Array.from({ length: cols }, () => [])
-  
+
   props.images.forEach((img) => {
     let shortestCol = 0
     let minHeight = colHeights[0]
@@ -301,8 +342,10 @@ const reorderedImages = computed(() => {
     colArrays[shortestCol].push(img)
     colHeights[shortestCol] += estimateImageHeight(img) + 15
   })
-  
-  return colArrays.flat()
+
+  // 方案 A：返回二维数组（每列一维），由模板按列渲染（flex 分列）。
+  // 算法分列 = 渲染分列，消除之前 flat 后交给 CSS column-count 的"双重分列"矛盾。
+  return colArrays
 })
 
 watch(() => props.images.length, () => {
@@ -314,7 +357,7 @@ watch(() => props.images.length, () => {
     loadingImages.value.clear()
     loadedImages.value.clear()
     retryingImages.value.clear()
-    retrySuccessImages.value.clear()
+    previewCacheBuster.value.clear()
     srcEnabled.value.clear()
     loadingQueue.value = []
     return
@@ -617,8 +660,8 @@ const getPreviewUrl = (image) => {
   if (!isLoaded && (props.saveDataMode || !srcEnabled.value.has(image.id))) {
     return ''
   }
-  const retryTs = retrySuccessImages.value.get(image.id)
-  const tsSuffix = retryTs ? `?ts=${retryTs}` : ''
+  const cacheBusterTs = previewCacheBuster.value.get(image.id)
+  const tsSuffix = cacheBusterTs ? `?ts=${cacheBusterTs}` : ''
 
   if (props.sourceMode === 'local') {
     if (image.preview_url) {
@@ -629,10 +672,56 @@ const getPreviewUrl = (image) => {
   return `/api/v1/gallery/cache/preview/fetch/${image.id}${tsSuffix}`
 }
 
-const handleImageError = (image) => {
+// 自动 fallback 链：与 FolderTile.handlePreviewError 一致
+// 步骤 1：/cache/preview/local/{id}（缓存未命中 + 有本地原图 → 从原图生成）
+// 步骤 2：/cache/preview/fetch/{id}（无本地原图 → 远端下载并缓存）
+// 成功通过 previewCacheBuster 触发 <el-image> 重新请求 /cache/preview/{id}
+const runFallbackChain = async (image) => {
+  if (fallbackInFlight.value.has(image.id)) {
+    return 'in_flight'
+  }
+  fallbackInFlight.value.add(image.id)
+
+  try {
+    try {
+      await api.get(`/gallery/cache/preview/local/${image.id}`)
+      previewCacheBuster.value.set(image.id, Date.now())
+      return 'success'
+    } catch (_) {
+      // /local/ 失败（无本地原图或非图片），继续试 /fetch/
+    }
+
+    try {
+      await api.get(`/gallery/cache/preview/fetch/${image.id}`)
+      previewCacheBuster.value.set(image.id, Date.now())
+      return 'success'
+    } catch (_) {
+      return 'failed'
+    }
+  } finally {
+    fallbackInFlight.value.delete(image.id)
+  }
+}
+
+const handleImageError = async (image) => {
   loadingImages.value.delete(image.id)
-  failedImages.value.add(image.id)
-  loadedImages.value.delete(image.id)
+
+  // 自动 fallback 链：与 FolderTile.handlePreviewError 一致
+  // 步骤 1：/cache/preview/local/{id}（无网络依赖，本地原图生成）
+  // 步骤 2：/cache/preview/fetch/{id}（远端下载并缓存）
+  // 成功后通过 previewCacheBuster 触发 <el-image> 重新请求 /cache/preview/{id}
+  const result = await runFallbackChain(image)
+
+  if (result === 'success') {
+    // 链路成功：cache-buster 已写入，等待 <el-image> @load 自动重载
+    loadedImages.value.add(image.id)
+    failedImages.value.delete(image.id)
+  } else if (result === 'failed') {
+    failedImages.value.add(image.id)
+    loadedImages.value.delete(image.id)
+  }
+  // 'in_flight'：其他 trigger 已在跑，无需更新状态
+
   processQueue()  // 释放一个并发槽位，处理队列中下一个
 }
 
@@ -640,7 +729,7 @@ const handleImageLoad = (image) => {
   loadingImages.value.delete(image.id)
   loadedImages.value.add(image.id)
   failedImages.value.delete(image.id)
-  retrySuccessImages.value.delete(image.id)
+  previewCacheBuster.value.delete(image.id)  // 加载成功后清除 cache-buster
   processQueue()  // 释放一个并发槽位，处理队列中下一个
 }
 
@@ -658,29 +747,20 @@ const handleImageRetry = async (image, event) => {
   srcEnabled.value.add(image.id)  // 重试时直接启用 src（绕过队列）
   loadingImages.value.add(image.id)
 
-  let apiSuccess = false
-  if (props.sourceMode === 'local') {
-    try {
-      await api.get(`/gallery/cache/preview/local/${image.id}`)
-      apiSuccess = true
-    } catch (e) {
-      ElMessage.error('生成缩略图失败')
-    }
-  } else {
-    try {
-      await api.get(`/gallery/cache/preview/fetch/${image.id}`)
-      apiSuccess = true
-    } catch (e) {
-      ElMessage.error('缓存预览图失败')
-    }
-  }
+  // 复用自动 fallback 链：先尝试本地生成，再尝试远端下载
+  const result = await runFallbackChain(image)
 
   retryingImages.value.delete(image.id)
 
-  if (!apiSuccess) {
+  if (result === 'failed') {
     failedImages.value.add(image.id)
+    ElMessage.error('恢复预览图失败')
+  } else if (result === 'success') {
+    // 链路成功：cache-buster 已写入，等待 <el-image> @load
+    loadedImages.value.add(image.id)
+    failedImages.value.delete(image.id)
   }
-  // 如果 API 成功，等待 el-image 的 load/error 事件处理状态
+  // 'in_flight'：其他 trigger 已在跑
 }
 
 // 使用 IntersectionObserver 监听加载更多元素
@@ -792,12 +872,25 @@ onUnmounted(() => {
 }
 
 .waterfall-container {
-  column-gap: 15px;
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+}
+
+.waterfall-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.folder-slot-wrapper {
+  width: 100%;
 }
 
 .waterfall-item {
-  break-inside: avoid;
-  margin-bottom: 15px;
+  width: 100%;
   position: relative;
   cursor: pointer;
   border-radius: 8px;

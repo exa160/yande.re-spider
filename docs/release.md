@@ -24,6 +24,68 @@ LLM 工作流约束：
 
 ---
 
+## 0.5 🧹 分支卫生（Branch Hygiene）
+
+> 上一节红线防"破坏性操作"，本节规范"日常清理"。两者共同保证 PR 合并流程的可持续性。
+
+### 0.5.1 分支生命周期
+
+| 阶段 | 动作 | 责任方 |
+| --- | --- | --- |
+| 创建 | 基于最新 `next_dev` 分叉：`git checkout -b feature-<name> origin/next_dev` | 开发者 |
+| 开发中 | 在自己的 feature 分支上自由 commit / push | 开发者 |
+| PR 合并后 | **24h 内删除本地 + 远程 feature 分支**：`git branch -d` + `git push origin --delete` | 合并操作者 |
+| 版本发版后 | 该版本相关的 feature 分支全部删除（next/next_dev/tag 不删） | 发版操作者 |
+| 备份/历史 | 仅保留 `main` / `next` / `next_dev` / `next_feature` 4 条长期分支；其他 `feature-*` 完成后即删 | — |
+
+### 0.5.2 三条硬性约束
+
+1. **永远基于最新 `next_dev` 分叉**（违反将触发"双方各自演进"型冲突）
+   - ❶ 分叉前：`git fetch origin next_dev && git checkout origin/next_dev`
+   - ❷ 创建分支：`git checkout -b feature-<name> origin/next_dev`
+   - ❌ 禁止：从某个旧 feature-* 分叉创建新分支（除非该 feature 已 merged 进 next_dev 后再 fork）
+   - ❌ 禁止：从本地 main / 旧 tag 分叉做日常开发
+
+2. **禁止"提前 cherry-pick 半成品"**（这是 PR37/PR38 冲突的根本原因）
+   - 现象：PR-A 把 PR-B 的早期版本 cherry-pick 到 next_dev，但 PR-B 在合并前又继续迭代 → 合并时大量冲突
+   - 错误示例：`feature-favorites-mode`（PR36 CLOSED）→ PR37 cherry-pick 进 next_dev → `feature-favorites-mode-v1.2.0`（PR38）又迭代 → 30 处冲突
+   - 规则：**只能 cherry-pick 已经 merged 的 commit**；未 merged 的内容走 PR 流程
+   - 例外：第三方/脱节分支的对齐，按 §1.1 的 "Cherry Up" 流程，但仍要求分叉点必须基于最新 next_dev
+
+3. **新迭代必须用 `<name>-v1.Y.Z` 后缀**（避免一个 feature 分支跨多个 PR）
+   - 单一 feature 分支 → 单一 PR（合并后删除）
+   - 需要在同一 feature 上迭代 → PR 合并后立刻 fork `feature-<name>-v1.Y.Z` 继续（fork 自最新 next_dev，不是旧的 feature 分支）
+   - 不要在同一个 feature 分支上叠加多个 PR 的 commits
+
+### 0.5.3 推荐清理脚本
+
+```bash
+# 合并完 PR 后，本地 + 远程同步删除
+git branch -d feature-<name>   # 安全删除（已 merged）
+git push origin --delete feature-<name>
+
+# 批量清理已 merged 的 feature 分支
+git branch --merged origin/next_dev | grep -E "^  feature-" | xargs -n1 git branch -d
+git branch -r --merged origin/next_dev | grep -E "origin/feature-" | sed 's/origin\///' | xargs -I{} git push origin --delete {}
+```
+
+⚠️ **不要清理的分支**：
+- `main` / `next` / `next_dev` / `next_feature`（受保护）
+- `feature` / `feature_dev`（旧版主分支，按 §1.1 警告已 deprecated，但保留以防外部引用）
+- `backup-*` / `cleanup/*` / `pr-*-head`（历史归档，按需手动处理）
+
+### 0.5.4 冲突预防检查清单（PR 提单前必查）
+
+| 检查项 | 命令 | 通过标准 |
+| --- | --- | --- |
+| 分叉点 | `git merge-base HEAD origin/next_dev` | 等于 `origin/next_dev` 的 head |
+| 未合入 commits 数 | `git log --oneline origin/next_dev..HEAD \| wc -l` | ≤ 预期增量 |
+| 远程同步 | `git fetch origin && git status` | "Your branch is up to date" |
+| 敏感信息 | `git diff origin/next_dev..HEAD \| grep -iE '(password\|secret\|token\|api[_-]?key)\s*[:=]\s*["\047][^"\047]+["\047]'` | 无输出 |
+| 版本号一致性 | `grep version frontend/package.json pyproject.toml backend/src/__init__.py` | 三处同步（除非本次故意 bump） |
+
+---
+
 ## 1. 流程线一：dev 合入流程
 
 **适用场景**：日常功能开发、Bug 修复，仅合入开发环境 (`next_dev`) 供测试，不打 tag，不发版。

@@ -17,7 +17,22 @@ from src.models.request.favorites import (
     FavoriteFolderCreate,
     FavoriteFolderUpdate,
 )
-from src.models.response.favorites import FavoriteFolder, FavoriteFolderWithPreview
+from src.models.response.favorites import (
+    FavoriteFolder,
+    FavoriteFolderWithMinimalPreview,
+    FolderPreviewImageMinimal,
+)
+
+
+def _preview_count_for_local_count(local_count: int, tile_size: str = "adaptive") -> int:
+    if tile_size == "small":
+        return 4
+    if tile_size == "medium":
+        return 6
+    if tile_size == "large":
+        return 8
+    # adaptive：前端按 tile 宽度像素裁剪，后端统一返 8 张作为上限
+    return 8
 
 
 class FavoritesService:
@@ -47,34 +62,83 @@ class FavoritesService:
         return folders
 
     @staticmethod
-    def get_folders_with_preview() -> List[FavoriteFolderWithPreview]:
-        """获取所有收藏夹及随机预览图片"""
-        folders = favorite_dao.get_all()
-        return [
-            FavoriteFolderWithPreview(
-                id=f.id,
-                name=f.name,
-                tags=f.tags,
-                color=f.color,
-                icon=f.icon,
-                sort_order=f.sort_order,
-                local_count=f.local_count or 0,
-                online_count=f.online_count or 0,
-                last_refresh=f.last_refresh,
-                created_at=f.created_at,
-                updated_at=f.updated_at,
-                schedule_enabled=f.schedule_enabled,
-                schedule_cron=f.schedule_cron,
-                schedule_mode=f.schedule_mode,
-                schedule_max_images=f.schedule_max_images,
-                last_scheduled_at=f.last_scheduled_at,
-                last_schedule_status=f.last_schedule_status,
-                last_schedule_stats=f.last_schedule_stats,
-                last_synced_id=f.last_synced_id,
-                preview_images=[],
+    def get_folders_with_preview(
+        page: int = 1,
+        page_size: int = 20,
+        tile_size: str = "adaptive",
+        keyword: Optional[str] = None,
+        preview_order: str = "random",
+        include_online: bool = False,
+    ) -> tuple[list[FavoriteFolderWithMinimalPreview], int, bool]:
+        """分页获取收藏夹及精简预览元数据（瀑布流视图）。
+
+        Args:
+            page: 页码，从 1 开始
+            page_size: 每页数量
+            tile_size: 'adaptive' 永远返 8 张（前端按 tile 宽度像素裁剪 4/6/8 张）；
+                        'small/medium/large' 固定 4/6/8 张
+            keyword: 关键字过滤，按 folder.name / folder.tags 模糊匹配（不区分大小写）
+            preview_order: 预览图顺序。
+                - 'random'（默认）：随机抽样
+                - 'desc'      ：按 ID 倒序（最新优先）
+                - 'asc'       ：按 ID 正序（最早优先）
+            include_online: True 时预览图同时包含未下载的在线图片（未来「我的最爱」
+                            支持收藏未下载图时启用；启用后前端预览加载走
+                            /cache/preview → /local → /fetch 的 fallback chain）。
+
+        性能要点（v1 旧实现的 N+1 已修复）：
+        - 旧实现：每个 folder 新开一个 session，调 query_random_for_tags → func.random() 在
+          大表上 O(n) 排序，一页 20 个 folder = 20 次慢查询 + 20 次 session open/close。
+        - 新实现：单次会话遍历所有 folder，每 folder 用 ORDER BY id + LIMIT（命中索引），
+          random 模式才走 func.random()（按需）。
+        - 跨 folder 的 tags 字符串可能重复（多个 folder 引用同一组 tags），用 LRU 缓存复用
+          query 结果，避免同一查询重复跑。
+        """
+        # 1. 关键字过滤（在 DAO 层做，避免 N 个 folder 都被加载后过滤）
+        if keyword:
+            folders, total = favorite_dao.search_paginated(
+                page=page, page_size=page_size, keyword=keyword
             )
-            for f in folders
-        ]
+        else:
+            folders, total = favorite_dao.list_paginated(
+                page=page, page_size=page_size
+            )
+        if not folders:
+            return [], total, False
+
+        # 2. 共享一个 repo session，遍历所有 folder 收集预览元数据
+        items: list[FavoriteFolderWithMinimalPreview] = []
+        # 缓存同 tags 字符串的查询结果（多 folder 共享时复用）
+        # cache_key 加 include_online 维度，因为相同 tags 在不同 include_online 下结果不同
+        tags_query_cache: dict[str, list[FolderPreviewImageMinimal]] = {}
+        with YandeDataRepository() as repo:
+            for f in folders:
+                limit = _preview_count_for_local_count(
+                    f.local_count or 0, tile_size
+                )
+                preview_meta: list[FolderPreviewImageMinimal] = []
+                if f.tags and limit > 0:
+                    cache_key = f"{f.tags}|{limit}|{preview_order}|{include_online}"
+                    if cache_key not in tags_query_cache:
+                        sampled = repo.query_preview_for_tags(
+                            tags=f.tags,
+                            limit=limit,
+                            downloaded_only=not include_online,
+                            order=preview_order,
+                        )
+                        tags_query_cache[cache_key] = [
+                            FolderPreviewImageMinimal.model_validate(img)
+                            for img in sampled
+                        ]
+                    preview_meta = tags_query_cache[cache_key]
+                items.append(
+                    FavoriteFolderWithMinimalPreview(
+                        **FavoriteFolder.model_validate(f).model_dump(),
+                        preview_images=preview_meta,
+                    )
+                )
+        has_more = page * page_size < total
+        return items, total, has_more
 
     @staticmethod
     def create_folder(folder: FavoriteFolderCreate) -> FavoriteFolder:
@@ -136,13 +200,15 @@ class FavoritesService:
         return favorite_dao.reorder(folder_ids)
 
     @staticmethod
-    def preview_folder(folder_id: int, limit: int = 6) -> Optional[dict]:
-        """
-        预览收藏夹查询结果
+    def preview_folder(
+        folder_id: int, limit: int = 6, random: bool = False
+    ) -> Optional[dict]:
+        """单文件夹预览。
+
         Args:
-            folder_id: 收藏夹ID
-            limit: 预览图片数量
-        TODO: 文件夹目录预览图
+            folder_id: 收藏夹 ID
+            limit: 预览图数量上限
+            random: True 时随机抽样；False 时按当前 sort 排序取前 N 张
         """
         folder = favorite_dao.get_by_id(folder_id)
         if not folder:
@@ -153,17 +219,21 @@ class FavoritesService:
             search_params.page = 1
             search_params.page_size = limit
             with YandeDataRepository() as repo:
-                images, total = repo.query(
-                    query_params=search_params,
-                    downloaded_only=True,
-                )
-
+                if random:
+                    images = repo.query_random_for_tags(
+                        tags=folder.tags or "",
+                        limit=limit,
+                        downloaded_only=True,
+                    )
+                    _, total = repo.query(
+                        query_params=search_params, downloaded_only=True
+                    )
+                else:
+                    images, total = repo.query(
+                        query_params=search_params, downloaded_only=True
+                    )
             FavoritesService._refresh_local_count(folder_id)
-
-            return {
-                "total": total,
-                "preview_images": images[:limit],
-            }
+            return {"total": total, "preview_images": images[:limit]}
         except Exception:
             return None
 
