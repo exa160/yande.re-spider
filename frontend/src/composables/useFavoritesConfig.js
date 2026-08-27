@@ -13,20 +13,28 @@
  *   gallery_favorites_tile_size      : 'adaptive' | '4' | '6' | '8'
  *   gallery_favorites_preview_order  : 'random' | 'asc' | 'desc'
  *   gallery_favorites_include_online : 'true' | 'false'
+ *   favorites_folder_page_size       : '8' | '12' | '20'（数字字符串）
  */
 import { ref, watch } from 'vue'
+
+/**
+ * @typedef {import('vue').Ref} Ref
+ */
 
 // 模块级状态（singleton）：所有调用共享同一组 ref
 const buttonMode = ref('shown')
 const tileSize = ref('adaptive')
 const previewOrder = ref('random')
 const includeOnline = ref(false)
+// 收藏夹一级每页条数（用户可在 Config.vue 通过 radio 切换 8 / 12 / 20）
+const folderPageSize = ref(20)
 let initialized = false
 
 // 合法值白名单（防御性：localStorage 可能被外部篡改）
 const VALID_BUTTON_MODES = ['hidden', 'shown', 'default']
 const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
 const VALID_PREVIEW_ORDERS = ['random', 'asc', 'desc']
+const VALID_FOLDER_PAGE_SIZES = [8, 12, 20]
 
 function readFromLocalStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return
@@ -55,6 +63,14 @@ function readFromLocalStorage() {
   if (savedIncludeOnline === 'true') {
     includeOnline.value = true
   }
+
+  // folderPageSize 用 parseInt 解析，非法值（NaN / 非白名单）fallback 到 20
+  folderPageSize.value = 20
+  const savedFolderPageSize = window.localStorage.getItem('favorites_folder_page_size')
+  const parsed = savedFolderPageSize !== null ? parseInt(savedFolderPageSize, 10) : NaN
+  if (VALID_FOLDER_PAGE_SIZES.includes(parsed)) {
+    folderPageSize.value = parsed
+  }
 }
 
 function writeToLocalStorage() {
@@ -65,6 +81,7 @@ function writeToLocalStorage() {
   window.localStorage.setItem(
     'gallery_favorites_include_online', includeOnline.value ? 'true' : 'false'
   )
+  window.localStorage.setItem('favorites_folder_page_size', String(folderPageSize.value))
 }
 
 /**
@@ -77,7 +94,8 @@ function writeToLocalStorage() {
  *   buttonMode: Ref<string>,
  *   tileSize: Ref<string>,
  *   previewOrder: Ref<string>,
- *   includeOnline: Ref<boolean>
+ *   includeOnline: Ref<boolean>,
+ *   folderPageSize: Ref<number>
  * }}
  */
 export function useFavoritesConfig() {
@@ -89,7 +107,8 @@ export function useFavoritesConfig() {
     watch(tileSize, writeToLocalStorage)
     watch(previewOrder, writeToLocalStorage)
     watch(includeOnline, writeToLocalStorage)
+    watch(folderPageSize, writeToLocalStorage)
   }
 
-  return { buttonMode, tileSize, previewOrder, includeOnline }
+  return { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize }
 }

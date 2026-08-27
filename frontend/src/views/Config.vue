@@ -312,6 +312,19 @@
                 </div>
               </div>
             </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">每页收藏夹个数</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.folderPageSize" size="small">
+                    <el-radio-button :value="8">8</el-radio-button>
+                    <el-radio-button :value="12">12</el-radio-button>
+                    <el-radio-button :value="20">20</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -373,7 +386,7 @@ const saving = ref(false)
 const activeMenu = ref('api')
 
 // 收藏夹 UI 配置（与 Gallery 共享 singleton composable）
-const { buttonMode, tileSize, previewOrder, includeOnline } = useFavoritesConfig()
+const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize } = useFavoritesConfig()
 // 本地表单：用 composable 初值初始化，watch 同步回 composable
 // （不直接 v-model 到 composable，避免 Gallery 端外部修改造成循环）
 const favoritesForm = reactive({
@@ -381,6 +394,7 @@ const favoritesForm = reactive({
   tileSize: tileSize.value,
   previewOrder: previewOrder.value,
   includeOnline: includeOnline.value,
+  folderPageSize: folderPageSize.value,
 })
 watch(favoritesForm, (val) => {
   if (buttonMode.value !== val.buttonMode) {
@@ -394,6 +408,9 @@ watch(favoritesForm, (val) => {
   }
   if (includeOnline.value !== val.includeOnline) {
     includeOnline.value = val.includeOnline
+  }
+  if (folderPageSize.value !== val.folderPageSize) {
+    folderPageSize.value = val.folderPageSize
   }
 })
 

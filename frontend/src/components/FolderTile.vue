@@ -211,13 +211,12 @@ watch(() => props.saveDataMode, async (newMode) => {
 <style scoped>
 .folder-tile {
   display: block;
+  width: 100%;
   border-radius: 12px;
   overflow: hidden;
   background: var(--bg-secondary);
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
-  break-inside: avoid;
-  margin-bottom: 16px;
 }
 .folder-tile:hover {
   transform: translateY(-2px);

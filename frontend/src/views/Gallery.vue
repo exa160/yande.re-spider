@@ -112,14 +112,14 @@
           :images="currentFolders"
           :loading="folderLoading"
           :has-more="folderHasMore"
-          :is-loading-more="false"
+          :is-loading-more="isLoadingMore"
           :load-error="false"
           :selected-images="[]"
           :selectable="false"
           :source-mode="'favorites'"
           :save-data-mode="saveDataMode"
           :safe-mode="safeMode"
-          @load-more="handleFolderScrollBottom"
+          @load-more="loadMoreFolders"
         >
           <template #default="{ folder }">
             <FolderTile
@@ -380,7 +380,6 @@ const currentFolders = ref([])
 const folderLoading = ref(false)
 const folderHasMore = ref(false)
 const folderPage = ref(1)
-const FOLDER_PAGE_SIZE = 20
 // 收藏夹一级搜索关键字（受 AdvancedQuery 的 favorites-filter emit 驱动）。
 // 服务端按 folder.name / folder.tags 模糊匹配，多 token 之间 OR 关系。
 const folderKeyword = ref('')
@@ -396,7 +395,7 @@ const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 // - previewOrder: 'random' / 'desc' / 'asc'（控制 with-preview 返回的预览图顺序）
 // - includeOnline: bool（控制 with-preview 是否返回未下载图片；Config.vue 高级功能开关）
 // 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
-const { buttonMode, tileSize, previewOrder, includeOnline } = useFavoritesConfig()
+const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize } = useFavoritesConfig()
 
 // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
 // 'adaptive' 透传；其它值 fallback 到原值（防御性）
@@ -711,6 +710,16 @@ watch(includeOnline, () => {
   }
 })
 
+// folderPageSize 改变时重新加载第一页（与 previewOrder / includeOnline 一致：用户切换立即生效）
+watch(folderPageSize, () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
+    folderPage.value = 1
+    currentFolders.value = []
+    folderHasMore.value = false
+    loadFolders(1)
+  }
+})
+
 // 图片预览
 
 
@@ -786,8 +795,13 @@ const handleSearch = async (searchData) => {
 }
 
 const loadFolders = async (page) => {
-  if (folderLoading.value) return
-  folderLoading.value = true
+  // isFirstPage 守卫：仅在加载第一页时切换 loading 状态以触发 skeleton
+  // page>1 时通过 loadMoreFolders → isLoadingMore 通道管理「加载中…」按钮，
+  // 避免 set folderLoading=true 触发 WaterfallGallery 顶层 v-if 卸载整个瀑布流 DOM
+  const isFirstPage = page === 1 || folderPage.value === 1
+  if (isFirstPage) {
+    folderLoading.value = true
+  }
   try {
     // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
     const apiTileSize = API_TILE_SIZE[tileSize.value] || tileSize.value
@@ -797,7 +811,7 @@ const loadFolders = async (page) => {
     const includeOnlineVal = includeOnline.value === true
     const res = await getFoldersWithPreview(
       page,
-      FOLDER_PAGE_SIZE,
+      folderPageSize.value,
       apiTileSize,
       folderKeyword.value,
       previewOrderVal,
@@ -813,16 +827,34 @@ const loadFolders = async (page) => {
     folderPage.value = page
   } catch (e) {
     ElMessage.error('加载收藏夹失败：' + (e?.message || '未知错误'))
+    throw e  // 让 loadMoreFolders 能 catch 回退 folderPage
   } finally {
-    folderLoading.value = false
+    if (isFirstPage) {
+      folderLoading.value = false
+    }
   }
 }
 
 // 收藏夹加载更多：folderHasMore 在 server 端控制（基于 total + page_size）
 const handleFolderScrollBottom = () => {
   if (folderHasMore.value && !folderLoading.value) {
-    loadFolders(folderPage.value + 1)
+    loadMoreFolders()
   }
+}
+
+// 与 image 模式 loadMore 对称：先自增 page，再调 loadFolders；
+// loadFolders 在 isFirstPage=false 时不会 set folderLoading=true → 不会触发 skeleton 全刷
+// 复用 image 模式共享的 isLoadingMore ref（两个 WaterfallGallery 实例 v-if/v-else 互斥渲染，无冲突）
+const loadMoreFolders = async () => {
+  if (isLoadingMore.value) return
+  isLoadingMore.value = true
+  folderPage.value++
+  try {
+    await loadFolders(folderPage.value)
+  } catch {
+    folderPage.value--
+  }
+  isLoadingMore.value = false
 }
 
 // AdvancedQuery 在 mode='favorites-folders' 输入框变化时 emit 'favorites-filter'
@@ -1121,14 +1153,12 @@ const getDetailUrl = (image) => {
 
 // 页面加载时自动查询本地
 onMounted(() => {
-  // buttonMode 决定初始视图：
-  //   'default' → 直接进 favorites（无论 gallery_source 持久化值）
-  //   'shown'/'hidden' → 保持 gallery_source 持久化值（默认 'local'）
-  if (buttonMode.value === 'default') {
-    querySource.value = 'favorites'
-    favoritesView.value = 'folders'
-    loadFolders(1)
-  } else if (querySource.value === 'favorites') {
+  // 行为变更：mount 阶段不再根据 buttonMode 强制覆盖 querySource
+  //   之前 buttonMode='default' 会强制 querySource = 'favorites'，无视 gallery_source 持久化值
+  //   现统一保持 gallery_source 持久化值（默认 'local'）
+  // buttonMode='default' 仍保留运行时切换语义：用户在 Config.vue 改 buttonMode 到 'default' 时
+  //   由 Gallery.vue:686-690 的 watch(buttonMode) 触发跳 favorites
+  if (querySource.value === 'favorites') {
     favoritesView.value = 'folders'
     loadFolders(1)
   } else {
