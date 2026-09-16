@@ -401,7 +401,7 @@ const observeNewImages = () => {
       { rootMargin: '200px' }
     )
   }
-  
+
   if (observer) {
     const items = containerRef.value?.querySelectorAll('.waterfall-item')
     items?.forEach(item => {
@@ -436,15 +436,6 @@ const updateColumnCount = () => {
     }
   }
 }
-
-onMounted(() => {
-  updateColumnCount()
-  window.addEventListener('resize', updateColumnCount)
-  nextTick(() => {
-    observeNewImages()
-    processQueue()
-  })
-})
 
 const isSelected = (image) => {
   return props.selectedImages.some(img => img.id === image.id)
@@ -704,6 +695,15 @@ const runFallbackChain = async (image) => {
 }
 
 const handleImageError = async (image) => {
+  // === 关键修复：el-image 在 src='' 时也会触发 @error 事件 ===
+  // 此时 src 被懒加载门控为空字符串，是预期状态而非真实加载失败。
+  // 直接 return，跳过 fallback链，避免对被门控的图片发起 /local + /fetch 请求，
+  // 防止 fallback 成功后将图片标记为 loaded，绕过 srcEnabled 门控导致全部加载。
+  if (!getPreviewUrl(image)) {
+    loadingImages.value.delete(image.id)
+    return
+  }
+
   loadingImages.value.delete(image.id)
 
   // 自动 fallback 链：与 FolderTile.handlePreviewError 一致
@@ -810,6 +810,7 @@ onMounted(() => {
   window.addEventListener('resize', updateColumnCount)
   nextTick(() => {
     observeNewImages()
+    processQueue()
   })
 })
 
