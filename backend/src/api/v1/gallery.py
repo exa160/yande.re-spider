@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 
 from src.common.constant import ErrMsg
+from src.common.settings import config
 from src.middleware.errors import APIException
 from src.models.request.gallery import CleanupPreviewsRequest, GalleryLoadRequest
 from src.models.response.base_response import BaseResponse
@@ -103,13 +104,35 @@ async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
     "/image/{image_id}", response_model=ImageDetailResponse, summary="获取图片详情"
 )
 async def get_image_detail(
-    image_id: int, source: str = Query("local", description="数据源")
+    image_id: int,
+    source: str = Query("local", description="数据源"),
+    include_favorite_status: bool = Query(
+        default=False,
+        description=(
+            "True 时响应附带 is_favorited 字段（需 "
+            "config.favorites.enable_my_favorites 开启；总开关关闭时强制为 None）"
+        ),
+    ),
 ) -> ImageDetailResponse:
-    """获取单张图片详情"""
-    image = await asyncio.to_thread(GalleryService.get_image_by_id, image_id, source)
-    if not image:
+    """获取单张图片详情（双判断 include_favorite_status）。
+
+    双判断 (binding constraint)：
+        effective_include_favorite = (include_favorite_status
+                                      AND config.favorites.enable_my_favorites)
+        总开关关闭时，即便前端请求也返回 is_favorited=None（不连表）。
+    """
+    effective_include_favorite = bool(
+        include_favorite_status
+        and getattr(config.favorites, "enable_my_favorites", False)
+    )
+    detail = await asyncio.to_thread(
+        GalleryService.get_image_detail,
+        image_id,
+        effective_include_favorite,
+    )
+    if not detail:
         raise APIException(ErrMsg.NOT_FOUND)
-    return ImageDetailResponse(message=ErrMsg.OK.msg, data=ImageDetail(**image))
+    return ImageDetailResponse(message=ErrMsg.OK.msg, data=detail)
 
 
 @router.post(

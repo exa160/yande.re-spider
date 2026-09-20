@@ -21,10 +21,12 @@ from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
+from src.middleware.session import RequestSessionMiddleware
 from src.models.database.my_favorite import MyFavorite
 from src.models.database.yande import YandeData
 from src.models.request.gallery import GalleryLoadRequest
 from src.models.request.yande import YandeSearchTags
+from src.models.response.gallery import ImageDetail
 
 
 class GalleryService:
@@ -233,6 +235,51 @@ class GalleryService:
             if img["id"] == image_id:
                 return img
         return None
+
+    @staticmethod
+    def get_image_detail(
+        image_id: int, include_favorite_status: bool = False
+    ) -> Optional[ImageDetail]:
+        """
+        根据 ID 获取单张图片详情（双判断 include_favorite_status）。
+
+        双判断 (binding constraint)：
+            effective_include_favorite = (include_favorite_status
+                                          AND config.favorites.enable_my_favorites)
+            只有两者都为 True 时才会查 my_favorite 表；其它情况
+            is_favorited 保持 None。
+
+        与 /gallery/load 的 query_local_database 行为一致：本接口
+        也强制双重判断，保证总开关关闭时不查表。
+
+        Args:
+            image_id: 图片 ID
+            include_favorite_status: 是否附带收藏状态（仍受总开关约束）
+
+        Returns:
+            ImageDetail 实例（包含 is_favorited），不存在返回 None
+        """
+        session = RequestSessionMiddleware.get_session()
+        yande = session.query(YandeData).filter(YandeData.id == image_id).first()
+        if not yande:
+            return None
+
+        is_favorited: Optional[bool] = None
+        effective = bool(
+            include_favorite_status
+            and getattr(config.favorites, "enable_my_favorites", False)
+        )
+        if effective:
+            is_favorited = (
+                session.query(MyFavorite)
+                .filter(MyFavorite.image_id == image_id)
+                .first()
+                is not None
+            )
+
+        return ImageDetail.model_validate(yande).model_copy(
+            update={"is_favorited": is_favorited}
+        )
 
     @staticmethod
     def get_statistics(source: str = "local") -> dict:
