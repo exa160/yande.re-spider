@@ -151,3 +151,97 @@ def test_count_returns_correct(seed_image, enable_autodownload_true):
     """count() 返回 my_favorite 表的实际行数。"""
     MyFavoriteDao.add(seed_image, image_id=42)
     assert MyFavoritesService.count() == 1
+
+
+# ============================================================
+# get_preview rating 序列化回归测试（Fix Round R=1）
+#
+# 回归背景：service 曾用 str(row["rating"]) 规范化 Rating，产出 Python enum
+# repr（'Rating.S'/'Rating.R15'），与项目约定（Rating.display）不符。前端
+# safeMode 模糊判断（img.rating !== 'Safe'）与 getRatingType 字典都按
+# 'Safe'/'Questionable'/'Explicit' 比较，'Rating.S' 会导致全模糊 + 误返回 'info'。
+# 修复：service 改用 row["rating"].display，且 MyFavoritePreviewImage 加
+# field_serializer 兜底，不依赖 service 记得调用 .display。
+# ============================================================
+
+
+def _seed_favorite_with_rating(sess, rating, image_id: int) -> int:
+    """种一张指定 rating 的 YandeData + 对应 my_favorite，返回 image_id。
+
+    rating 可为 Rating 枚举或 None（覆盖 rating 缺失场景）。
+    """
+    rec = YandeData(
+        id=image_id,
+        tags="sample",
+        width=100,
+        height=100,
+        file_ext="jpg",
+        file_size=1024,
+        file_url=f"http://a/{image_id}.jpg",
+        preview_url=f"http://pa/{image_id}.jpg",
+        md5=f"m{image_id}",
+        author="t",
+        rating=rating,
+        down_flag=True,
+        created_at=datetime(2024, 1, 1),
+    )
+    sess.add(rec)
+    sess.commit()
+    MyFavoriteDao.add(sess, image_id=image_id)
+    sess.commit()
+    return image_id
+
+
+@pytest.mark.parametrize("db_rating, expected_display, image_id", [
+    (Rating.S, "Safe", 7001),
+    (Rating.R15, "Questionable", 7002),
+    (Rating.R18, "Explicit", 7003),
+])
+def test_get_preview_rating_serializes_to_display(
+    in_memory_session, db_rating, expected_display, image_id
+):
+    """回归：get_preview 序列化输出必须是 Rating.display，绝不能是 'Rating.S' repr 或 's' 原值。
+
+    前端 FolderTile.vue / WaterfallGallery.vue / Gallery.vue 的 safeMode 模糊判断
+    与 getRatingType 字典按 'Safe'/'Questionable'/'Explicit' 比较。
+    """
+    _seed_favorite_with_rating(in_memory_session, db_rating, image_id)
+    images = MyFavoritesService.get_preview(limit=10)
+    assert len(images) == 1
+    img = images[0]
+    # Python 层：model 字段是 Rating 枚举（str Enum，== 数据库 value）
+    assert img.rating == db_rating
+    # 序列化层：必须是 display，绝不能是 'Rating.S' repr 或 's' 原值
+    dumped = img.model_dump()
+    assert dumped["rating"] == expected_display, (
+        f"db rating={db_rating.value!r} 应序列化为 display={expected_display!r}，"
+        f"实际 {dumped['rating']!r}。若为 'Rating.{db_rating.name}' 说明 service 用了 str()；"
+        f"若为 '{db_rating.value}' 说明 serializer 被回退。"
+    )
+
+
+def test_get_preview_handles_none_rating(in_memory_session):
+    """边界：rating 为 None 时 get_preview 不崩溃，序列化输出空串。"""
+    _seed_favorite_with_rating(in_memory_session, None, image_id=7010)
+    images = MyFavoritesService.get_preview(limit=10)
+    assert len(images) == 1
+    dumped = images[0].model_dump()
+    assert dumped["rating"] == "", (
+        f"rating=None 应序列化为空串，实际 {dumped['rating']!r}"
+    )
+
+
+def test_get_preview_rating_never_returns_enum_repr(in_memory_session):
+    """防御：序列化输出绝不能含 'Rating.' 前缀（str() 泄漏的 enum repr）。"""
+    for rating, image_id in [(Rating.S, 7021), (Rating.R15, 7022), (Rating.R18, 7023)]:
+        _seed_favorite_with_rating(in_memory_session, rating, image_id)
+    images = MyFavoritesService.get_preview(limit=10)
+    assert len(images) == 3
+    for img in images:
+        dumped_rating = img.model_dump()["rating"]
+        assert not dumped_rating.startswith("Rating."), (
+            f"序列化输出含 enum repr 前缀：{dumped_rating!r}（str() 泄漏）"
+        )
+        assert dumped_rating in {"Safe", "Questionable", "Explicit"}, (
+            f"序列化输出非法：{dumped_rating!r}"
+        )

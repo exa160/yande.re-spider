@@ -108,8 +108,10 @@ class MyFavoritesService:
     def get_preview(limit: int = 20) -> List[MyFavoritePreviewImage]:
         """我的最爱预览图元数据，按收藏时间倒序。
 
-        DAO 已 JOIN yande_data；此处需把 Rating enum 规范化为 str（Pydantic 不会
-        自动把 ORM 返回的 Enum 列转为 str，否则 ValidationError）。
+        DAO 已 JOIN yande_data 并返回 Rating enum；此处把 enum 规范化为
+        Rating.display 字符串（'Safe'/'Questionable'/'Explicit'），与主视图
+        / 收藏夹预览的序列化契约保持一致，避免前端 ``img.rating !== 'Safe'``
+        模糊判断失效（见 ``MyFavoritePreviewImage.serialize_rating``）。
         """
         with YandeDataRepository() as repo:
             rows = MyFavoriteDao.get_preview(repo.session, limit=limit)
@@ -118,7 +120,7 @@ class MyFavoritesService:
                 id=row["id"],
                 preview_url=row.get("preview_url"),
                 tags=row.get("tags", ""),
-                rating=str(row["rating"]) if row.get("rating") is not None else "",
+                rating=row["rating"].display if row.get("rating") is not None else "",
             )
             for row in rows
         ]
