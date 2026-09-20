@@ -4,7 +4,7 @@ from typing import Optional
 
 import yaml
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer, field_validator
 
 from src.common.constant import path_constant
 
@@ -92,6 +92,67 @@ class FavoritesConfig(ConfigModel):
         default=True,
         description="加入我的最爱时，若图片未下载（down_flag=False）则自动入下载队列",
     )
+    button_mode: str = Field(
+        default="shown",
+        description="主页收藏夹按钮显示: hidden | shown | default",
+    )
+    tile_size: str = Field(
+        default="adaptive",
+        description="收藏夹 tile 大小: adaptive | 4 | 6 | 8",
+    )
+    preview_order: str = Field(
+        default="random",
+        description="预览图排序: random | asc | desc",
+    )
+    include_online: bool = Field(
+        default=False,
+        description="预览是否包含未下载图片",
+    )
+    folder_page_size: int = Field(
+        default=20,
+        description="收藏夹一级每页: 8 | 12 | 20",
+    )
+
+    enable_my_favorites: bool = Field(
+        default=False,
+        description="我的最爱功能总开关",
+    )
+    enable_random_browse: bool = Field(
+        default=False,
+        description="随机浏览功能总开关",
+    )
+    enable_favorite_folder: bool = Field(
+        default=True,
+        description="收藏夹展示总开关",
+    )
+
+    @field_validator("button_mode")
+    @classmethod
+    def _validate_button_mode(cls, v: str) -> str:
+        if v not in ("hidden", "shown", "default"):
+            raise ValueError("button_mode must be 'hidden' | 'shown' | 'default'")
+        return v
+
+    @field_validator("tile_size")
+    @classmethod
+    def _validate_tile_size(cls, v: str) -> str:
+        if v not in ("adaptive", "4", "6", "8"):
+            raise ValueError("tile_size must be 'adaptive' | '4' | '6' | '8'")
+        return v
+
+    @field_validator("preview_order")
+    @classmethod
+    def _validate_preview_order(cls, v: str) -> str:
+        if v not in ("random", "asc", "desc"):
+            raise ValueError("preview_order must be 'random' | 'asc' | 'desc'")
+        return v
+
+    @field_validator("folder_page_size")
+    @classmethod
+    def _validate_folder_page_size(cls, v: int) -> int:
+        if v not in (8, 12, 20):
+            raise ValueError("folder_page_size must be 8 | 12 | 20")
+        return v
 
 
 class Config(ConfigModel):
@@ -103,7 +164,10 @@ class Config(ConfigModel):
     favorites: FavoritesConfig = FavoritesConfig()
 
     @ConfigModel.set_frozen_data_
-    def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig | SchedulerConfig):
+    def update_config(
+        self,
+        config_model: DatabaseConfig | ApiConfig | DownloaderConfig | SchedulerConfig | FavoritesConfig,
+    ):
         for config_name, config_data in self.__dict__.items():
             logger.info(f"{isinstance(config_model, type(config_data))}， Checking config: {config_name}, type: {type(config_data)}, new type: {type(config_model)}")
             if isinstance(config_model, type(config_data)):
