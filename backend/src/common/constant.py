@@ -117,6 +117,7 @@ class RouterMap(Enum):
     gallery = ["图库"]
     query = ["查询"]
     tag_cache = ["标签缓存"]
+    my_favorites = ["我的最爱"]
 
     @classmethod
     def get_tags(cls, name: str):
