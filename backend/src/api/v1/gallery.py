@@ -77,7 +77,10 @@ async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
                     seen.add(img_id)
     elif request.source == "local":
         images, total = await asyncio.to_thread(
-            GalleryService.query_local_database, request
+            GalleryService.query_local_database,
+            request,
+            request.include_favorite_status,
+            request.random,
         )
     else:
         images, total = await asyncio.to_thread(
