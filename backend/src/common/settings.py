@@ -83,12 +83,24 @@ class AppConfig(ConfigModel):
     debug: bool = Field(default=False, description='开启时接口返回完整错误信息')
 
 
+class FavoritesConfig(ConfigModel):
+    """收藏相关配置（我的最爱 / 收藏夹通用入口）
+
+    字段命名约定：以 enable_<feature>_autodown 命名表示「开关 + 自动下载相关」。
+    """
+    enable_favorite_autodownload: bool = Field(
+        default=True,
+        description="加入我的最爱时，若图片未下载（down_flag=False）则自动入下载队列",
+    )
+
+
 class Config(ConfigModel):
     app: AppConfig = AppConfig()
     database: DatabaseConfig = DatabaseConfig()
     yande_api: ApiConfig = ApiConfig()
     downloader: DownloaderConfig = DownloaderConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
+    favorites: FavoritesConfig = FavoritesConfig()
 
     @ConfigModel.set_frozen_data_
     def update_config(self, config_model: DatabaseConfig | ApiConfig | DownloaderConfig | SchedulerConfig):
