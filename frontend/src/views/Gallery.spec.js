@@ -380,6 +380,86 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(payload.favorite_id).toBeUndefined()
   })
 
+  // Hotfix-1（v2 随机浏览/我的最爱 422）：router.push({query:{querySource:'random'/'my-favorites'}})
+  // 触发的 loadImages 不能把残留 favorite_id / 旧 source='favorites' 透传给后端。
+  it('regression: virtual tile → querySource="random" 时 loadImages 剥离 stale favorite_id 并覆盖 source', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    // 1. 模拟「刚离开 favorites folder-detail」后 queryParams 残留 favorites 状态
+    wrapper.vm.querySource = 'favorites'
+    wrapper.vm.queryParams = {
+      tags: 'sample',
+      rating: ['safe'],
+      favorite_id: 42,
+      source: 'favorites',
+    }
+
+    // 2. 模拟 FavoritePanel 虚拟磁贴点击 → route.query.querySource='random'
+    //    （真实路径会经 watch(querySource) 更新 querySource.value，测试里直接赋值）
+    wrapper.vm.querySource = 'random'
+    await flushPromises()
+
+    // 3. 主动调用一次 loadImages（与 watch 触发等价）
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    // 4. 抓取最近一次 gallery/load 调用 payload
+    const postMock = (await import('@/api')).default.post
+    const lastCall = postMock.mock.calls[postMock.mock.calls.length - 1]
+    expect(lastCall?.[0]).toBe('/gallery/load')
+    const payload = lastCall?.[1] ?? {}
+    expect(payload.favorite_id).toBeUndefined()
+    expect(payload.source).toBe('random')
+  })
+
+  it('regression: virtual tile → querySource="my-favorites" 时 loadImages 同样剥离 stale favorite_id', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    wrapper.vm.querySource = 'favorites'
+    wrapper.vm.queryParams = {
+      tags: 'cute',
+      rating: ['safe', 'questionable'],
+      favorite_id: 99,
+      source: 'favorites',
+    }
+
+    wrapper.vm.querySource = 'my-favorites'
+    await flushPromises()
+
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    const postMock = (await import('@/api')).default.post
+    const lastCall = postMock.mock.calls[postMock.mock.calls.length - 1]
+    const payload = lastCall?.[1] ?? {}
+    expect(payload.favorite_id).toBeUndefined()
+    expect(payload.source).toBe('my-favorites')
+  })
+
+  it('regression: handleSearch 在 favorites 模式下，但 favorite.id 缺省/非法时不写 favorite_id', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    // 场景 A：favorite 完全缺省
+    wrapper.vm.handleSearch({ tags: 'sample' })
+    await flushPromises()
+    expect(wrapper.vm.queryParams.favorite_id).toBeUndefined()
+
+    // 场景 B：favorite.id 是非数字字符串（防御性应剔除）
+    wrapper.vm.handleSearch({ favorite: { id: 'random', name: '随机' }, tags: 'sample' })
+    await flushPromises()
+    expect(wrapper.vm.queryParams.favorite_id).toBeUndefined()
+
+    // 场景 C：favorite.id 是合法正整数（正常注入）
+    wrapper.vm.querySource = 'favorites'
+    await flushPromises()
+    wrapper.vm.handleSearch({ favorite: { id: 42, name: 'foo' }, tags: 'sample' })
+    await flushPromises()
+    expect(wrapper.vm.queryParams.favorite_id).toBe(42)
+  })
+
   it('safeMode 切换 → localStorage 持久化正确', async () => {
     const wrapper = factory()
     await flushPromises()

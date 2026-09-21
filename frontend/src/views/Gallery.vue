@@ -833,17 +833,32 @@ onUnmounted(() => {
 })
 
 const handleSearch = async (searchData) => {
+  // 防御性解析 favorite_id：仅当是合法正整数才注入，避免后端 Pydantic int 校验失败（422）。
+  // v2 路径里 searchData.favorite?.id 可能是 undefined（mode 路径）/ 整数 / 字符串占位符
+  // （如虚拟磁贴点击经 handleSearch({favorite:{id:'random'}, ...}) 等场景）。
+  const favoriteIdNum = Number(searchData.favorite?.id)
+  const hasValidFavoriteId =
+    Number.isInteger(favoriteIdNum) && favoriteIdNum > 0 && String(favoriteIdNum) === String(searchData.favorite.id)
+  const injectedFavoriteId = hasValidFavoriteId ? favoriteIdNum : undefined
+
   let params
   if (searchData.mode) {
     params = { ...searchData.params, source: searchData.mode }
     // source='favorites' 时注入 favorite_id（后端用其定位 folder → 取其 tags）
-    if (searchData.mode === 'favorites' && searchData.favorite?.id) {
-      params.favorite_id = searchData.favorite.id
+    if (searchData.mode === 'favorites' && injectedFavoriteId !== undefined) {
+      params.favorite_id = injectedFavoriteId
     }
   } else {
-    params = { ...searchData, source: querySource.value }
-    if (params.source === 'favorites' && searchData.favorite?.id) {
-      params.favorite_id = searchData.favorite.id
+    // 仅当 source 解析为 favorites 且 favorite_id 合法时才注入，避免切 querySource 时
+    // 残留的 favorite/搜索组合把脏 favorite_id 写进 queryParams（后续 loadImages 会带出去 → 422）
+    const resolvedSource = querySource.value
+    const shouldInjectFavorite = resolvedSource === 'favorites' && injectedFavoriteId !== undefined
+    params = { ...searchData, source: resolvedSource }
+    if (shouldInjectFavorite) {
+      params.favorite_id = injectedFavoriteId
+    } else {
+      // 非合法情况显式剔除，避免从上级 spread 透传脏 favorite_id
+      delete params.favorite_id
     }
   }
   queryParams.value = params
@@ -1015,8 +1030,17 @@ const loadImages = async (page) => {
     if (showHeart.value && enableMyFavorites.value) {
       extraParams.include_favorite_status = true
     }
+    // 防御性清理：querySource 切到非 favorites 模式时（前次 favorites folder-detail 残留的
+    // queryParams 含 favorite_id / source='favorites'），剔除 favorite_id 并把 source 对齐
+    // 当前 querySource。避免 FavoritePanel 虚拟磁贴点击 → router.push({query:{querySource:'random'|'my-favorites'}})
+    // 触发 loadImages 时把字符串 favorite_id / 旧 source 发给后端导致 422。
+    const safeBase = { ...queryParams.value }
+    if (querySource.value !== 'favorites') {
+      delete safeBase.favorite_id
+      safeBase.source = querySource.value
+    }
     const response = await api.post('/gallery/load', {
-      ...queryParams.value,
+      ...safeBase,
       ...extraParams,
       page: targetPage
     })
