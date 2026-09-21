@@ -224,6 +224,13 @@
 
             <div class="float-header" :class="`overlay-${overlayColorScheme}`">
               <div class="float-header-left">
+                <HeartOverlay
+                  v-if="enableMyFavorites"
+                  :image-id="currentImage.id"
+                  :initial-favorited="currentImage.is_favorited === true"
+                  :show-heart="true"
+                  @changed="onFavoriteChanged"
+                />
                 <span class="float-id">ID: {{ currentImage.id }}</span>
                 <el-tag :type="getRatingType(currentImage.rating)" size="small">
                   {{ currentImage.rating }}
@@ -358,6 +365,7 @@ import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import FolderTile from '@/components/FolderTile.vue'
 import BackButton from '@/components/BackButton.vue'
+import HeartOverlay from '@/components/HeartOverlay.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
@@ -547,6 +555,15 @@ const goToNextImage = () => {
 const onViewerSwitch = (index) => {
   if (images.value[index]) {
     currentImage.value = images.value[index]
+  }
+}
+
+// v2 我的最爱 / 随机浏览：HeartOverlay 切换后乐观更新 currentImage.is_favorited
+// 详情页浮层与 WaterfallGallery 共享同一份 image 数据源（来自 /gallery/load + include_favorite_status），
+// 直接写入当前 currentImage，避免再发一次 /gallery/{id} 拉详情
+const onFavoriteChanged = (payload) => {
+  if (currentImage.value && currentImage.value.id === payload.imageId) {
+    currentImage.value.is_favorited = payload.favorited
   }
 }
 
