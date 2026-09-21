@@ -74,6 +74,7 @@
 | DAO 层重构 | ✅ 完成 | bea5017 |
 | API 路由系统重构 | ✅ 完成 | 3331539 |
 | 数据库模型模块化 | ✅ 完成 | 8ce9224 |
+| 我的最爱 + 随机浏览（v2，前端插入虚拟磁贴，配置中心化） | ✅ 完成 | 见 docs/superpowers/specs/2026-09-20-my-favorites-and-random-browse-v2-design.md |
 
 ### 代码规范检查清单
 
