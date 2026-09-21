@@ -1,5 +1,27 @@
 <template>
-  <div ref="tileRef" class="folder-tile" @click="$emit('click', folder)">
+  <div
+    v-if="folder.isVirtual"
+    class="folder-tile virtual-tile"
+    :class="`virtual-${folder.id}`"
+    @click="$emit('click', folder)"
+    @long-press="onLongPress"
+  >
+    <div class="virtual-icon">
+      <el-icon>
+        <StarFilled v-if="folder.id === 'my-favorites'" />
+        <MagicStick v-else />
+      </el-icon>
+      <span class="virtual-name">{{ folder.name }}</span>
+    </div>
+    <div class="virtual-count">{{ folder.local_count || 0 }} 张</div>
+  </div>
+  <div
+    v-else
+    ref="tileRef"
+    class="folder-tile"
+    @click="$emit('click', folder)"
+    @long-press="onLongPress"
+  >
     <div class="folder-preview-grid" :style="`--cols: ${gridCols}`">
       <div
         v-for="img in displayedImages"
@@ -29,7 +51,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Picture } from '@element-plus/icons-vue'
+import { MagicStick, Picture, StarFilled } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const props = defineProps({
@@ -38,7 +60,15 @@ const props = defineProps({
   safeMode: { type: Boolean, default: false },
 })
 
-defineEmits(['click'])
+const emit = defineEmits(['click', 'long-press'])
+
+// 虚拟磁贴（我的最爱 / 随机浏览）不弹编辑菜单：
+// 转发父组件事件之前先 short-circuit，让上层 @long-press handler 走 no-op。
+// 真实磁贴保持原有行为，原样转发事件。
+const onLongPress = (e) => {
+  if (props.folder?.isVirtual) return
+  emit('long-press', e, props.folder)
+}
 
 // 预览图 URL 策略：所有模式统一用 /cache/preview/{id}（最便宜的路径）
 // 缓存命中直接返回文件；缓存未命中走 @error fallback chain：
@@ -269,5 +299,43 @@ html.dark-mode .folder-tile {
 
 .folder-preview-cell .safe-blur {
   filter: blur(20px) brightness(var(--safe-blur-brightness, 0.7));
+}
+
+.virtual-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px 12px;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(135deg, #f56c6c22 0%, #f56c6c11 100%);
+  border: 1px dashed #f56c6c;
+}
+.virtual-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.virtual-icon .el-icon {
+  font-size: 24px;
+  color: #f56c6c;
+}
+.virtual-name {
+  font-weight: bold;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.virtual-count {
+  font-size: 12px;
+  color: #999;
+}
+
+html.dark-mode .virtual-tile {
+  background: linear-gradient(135deg, #f56c6c33 0%, #f56c6c1a 100%);
+}
+html.dark-mode .virtual-count {
+  color: var(--text-muted);
 }
 </style>

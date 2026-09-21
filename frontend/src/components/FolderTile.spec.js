@@ -206,4 +206,64 @@ describe('FolderTile', () => {
       expect(await renderAtWidth(200)).toBe(4)
     })
   })
+
+  describe('虚拟磁贴 (isVirtual)', () => {
+    it('renders virtual tile for 我的最爱 when folder.isVirtual=true and id="my-favorites"', () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 'my-favorites', name: '我的最爱', isVirtual: true, local_count: 5 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+          },
+        },
+      })
+      expect(wrapper.find('.virtual-tile').exists()).toBe(true)
+      expect(wrapper.find('.virtual-tile').classes()).toContain('virtual-my-favorites')
+      expect(wrapper.text()).toContain('我的最爱')
+      expect(wrapper.text()).toContain('5 张')
+      expect(wrapper.find('.folder-preview-grid').exists()).toBe(false)
+    })
+
+    it('renders virtual tile for 随机浏览 when id="random"', () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 'random', name: '随机浏览', isVirtual: true, local_count: 0 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+          },
+        },
+      })
+      expect(wrapper.find('.virtual-tile').exists()).toBe(true)
+      expect(wrapper.find('.virtual-tile').classes()).toContain('virtual-random')
+      expect(wrapper.text()).toContain('随机浏览')
+      expect(wrapper.text()).toContain('0 张')
+    })
+
+    it('does not emit long-press event for virtual tiles (no edit menu)', async () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 'my-favorites', name: '我的最爱', isVirtual: true, local_count: 0 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+          },
+        },
+      })
+      await wrapper.find('.virtual-tile').trigger('long-press')
+      expect(wrapper.emitted('long-press')).toBeUndefined()
+    })
+
+    it('renders normal tile for non-virtual folder (isVirtual=false)', () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 1, name: 'test', isVirtual: false, local_count: 1 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+          },
+        },
+      })
+      expect(wrapper.find('.virtual-tile').exists()).toBe(false)
+      expect(wrapper.find('.folder-preview-grid').exists()).toBe(true)
+    })
+  })
 })
