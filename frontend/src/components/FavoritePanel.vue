@@ -1,6 +1,17 @@
 <template>
   <div class="favorite-panel">
     <template v-if="mode === 'list'">
+      <!-- 虚拟磁贴区：我的最爱 / 随机浏览（前端 prepend，受 useFavoritesConfig 开关控制） -->
+      <div v-if="virtualTiles.length > 0" class="virtual-tiles-row">
+        <div
+          v-for="tile in virtualTiles"
+          :key="tile.id"
+          class="virtual-tile-wrapper"
+          @click="handleVirtualTileClick(tile)"
+        >
+          <FolderTile :folder="tile" />
+        </div>
+      </div>
       <div class="folder-list">
         <div
           v-for="folder in filteredFolders"
@@ -59,7 +70,7 @@
             </span>
           </div>
         </div>
-        <div v-if="folders.length === 0" class="empty-state">
+        <div v-if="foldersProp.length === 0" class="empty-state">
           <el-icon class="empty-icon"><FolderOpened /></el-icon>
           <div class="empty-text">暂无收藏夹</div>
         </div>
@@ -68,7 +79,7 @@
           <div class="empty-text">无匹配收藏夹</div>
         </div>
       </div>
-      <div v-if="folders.length > 0" class="tag-search-bar">
+      <div v-if="foldersProp.length > 0" class="tag-search-bar">
         <el-input
           v-model="folderSearchKeyword"
           placeholder="搜索收藏夹..."
@@ -248,27 +259,74 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, VideoPlay } from '@element-plus/icons-vue'
 import { triggerFolderSchedule } from '@/api/favorites'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import FolderTile from './FolderTile.vue'
 
 const props = defineProps({
-  folders: { type: Array, required: true },
+  // 真实收藏夹列表（与 AdvancedQuery 保持兼容：原 prop 名 `folders` 仍可作为 fallback，
+  // 新代码推荐传 `realFolders`，与设计文档契约一致）
+  realFolders: { type: Array, default: null },
+  folders: { type: Array, default: null },
   colorOptions: { type: Array, required: true },
   sourceMode: { type: String, default: 'local' },
 })
 
 const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'triggered'])
 
+// 统一 prop 读取：优先 realFolders（新契约），fallback 到 folders（AdvancedQuery 老传法）
+const foldersProp = computed(() => props.realFolders ?? props.folders ?? [])
+
+const router = useRouter()
+const { enableMyFavorites, enableRandomBrowse, myFavoritesCount } = useFavoritesConfig()
+
+// 虚拟磁贴：受 useFavoritesConfig 的 4 个开关控制（我的最爱 / 随机浏览），
+// 前端 prepend 到真实收藏夹列表最前。Task 15 的 FolderTile 识别 isVirtual=true 渲染红虚线样式。
+const virtualTiles = computed(() => {
+  const tiles = []
+  if (enableMyFavorites.value) {
+    tiles.push({
+      id: 'my-favorites',
+      name: '我的最爱',
+      isVirtual: true,
+      local_count: myFavoritesCount.value,
+      preview_images: [],
+    })
+  }
+  if (enableRandomBrowse.value) {
+    tiles.push({
+      id: 'random',
+      name: '随机浏览',
+      isVirtual: true,
+      local_count: 0,
+      preview_images: [],
+    })
+  }
+  return tiles
+})
+
+// 点击虚拟磁贴 → 跳到 Gallery 并通过 query 告知 Task 17 router 处理 querySource。
+// 真实磁贴走原有 handleSelect（emit 'select'），行为不变。
+function handleVirtualTileClick(tile) {
+  if (tile.id === 'my-favorites') {
+    router.push({ path: '/', query: { querySource: 'my-favorites' } })
+  } else if (tile.id === 'random') {
+    router.push({ path: '/', query: { querySource: 'random' } })
+  }
+}
+
 const mode = ref('list')
 const editingFolder = ref(null)
 
-// 编辑模式：从 props.folders 派生最新的 folder 对象（按 id 匹配）。
+// 编辑模式：从 foldersProp 派生最新的 folder 对象（按 id 匹配）。
 // 这样父组件刷新 favoriteFolders 后，编辑面板上的 last_synced_id 等字段自动同步，
 // 避免持久的旧引用导致"重置游标后仍显示未初始化"的问题。
 const currentEditingFolder = computed(() => {
   if (!editingFolder.value) return null
-  return props.folders.find(f => f.id === editingFolder.value.id) || editingFolder.value
+  return foldersProp.value.find(f => f.id === editingFolder.value.id) || editingFolder.value
 })
 
 // 通知父组件 mode 变化 (父组件用此隐藏 panel-header 等装饰性头部)
@@ -449,9 +507,10 @@ const formatLastScheduled = (dt) => {
 
 // 按 name / tags 过滤收藏夹（纯前端，零后端调用）
 const filteredFolders = computed(() => {
+  const list = foldersProp.value || []
   const kw = folderSearchKeyword.value.trim().toLowerCase()
-  if (!kw) return props.folders
-  return props.folders.filter(f =>
+  if (!kw) return list
+  return list.filter(f =>
     (f.name || '').toLowerCase().includes(kw) ||
     (f.tags || '').toLowerCase().includes(kw)
   )
@@ -589,6 +648,20 @@ defineExpose({ openCreate, openEdit, cancelForm })
   min-height: 0;
   overflow-y: auto;
   padding: 4px 0;
+}
+
+/* 虚拟磁贴（我的最爱 / 随机浏览）横排，紧贴列表上方 */
+.virtual-tiles-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color, #ebeef5);
+}
+.virtual-tile-wrapper {
+  flex: 0 1 calc(50% - 4px);
+  min-width: 140px;
+  cursor: pointer;
 }
 
 .folder-item {
