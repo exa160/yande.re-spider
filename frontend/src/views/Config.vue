@@ -23,6 +23,14 @@
       >
         数据库配置
       </div>
+      <!-- Task 19：收藏夹单独分页，置于高级功能之上；4 个新开关 + 5 个迁移偏好全在此 -->
+      <div 
+        class="menu-item" 
+        :class="{ active: activeMenu === 'favorites' }"
+        @click="activeMenu = 'favorites'"
+      >
+        收藏夹
+      </div>
       <div 
         class="menu-item" 
         :class="{ active: activeMenu === 'advanced' }"
@@ -255,10 +263,14 @@
           </div>
         </div>
 
-        <!-- 收藏夹 section（卡片化布局，与缓存更新一致） -->
-        <div class="advanced-section">
+        <!-- Task 19：收藏夹独立分页（已从高级里抽出，置于高级之上） -->
+      </div>
+
+      <!-- Task 19：收藏夹独立分页（放在高级之上，避免与高级功能混合导致配置散乱） -->
+      <div v-show="activeMenu === 'favorites'" class="config-section favorites-section">
+        <div class="favorites-inner-section">
           <div class="advanced-title">收藏夹</div>
-          <div class="advanced-desc">配置收藏夹按钮显示与每文件夹预览图数量</div>
+          <div class="advanced-desc">配置收藏夹按钮显示、我的最爱 / 随机浏览总开关，以及每文件夹预览图数量</div>
 
           <div class="refresh-controls">
             <!-- 4 个新开关（我的最爱 + 随机浏览 总功能开关） -->
