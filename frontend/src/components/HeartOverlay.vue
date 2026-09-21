@@ -30,7 +30,7 @@
  * Emits:
  *   - changed({ imageId, favorited })  切换完成后通知父组件同步状态
  */
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { myFavoritesApi } from '@/api/myFavorites'
@@ -44,6 +44,15 @@ const emit = defineEmits(['changed'])
 
 const isFavorited = ref(props.initialFavorited)
 const loading = ref(false)
+
+// 同步外部 prop 变化到内部 ref：用户在瀑布流切图时同一 HeartOverlay 实例
+// 不会被 Vue 重建（无 :key），需要主动 watch initialFavorited 来同步状态
+// 同时兼容 imageId 切换：图片变了 state 也重置
+watch(() => [props.imageId, props.initialFavorited], ([newId, newFav]) => {
+  isFavorited.value = newFav
+  // imageId 切换时清 loading（防止旧请求覆盖新状态）
+  loading.value = false
+})
 
 async function toggle() {
   if (loading.value) return

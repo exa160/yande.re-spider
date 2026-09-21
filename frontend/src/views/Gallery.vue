@@ -109,7 +109,7 @@
       <template v-if="querySource === 'favorites' && favoritesView === 'folders'">
         <WaterfallGallery
           item-type="folder"
-          :images="currentFolders"
+          :images="displayFolders"
           :loading="folderLoading"
           :has-more="folderHasMore"
           :is-loading-more="isLoadingMore"
@@ -372,6 +372,7 @@ import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 
 const images = ref([])
 const loading = ref(false)
@@ -419,6 +420,17 @@ const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 // - enableMyFavorites: 我的最爱功能总开关（v2）
 // 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
 const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize, enableMyFavorites } = useFavoritesConfig()
+
+// Task 19 修复：favorites-folders 视图 prepend 虚拟磁贴（我的最爱 / 随机浏览）
+// 仅在第 1 页 prepend — 分页时真实 folder 列表继续 push，虚拟磁贴不重复
+// fetchPreview=true → 「我的最爱」磁贴通过 GET /my-favorites/preview 拉缩略图；
+//   「随机浏览」磁贴无预览（preview_images 始终空）
+// displayFolders 直接绑给 WaterfallGallery 的 :images
+const { displayFolders } = useFavoriteFoldersList({
+  realFolders: currentFolders,
+  page: folderPage,
+  fetchPreview: true,
+})
 
 // v2 我的最爱 / 随机浏览：是否在 WaterfallGallery 显示 HeartOverlay
 //   - showHeart=true → 渲染 HeartOverlay，并在 showHeart && enableMyFavorites 时调 /gallery/load 加 include_favorite_status

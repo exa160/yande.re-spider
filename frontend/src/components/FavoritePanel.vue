@@ -264,6 +264,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, VideoPlay } from '@element-plus/icons-vue'
 import { triggerFolderSchedule } from '@/api/favorites'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import FolderTile from './FolderTile.vue'
 
 const props = defineProps({
@@ -283,30 +284,17 @@ const foldersProp = computed(() => props.realFolders ?? props.folders ?? [])
 const router = useRouter()
 const { enableMyFavorites, enableRandomBrowse, myFavoritesCount } = useFavoritesConfig()
 
-// 虚拟磁贴：受 useFavoritesConfig 的 4 个开关控制（我的最爱 / 随机浏览），
-// 前端 prepend 到真实收藏夹列表最前。Task 15 的 FolderTile 识别 isVirtual=true 渲染红虚线样式。
-const virtualTiles = computed(() => {
-  const tiles = []
-  if (enableMyFavorites.value) {
-    tiles.push({
-      id: 'my-favorites',
-      name: '我的最爱',
-      isVirtual: true,
-      local_count: myFavoritesCount.value,
-      preview_images: [],
-    })
-  }
-  if (enableRandomBrowse.value) {
-    tiles.push({
-      id: 'random',
-      name: '随机浏览',
-      isVirtual: true,
-      local_count: 0,
-      preview_images: [],
-    })
-  }
-  return tiles
+// 虚拟磁贴 prepend：复用 useFavoriteFoldersList composable（Task 19 重构消除重复实现）
+// 面板列表场景不需要 API 调（与 Gallery folders 视图不同），因此 fetchPreview=false
+// displayFolders 直接绑给模板，保持原行为不变
+const panelPageRef = ref(1)  // 面板总是"第 1 页"语义（prepend 总生效）
+const { displayFolders: displayFoldersList } = useFavoriteFoldersList({
+  realFolders: foldersProp,
+  page: panelPageRef,
+  fetchPreview: false,
 })
+// 兼容模板中既有的 `virtualTiles` 引用：从合并列表里筛出虚拟磁贴
+const virtualTiles = computed(() => displayFoldersList.value.filter(f => f.isVirtual))
 
 // 点击虚拟磁贴 → 跳到 Gallery 并通过 query 告知 Task 17 router 处理 querySource。
 // 真实磁贴走原有 handleSelect（emit 'select'），行为不变。
