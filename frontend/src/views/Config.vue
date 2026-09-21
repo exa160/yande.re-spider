@@ -261,6 +261,53 @@
           <div class="advanced-desc">配置收藏夹按钮显示与每文件夹预览图数量</div>
 
           <div class="refresh-controls">
+            <!-- 4 个新开关（我的最爱 + 随机浏览 总功能开关） -->
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">收藏夹展示</div>
+                <div class="refresh-params">
+                  <el-switch v-model="favoritesForm.enableFavoriteFolder" />
+                  <span class="param-tip">关闭后整个收藏夹模块隐藏</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">我的最爱</div>
+                <div class="refresh-params">
+                  <el-switch v-model="favoritesForm.enableMyFavorites" />
+                  <span class="param-tip">关闭后瀑布流图片右下角爱心隐藏，收藏夹列表我的最爱磁贴也隐藏</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">非本地图片自动下载</div>
+                <div class="refresh-params">
+                  <el-switch
+                    v-model="favoritesForm.enableFavoriteAutodownload"
+                    :disabled="!favoritesForm.enableMyFavorites"
+                  />
+                  <span class="param-tip">关闭后非本地图片加入我的最爱不会触发下载</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">随机浏览</div>
+                <div class="refresh-params">
+                  <el-switch v-model="favoritesForm.enableRandomBrowse" />
+                  <span class="param-tip">关闭后收藏夹列表随机浏览磁贴隐藏</span>
+                </div>
+              </div>
+            </div>
+
+            <el-divider class="favorites-divider" />
+
+            <!-- 5 个迁移的 UI 偏好 -->
             <div class="refresh-item">
               <div class="refresh-info">
                 <div class="refresh-name">主页显示收藏夹</div>
@@ -325,6 +372,17 @@
                 </div>
               </div>
             </div>
+
+            <div class="favorites-save-row">
+              <el-button
+                type="primary"
+                size="small"
+                :loading="savingFavorites"
+                @click="saveFavorites"
+              >
+                保存收藏夹配置
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -346,7 +404,7 @@ import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import PreviewCleanupDialog from '@/components/PreviewCleanupDialog.vue'
 import HeadersEditorDialog from '@/components/HeadersEditorDialog.vue'
-import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useFavoritesConfig, saveFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
@@ -386,7 +444,17 @@ const saving = ref(false)
 const activeMenu = ref('api')
 
 // 收藏夹 UI 配置（与 Gallery 共享 singleton composable）
-const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize } = useFavoritesConfig()
+const {
+  buttonMode,
+  tileSize,
+  previewOrder,
+  includeOnline,
+  folderPageSize,
+  enableMyFavorites,
+  enableRandomBrowse,
+  enableFavoriteFolder,
+  enableFavoriteAutodownload,
+} = useFavoritesConfig()
 // 本地表单：用 composable 初值初始化，watch 同步回 composable
 // （不直接 v-model 到 composable，避免 Gallery 端外部修改造成循环）
 const favoritesForm = reactive({
@@ -395,6 +463,10 @@ const favoritesForm = reactive({
   previewOrder: previewOrder.value,
   includeOnline: includeOnline.value,
   folderPageSize: folderPageSize.value,
+  enableMyFavorites: enableMyFavorites.value,
+  enableRandomBrowse: enableRandomBrowse.value,
+  enableFavoriteFolder: enableFavoriteFolder.value,
+  enableFavoriteAutodownload: enableFavoriteAutodownload.value,
 })
 watch(favoritesForm, (val) => {
   if (buttonMode.value !== val.buttonMode) {
@@ -412,7 +484,42 @@ watch(favoritesForm, (val) => {
   if (folderPageSize.value !== val.folderPageSize) {
     folderPageSize.value = val.folderPageSize
   }
+  if (enableMyFavorites.value !== val.enableMyFavorites) {
+    enableMyFavorites.value = val.enableMyFavorites
+  }
+  if (enableRandomBrowse.value !== val.enableRandomBrowse) {
+    enableRandomBrowse.value = val.enableRandomBrowse
+  }
+  if (enableFavoriteFolder.value !== val.enableFavoriteFolder) {
+    enableFavoriteFolder.value = val.enableFavoriteFolder
+  }
+  if (enableFavoriteAutodownload.value !== val.enableFavoriteAutodownload) {
+    enableFavoriteAutodownload.value = val.enableFavoriteAutodownload
+  }
 })
+// 保存收藏夹配置（4 个新开关 + 5 个迁移偏好 → PUT /config/favorites）
+const savingFavorites = ref(false)
+async function saveFavorites() {
+  savingFavorites.value = true
+  try {
+    await saveFavoritesConfig({
+      enable_my_favorites: favoritesForm.enableMyFavorites,
+      enable_random_browse: favoritesForm.enableRandomBrowse,
+      enable_favorite_folder: favoritesForm.enableFavoriteFolder,
+      enable_favorite_autodownload: favoritesForm.enableFavoriteAutodownload,
+      button_mode: favoritesForm.buttonMode,
+      tile_size: favoritesForm.tileSize,
+      preview_order: favoritesForm.previewOrder,
+      include_online: favoritesForm.includeOnline,
+      folder_page_size: favoritesForm.folderPageSize,
+    })
+    ElMessage.success('收藏夹配置已保存')
+  } catch (error) {
+    ElMessage.error('保存收藏夹配置失败')
+  } finally {
+    savingFavorites.value = false
+  }
+}
 
 // 窄屏下代理模式 segmented 垂直堆叠（<540px）
 const SEGMENTED_VERTICAL_BREAKPOINT = 540
@@ -1015,6 +1122,17 @@ onUnmounted(() => {
 .param-tip {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* 收藏夹 section 内分隔线 + 保存按钮 */
+.favorites-divider {
+  margin: 4px 0 8px;
+}
+
+.favorites-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 /* 暗色模式适配 */

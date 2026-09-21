@@ -69,7 +69,12 @@ const factory = () =>
         'el-input': { template: '<input>' },
         'el-input-number': { template: '<input type="number">' },
         'el-segmented': { template: '<div><slot/></div>' },
-        'el-switch': { template: '<input type="checkbox">' },
+        'el-switch': {
+          props: ['modelValue', 'disabled'],
+          template: '<input type="checkbox" class="switch-stub" :disabled="disabled || undefined">',
+          emits: ['update:modelValue'],
+        },
+        'el-divider': { template: '<hr class="divider-stub" />' },
         'el-alert': { template: '<div><slot/></div>' },
       },
     },
@@ -204,5 +209,75 @@ describe('Config.vue 收藏夹 section（高级功能 tab）', () => {
     const { includeOnline } = useFavoritesConfig()
     expect(includeOnline.value).toBe(true)
     expect(localStorage.getItem('gallery_favorites_include_online')).toBe('true')
+  })
+})
+
+describe('Config.vue 收藏夹 section（4 个新开关 + saveFavoritesConfig）', () => {
+  const findFavoritesSection = (wrapper) => {
+    return wrapper.findAll('.advanced-section').find((s) => s.text().includes('收藏夹'))
+  }
+
+  it('渲染 4 个新开关：收藏夹展示 / 我的最爱 / 非本地图片自动下载 / 随机浏览', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.findAll('.menu-item').find((el) => el.text() === '高级功能').trigger('click')
+    await flushPromises()
+
+    const favSection = findFavoritesSection(wrapper)
+    expect(favSection).toBeDefined()
+    const switches = favSection.findAll('input.switch-stub')
+    expect(switches.length).toBe(4)
+
+    const text = favSection.text()
+    expect(text).toContain('收藏夹展示')
+    expect(text).toContain('我的最爱')
+    expect(text).toContain('非本地图片自动下载')
+    expect(text).toContain('随机浏览')
+  })
+
+  it('enableMyFavorites=false 时 autodownload switch 被禁用；翻转为 true 后解除禁用', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.findAll('.menu-item').find((el) => el.text() === '高级功能').trigger('click')
+    await flushPromises()
+
+    const favSection = findFavoritesSection(wrapper)
+    const switches = favSection.findAll('input.switch-stub')
+    expect(switches.length).toBe(4)
+    // 索引 2 = 非本地图片自动下载（folder=0, myFavorites=1, autodownload=2, randomBrowse=3）
+    expect(switches[2].attributes('disabled')).toBeDefined()
+
+    wrapper.vm.favoritesForm.enableMyFavorites = true
+    await flushPromises()
+    expect(switches[2].attributes('disabled')).toBeUndefined()
+  })
+
+  it('点击「保存收藏夹配置」→ PUT /config/favorites 带 9 个 snake_case 字段', async () => {
+    const { default: api } = await import('@/api')
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.findAll('.menu-item').find((el) => el.text() === '高级功能').trigger('click')
+    await flushPromises()
+
+    wrapper.vm.favoritesForm.enableMyFavorites = true
+    wrapper.vm.favoritesForm.tileSize = '8'
+    await flushPromises()
+
+    const saveBtn = wrapper.findAll('button').find((b) => b.text().includes('保存收藏夹配置'))
+    expect(saveBtn).toBeDefined()
+    saveBtn.trigger('click')
+    await flushPromises()
+
+    expect(api.put).toHaveBeenCalledWith('/config/favorites', expect.objectContaining({
+      enable_my_favorites: true,
+      enable_random_browse: expect.any(Boolean),
+      enable_favorite_folder: expect.any(Boolean),
+      enable_favorite_autodownload: expect.any(Boolean),
+      button_mode: expect.any(String),
+      tile_size: '8',
+      preview_order: expect.any(String),
+      include_online: expect.any(Boolean),
+      folder_page_size: expect.any(Number),
+    }))
   })
 })
