@@ -941,3 +941,88 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(url).not.toContain('include_favorite_status')
   })
 })
+
+// =============================================================================
+// HeartOverlay 详情页回归测试（Task 19 Sub-task C）
+// =============================================================================
+// 背景：Task 18 把 HeartOverlay inline 写到 Gallery.vue 的 .float-header-left。
+//       不是独立组件，未来 Gallery 重构可能悄悄把 HeartOverlay 移走 / 删除。
+//
+// 实施要点：详情页 v-if 走 <teleport to="body">，wrapper.find() 看不见被 teleport
+//          出去的 DOM，需改用 document.body.querySelector 定位 .heart-overlay。
+//          同时用 wrapper.findComponent({name:'HeartOverlay'}) 双保险验证组件树。
+// =============================================================================
+describe('Gallery.vue 详情页 HeartOverlay 回归（Task 19）', () => {
+  const openImageDetail = async (wrapper, image = {}) => {
+    const defaultImage = {
+      id: 100,
+      file_url: 'pictures/100.jpg',
+      preview_url: 'previews/100.jpg',
+      width: 1920,
+      height: 1080,
+      rating: 'Safe',
+      down_flag: true,
+      tags: [],
+    }
+    const merged = { ...defaultImage, ...image }
+    wrapper.vm.currentImage = merged
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+    return merged
+  }
+
+  it('详情页 + enableMyFavorites=true → HeartOverlay 必须渲染在 .float-header-left 内', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { enableMyFavorites } = useFavoritesConfig()
+    enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper)
+
+    const headerLeft = document.body.querySelector('.float-header-left')
+    expect(headerLeft).not.toBeNull()
+    const heart = headerLeft.querySelector('.heart-overlay')
+    expect(heart).not.toBeNull()
+
+    const headerAllHearts = document.body.querySelectorAll('.float-header .heart-overlay').length
+    const headerLeftHearts = document.body.querySelectorAll('.float-header-left .heart-overlay').length
+    expect(headerAllHearts).toBe(headerLeftHearts)
+    expect(headerAllHearts).toBeGreaterThanOrEqual(1)
+
+    expect(wrapper.findComponent({ name: 'HeartOverlay' }).exists()).toBe(true)
+  })
+
+  it('详情页 + enableMyFavorites=false → .float-header-left 不含 HeartOverlay', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { enableMyFavorites } = useFavoritesConfig()
+    enableMyFavorites.value = false
+
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper)
+
+    const headerLeft = document.body.querySelector('.float-header-left')
+    expect(headerLeft).not.toBeNull()
+    expect(headerLeft.querySelector('.heart-overlay')).toBeNull()
+  })
+
+  it('HeartOverlay :initial-favorited 与 currentImage.is_favorited 同步', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { enableMyFavorites } = useFavoritesConfig()
+    enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+
+    await openImageDetail(wrapper, { id: 200, is_favorited: true })
+    const heart = document.body.querySelector('.float-header-left .heart-overlay')
+    expect(heart).not.toBeNull()
+    expect(heart.classList.contains('active')).toBe(true)
+
+    await openImageDetail(wrapper, { id: 200, is_favorited: false })
+    const heartAfter = document.body.querySelector('.float-header-left .heart-overlay')
+    expect(heartAfter).not.toBeNull()
+    expect(heartAfter.classList.contains('active')).toBe(false)
+  })
+})
