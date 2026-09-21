@@ -145,6 +145,7 @@
           :source-mode="waterfallSourceMode"
           :save-data-mode="saveDataMode"
           :safe-mode="safeMode"
+          :show-heart="showHeart"
           @image-click="handleImageClick"
           @image-select="handleImageSelect"
           @load-more="loadMore"
@@ -352,6 +353,7 @@ import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { ElImageViewer } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu } from '@element-plus/icons-vue'
+import { useRoute } from 'vue-router'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import FolderTile from '@/components/FolderTile.vue'
@@ -386,7 +388,19 @@ const folderKeyword = ref('')
 let folderSearchDebounce = null
 
 // 从 localStorage 读取保存的设置，默认本地模式
-const querySource = ref(localStorage.getItem('gallery_source') || 'local')
+// v2 优先级：route.query.querySource 优先（FavoritePanel 虚拟磁点击中后 router.push 会带 query），
+// 否则读 localStorage 的 gallery_source，否则默认 'local'
+const route = useRoute()
+const initialSource = (() => {
+  const fromRoute = route?.query?.querySource
+  if (typeof fromRoute === 'string' && fromRoute) {
+    // 路由 query 覆盖持久化值时同步写一次 localStorage，确保下次刷新保留用户的「我的最爱 / 随机浏览」入口
+    localStorage.setItem('gallery_source', fromRoute)
+    return fromRoute
+  }
+  return localStorage.getItem('gallery_source') || 'local'
+})()
+const querySource = ref(initialSource)
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 
 // 收藏夹 UI 配置（singleton composable，跨组件共享 + localStorage 持久化）
@@ -394,8 +408,16 @@ const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 // - tileSize:   'adaptive' / '4' / '6' / '8'
 // - previewOrder: 'random' / 'desc' / 'asc'（控制 with-preview 返回的预览图顺序）
 // - includeOnline: bool（控制 with-preview 是否返回未下载图片；Config.vue 高级功能开关）
+// - enableMyFavorites: 我的最爱功能总开关（v2）
 // 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
-const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize } = useFavoritesConfig()
+const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize, enableMyFavorites } = useFavoritesConfig()
+
+// v2 我的最爱 / 随机浏览：是否在 WaterfallGallery 显示 HeartOverlay
+//   - showHeart=true → 渲染 HeartOverlay，并在 showHeart && enableMyFavorites 时调 /gallery/load 加 include_favorite_status
+//   - showHeart=false → 不渲染 HeartOverlay，也不加参数（保持旧 querySource 行为不变）
+const showHeart = computed(() => {
+  return querySource.value === 'my-favorites' || querySource.value === 'random'
+})
 
 // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
 // 'adaptive' 透传；其它值 fallback 到原值（防御性）
@@ -672,6 +694,16 @@ const stopSourceWatch = watch(querySource, (val) => {
   localStorage.setItem('gallery_source', val)
 })
 
+// v2 我的最爱 / 随机浏览入口：FavoritePanel 点击虚拟磁贴 → router.push({query:{querySource:'my-favorites'|'random'}})
+// → 这里把 route.query.querySource 同步进 Gallery 的 querySource ref，触发持久化 watch 与 loadImages。
+// 仅在路由上出现 querySource 时才覆盖 localStorage 默认值（与 FavoritePanel 契约一致）；
+// 用户手动切 source 按钮时不写入路由（避免污染浏览器历史）。
+watch(() => route?.query?.querySource, (val) => {
+  if (typeof val === 'string' && val && val !== querySource.value) {
+    querySource.value = val
+  }
+})
+
 const stopSaveDataWatch = watch(saveDataMode, (val) => {
   localStorage.setItem('gallery_saveData', val ? 'true' : 'false')
 })
@@ -943,8 +975,20 @@ const loadImages = async (page) => {
     loading.value = true
   }
   try {
+    // v2 我的最爱 / 随机浏览：根据当前 querySource 注入额外参数
+    //   - random=true: 仅在 querySource === 'random' 时追加（后端走 ORDER BY RANDOM() + DISTINCT image_id）
+    //   - include_favorite_status=true: 仅在 showHeart && enableMyFavorites 时追加（双判断见 spec §6.6）
+    //     后端仍会再判断一次 config.favorites.enable_my_favorites，关闭时强制不连表
+    const extraParams = {}
+    if (querySource.value === 'random') {
+      extraParams.random = true
+    }
+    if (showHeart.value && enableMyFavorites.value) {
+      extraParams.include_favorite_status = true
+    }
     const response = await api.post('/gallery/load', {
       ...queryParams.value,
+      ...extraParams,
       page: targetPage
     })
     const data = response.data
@@ -1142,13 +1186,18 @@ const formatFileSize = (bytes) => {
 
 const getDetailUrl = (image) => {
   if (!image) return ''
+  // v2 我的最爱：详情页 fetch 原图时附带 include_favorite_status 参数
+  // 后端 /gallery/{id} 会根据此参数 + config.favorites.enable_my_favorites 双判断返回 is_favorited
+  const favStatusParam = showHeart.value && enableMyFavorites.value
+    ? `?include_favorite_status=${enableMyFavorites.value}`
+    : ''
   // file_url 是本地原图路径，preview_url 是本地预览图路径
   // file_url 不以 http 开头则是本地原图
   if (image.file_url && !image.file_url.startsWith('http')) {
-    return `/api/v1/gallery/cache/original/${image.file_url}`
+    return `/api/v1/gallery/cache/original/${image.file_url}${favStatusParam}`
   }
   // 在线模式：使用 fetch 缓存原图（避免直接访问远程URL导致CORS）
-  return `/api/v1/gallery/cache/preview/fetch/${image.id}`
+  return `/api/v1/gallery/cache/preview/fetch/${image.id}${favStatusParam}`
 }
 
 // 页面加载时自动查询本地
