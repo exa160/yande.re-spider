@@ -2,10 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import api from '@/api'
 import WaterfallGallery from './WaterfallGallery.vue'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 vi.mock('@/api', () => ({
   default: {
-    get: vi.fn().mockRejectedValue(new Error('mocked-fail'))
+    get: vi.fn().mockRejectedValue(new Error('mocked-fail')),
+    post: vi.fn().mockResolvedValue({ data: [] })
+  }
+}))
+
+vi.mock('@/api/myFavorites', () => ({
+  myFavoritesApi: {
+    add: vi.fn().mockResolvedValue({ data: {} }),
+    remove: vi.fn().mockResolvedValue({ data: {} }),
   }
 }))
 
@@ -13,7 +22,7 @@ vi.mock('element-plus', async (importOriginal) => {
   const mod = await importOriginal()
   return {
     ...mod,
-    ElMessage: { error: vi.fn() }
+    ElMessage: { error: vi.fn(), success: vi.fn() }
   }
 })
 
@@ -33,6 +42,8 @@ beforeEach(() => {
     return instance
   })
   api.get.mockClear()
+  api.post.mockClear()
+  localStorage.clear()
 })
 
 const triggerAllIntersecting = async () => {
@@ -241,5 +252,124 @@ describe('WaterfallGallery itemType=folder', () => {
     expect(wrapper.findAll('.test-folder-slot')).toHaveLength(2)
     expect(wrapper.text()).toContain('f1')
     expect(wrapper.text()).toContain('f2')
+  })
+})
+
+// =============================================================================
+// v2 我的最爱 / 随机浏览：showHeart × enableMyFavorites 双判断 + HeartOverlay 渲染
+// =============================================================================
+describe('WaterfallGallery v2 我的最爱 showHeart 集成', () => {
+  const setEnableMyFavorites = (val) => {
+    const { enableMyFavorites } = useFavoritesConfig()
+    enableMyFavorites.value = val
+  }
+
+  const mkImageWithFav = (id, isFavorited = false) => ({
+    id,
+    preview_url: `http://example.com/p${id}.jpg`,
+    width: 800,
+    height: 600,
+    rating: 'Safe',
+    down_flag: false,
+    is_favorited: isFavorited,
+  })
+
+  describe('P0 - include_favorite_status 参数注入（双判断）', () => {
+    it('T1 showHeart=true 且 enableMyFavorites=true → loadNewPage 含 include_favorite_status=true', async () => {
+      // given: showHeart=true 且后端开关打开
+      setEnableMyFavorites(true)
+      api.post.mockResolvedValue({ data: { data: [], has_more: false } })
+      const wrapper = factory({ showHeart: true })
+
+      // when: 调用智能分页加载
+      await wrapper.vm.loadNewPage(1, 20, { tags: 'cat' })
+
+      // then: include_favorite_status=true 被注入，且其它参数保留
+      expect(api.post).toHaveBeenCalledWith(
+        '/gallery/load',
+        expect.objectContaining({ include_favorite_status: true })
+      )
+      const body = api.post.mock.calls[0][1]
+      expect(body.page).toBe(1)
+      expect(body.page_size).toBe(20)
+      expect(body.tags).toBe('cat')
+    })
+
+    it('T2 showHeart=false → loadNewPage 不含 include_favorite_status（即使 enableMyFavorites=true）', async () => {
+      // given: UI 入口关闭
+      setEnableMyFavorites(true)
+      api.post.mockResolvedValue({ data: { data: [], has_more: false } })
+      const wrapper = factory({ showHeart: false })
+
+      // when: 调用智能分页加载
+      await wrapper.vm.loadNewPage(1, 20, {})
+
+      // then: 即使后端开关打开，UI 入口关闭时也不传
+      const body = api.post.mock.calls[0][1]
+      expect('include_favorite_status' in body).toBe(false)
+    })
+
+    it('T3 enableMyFavorites=false → loadNewPage 不含 include_favorite_status（即使 showHeart=true）', async () => {
+      // given: UI 入口打开，但后端总开关关闭
+      setEnableMyFavorites(false)
+      api.post.mockResolvedValue({ data: { data: [], has_more: false } })
+      const wrapper = factory({ showHeart: true })
+
+      // when: 调用智能分页加载
+      await wrapper.vm.loadNewPage(1, 20, {})
+
+      // then: 防御性 — 后端开关关闭时绝不传，避免无意义的 JOIN 开销
+      const body = api.post.mock.calls[0][1]
+      expect('include_favorite_status' in body).toBe(false)
+    })
+  })
+
+  describe('P0 - HeartOverlay 渲染', () => {
+    it('T4 showHeart=true → 每张图渲染 HeartOverlay（initial-favorited 取 is_favorited）', async () => {
+      // given: showHeart=true，混合初始收藏态
+      setEnableMyFavorites(true)
+      const wrapper = factory({
+        showHeart: true,
+        images: [mkImageWithFav(1, true), mkImageWithFav(2, false)],
+      })
+      await wrapper.vm.$nextTick()
+
+      // then: 两张图都渲染 HeartOverlay，prop 正确透传
+      const hearts = wrapper.findAllComponents({ name: 'HeartOverlay' })
+      expect(hearts.length).toBe(2)
+      expect(hearts[0].props('initialFavorited')).toBe(true)
+      expect(hearts[1].props('initialFavorited')).toBe(false)
+      expect(hearts[0].props('imageId')).toBe(1)
+      expect(hearts[1].props('imageId')).toBe(2)
+    })
+
+    it('T5 showHeart=false → 不渲染 HeartOverlay', async () => {
+      // given: showHeart 默认 false
+      setEnableMyFavorites(true)
+      const wrapper = factory({ showHeart: false })
+      await wrapper.vm.$nextTick()
+
+      // then: 0 个 HeartOverlay 组件
+      expect(wrapper.findAllComponents({ name: 'HeartOverlay' }).length).toBe(0)
+    })
+
+    it('T6 HeartOverlay @changed → 向上 emit favorite-toggled(payload)', async () => {
+      // given: showHeart=true
+      setEnableMyFavorites(true)
+      const wrapper = factory({
+        showHeart: true,
+        images: [mkImageWithFav(1, false)],
+      })
+      await wrapper.vm.$nextTick()
+
+      // when: HeartOverlay 抛出 changed 事件（点击切换后）
+      const heart = wrapper.findComponent({ name: 'HeartOverlay' })
+      heart.vm.$emit('changed', { imageId: 1, favorited: true })
+
+      // then: 父组件重新抛出 favorite-toggled 给 Gallery.vue 用于同步本地状态
+      const events = wrapper.emitted('favorite-toggled')
+      expect(events).toBeTruthy()
+      expect(events[0][0]).toEqual({ imageId: 1, favorited: true })
+    })
   })
 })
