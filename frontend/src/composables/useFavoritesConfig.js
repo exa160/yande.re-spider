@@ -21,6 +21,7 @@
  */
 import { ref, watch } from 'vue'
 import api from '@/api'
+import { myFavoritesApi } from '@/api/myFavorites'
 
 /**
  * @typedef {import('vue').Ref} Ref
@@ -122,7 +123,7 @@ function writeLegacyLocalStorage() {
  */
 export async function fetchMyFavoritesCount() {
   try {
-    const res = await api.get('/my-favorites/count')
+    const res = await myFavoritesApi.count()
     const count = res?.data?.count
     if (typeof count === 'number') {
       state.myFavoritesCount.value = count

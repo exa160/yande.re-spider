@@ -10,12 +10,22 @@ beforeEach(async () => {
   const mockedApi = (await import('@/api')).default
   vi.mocked(mockedApi.get).mockClear()
   vi.mocked(mockedApi.put).mockClear()
+  const { myFavoritesApi } = await import('@/api/myFavorites')
+  vi.mocked(myFavoritesApi.count).mockClear()
 })
 
 vi.mock('@/api', () => ({
   default: {
     get: vi.fn().mockRejectedValue(new Error('default mock — override per test')),
     put: vi.fn().mockResolvedValue({ data: {} }),
+  },
+}))
+
+// myFavoritesApi 是独立的 API 封装模块（fix(hotfix-3) 后 fetchMyFavoritesCount 走它，
+// 而不是 api.get('/my-favorites/count') 直接调用）— 单独 mock 让 spy 可追踪。
+vi.mock('@/api/myFavorites', () => ({
+  myFavoritesApi: {
+    count: vi.fn().mockRejectedValue(new Error('default mock — override per test')),
   },
 }))
 
@@ -47,15 +57,11 @@ describe('useFavoritesConfig — 4 新开关（brief Step 2 test 1）', () => {
 describe('useFavoritesConfig — myFavoritesCount（brief Step 2 test 2）', () => {
   it('fetches myFavoritesCount when enable_my_favorites is true', async () => {
     const api = (await import('@/api')).default
-    vi.mocked(api.get).mockImplementation((url) => {
-      if (url === '/config/favorites') {
-        return Promise.resolve({ data: { enable_my_favorites: true } })
-      }
-      if (url === '/my-favorites/count') {
-        return Promise.resolve({ data: { count: 42 } })
-      }
-      return Promise.reject(new Error('not mocked'))
+    const { myFavoritesApi } = await import('@/api/myFavorites')
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { enable_my_favorites: true },
     })
+    vi.mocked(myFavoritesApi.count).mockResolvedValueOnce({ data: { count: 42 } })
 
     const { useFavoritesConfig } = await import('./useFavoritesConfig')
     const s = useFavoritesConfig()
@@ -64,19 +70,14 @@ describe('useFavoritesConfig — myFavoritesCount（brief Step 2 test 2）', () 
 
     expect(s.myFavoritesCount.value).toBe(42)
     expect(api.get).toHaveBeenCalledWith('/config/favorites')
-    expect(api.get).toHaveBeenCalledWith('/my-favorites/count')
+    expect(myFavoritesApi.count).toHaveBeenCalled()
   })
 
   it('does not fetch myFavoritesCount when enable_my_favorites is false', async () => {
     const api = (await import('@/api')).default
-    vi.mocked(api.get).mockImplementation((url) => {
-      if (url === '/config/favorites') {
-        return Promise.resolve({ data: { enable_my_favorites: false } })
-      }
-      if (url === '/my-favorites/count') {
-        return Promise.reject(new Error('should NOT be called when switch off'))
-      }
-      return Promise.reject(new Error('not mocked'))
+    const { myFavoritesApi } = await import('@/api/myFavorites')
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { enable_my_favorites: false },
     })
 
     const { useFavoritesConfig } = await import('./useFavoritesConfig')
@@ -85,8 +86,8 @@ describe('useFavoritesConfig — myFavoritesCount（brief Step 2 test 2）', () 
 
     expect(s.enableMyFavorites.value).toBe(false)
     expect(s.myFavoritesCount.value).toBe(0)
-    // /my-favorites/count 绝不应被触发
-    expect(api.get).not.toHaveBeenCalledWith('/my-favorites/count')
+    // count() 绝不应被触发
+    expect(myFavoritesApi.count).not.toHaveBeenCalled()
   })
 })
 
@@ -123,14 +124,8 @@ describe('useFavoritesConfig — saveFavoritesConfig（brief Step 2 test 3）', 
   })
 
   it('saveFavoritesConfig triggers fetchMyFavoritesCount when enabling', async () => {
-    const api = (await import('@/api')).default
-    vi.mocked(api.get).mockImplementation((url) => {
-      if (url === '/my-favorites/count') {
-        return Promise.resolve({ data: { count: 7 } })
-      }
-      return Promise.reject(new Error('not mocked'))
-    })
-    vi.mocked(api.put).mockResolvedValue({ data: {} })
+    const { myFavoritesApi } = await import('@/api/myFavorites')
+    vi.mocked(myFavoritesApi.count).mockResolvedValue({ data: { count: 7 } })
 
     const { useFavoritesConfig, saveFavoritesConfig } = await import('./useFavoritesConfig')
     const s = useFavoritesConfig()
@@ -140,7 +135,7 @@ describe('useFavoritesConfig — saveFavoritesConfig（brief Step 2 test 3）', 
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(s.myFavoritesCount.value).toBe(7)
-    expect(api.get).toHaveBeenCalledWith('/my-favorites/count')
+    expect(myFavoritesApi.count).toHaveBeenCalled()
   })
 })
 
@@ -266,8 +261,8 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
 
 describe('useFavoritesConfig — fetchMyFavoritesCount exported helper', () => {
   it('fetchMyFavoritesCount handles network error silently', async () => {
-    const api = (await import('@/api')).default
-    vi.mocked(api.get).mockRejectedValue(new Error('network down'))
+    const { myFavoritesApi } = await import('@/api/myFavorites')
+    vi.mocked(myFavoritesApi.count).mockRejectedValue(new Error('network down'))
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const { fetchMyFavoritesCount } = await import('./useFavoritesConfig')
@@ -278,8 +273,8 @@ describe('useFavoritesConfig — fetchMyFavoritesCount exported helper', () => {
   })
 
   it('fetchMyFavoritesCount updates state.myFavoritesCount on success', async () => {
-    const api = (await import('@/api')).default
-    vi.mocked(api.get).mockResolvedValue({ data: { count: 100 } })
+    const { myFavoritesApi } = await import('@/api/myFavorites')
+    vi.mocked(myFavoritesApi.count).mockResolvedValue({ data: { count: 100 } })
 
     const { useFavoritesConfig, fetchMyFavoritesCount } = await import('./useFavoritesConfig')
     const s = useFavoritesConfig()
