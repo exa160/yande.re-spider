@@ -18,11 +18,14 @@ const getFoldersWithPreviewMock = vi.fn().mockResolvedValue({
 })
 
 // 默认 gallery/load 返回空列表，避免 onMounted 时真实请求
-vi.mock('@/api', () => ({
-  default: {
+const { apiMock } = vi.hoisted(() => ({
+  apiMock: {
     post: vi.fn().mockResolvedValue({ data: [], has_more: false }),
     get: vi.fn().mockResolvedValue({ data: {} }),
   },
+}))
+vi.mock('@/api', () => ({
+  default: apiMock,
 }))
 
 vi.mock('@/api/tagCache', () => ({
@@ -34,6 +37,23 @@ vi.mock('@/api/favorites', () => ({
   updateOnlineCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
   updateLocalCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
   refreshOnlineCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+}))
+
+// vi.mock 会被 hoisted 到文件顶部，引用 top-level 变量会触发 TDZ。
+// vi.hoisted 提供一个工厂函数，其返回值在 mock 解析前已初始化
+// Hotfix-4: my-favorites 二级瀑布流走专用 /my_favorites/images 端点
+const { myFavoritesApiMock } = vi.hoisted(() => ({
+  myFavoritesApiMock: {
+    add: vi.fn().mockResolvedValue({ data: {} }),
+    remove: vi.fn().mockResolvedValue({ data: {} }),
+    list: vi.fn().mockResolvedValue({ data: { data: [], total: 0 } }),
+    images: vi.fn().mockResolvedValue({ data: [], has_more: false, total: 0 }),
+    count: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+    getPreview: vi.fn().mockResolvedValue({ data: { images: [] } }),
+  },
+}))
+vi.mock('@/api/myFavorites', () => ({
+  myFavoritesApi: myFavoritesApiMock,
 }))
 
 // useFavoritesConfig 是 module-level singleton：每次 factory() 都注册新的 Vue watch。
@@ -54,6 +74,9 @@ beforeEach(async () => {
   mountedWrappers.forEach((w) => w.unmount())
   mountedWrappers.length = 0
   getFoldersWithPreviewMock.mockClear()
+  Object.values(myFavoritesApiMock).forEach((m) => m.mockClear && m.mockClear())
+  apiMock.post.mockClear()
+  apiMock.get.mockClear()
   mockRoute.value.query = {}
   localStorage.clear()
   // Gallery.onMounted 中用 ResizeObserver
@@ -428,14 +451,17 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     wrapper.vm.querySource = 'my-favorites'
     await flushPromises()
 
+    // 清掉 onMounted 触发的 /gallery/load 调用历史，只关注本次 loadImages(1) 的行为
+    apiMock.post.mockClear()
+
     await wrapper.vm.loadImages(1)
     await flushPromises()
 
-    const postMock = (await import('@/api')).default.post
-    const lastCall = postMock.mock.calls[postMock.mock.calls.length - 1]
-    const payload = lastCall?.[1] ?? {}
-    expect(payload.favorite_id).toBeUndefined()
-    expect(payload.source).toBe('my-favorites')
+    // Hotfix-4: querySource='my-favorites' 走专用 /my_favorites/images (GET)，
+    // 不再走 /gallery/load (POST)
+    expect(myFavoritesApiMock.images).toHaveBeenCalled()
+    const galleryLoadCalls = apiMock.post.mock.calls.filter((c) => c[0] === '/gallery/load')
+    expect(galleryLoadCalls).toHaveLength(0)
   })
 
   it('regression: handleSearch 在 favorites 模式下，但 favorite.id 缺省/非法时不写 favorite_id', async () => {
@@ -918,7 +944,7 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(payload.random).toBe(true)
   })
 
-  it('querySource=my-favorites 但 enableMyFavorites=false → loadImages payload 不含 include_favorite_status（双判断）', async () => {
+  it('querySource=my-favorites 但 enableMyFavorites=false → showHeart=true 但 /gallery/load 不被调（走专用 /my_favorites/images）', async () => {
     mockRoute.value.query = { querySource: 'my-favorites' }
     const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
     const { enableMyFavorites } = useFavoritesConfig()
@@ -927,13 +953,13 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     const wrapper = factory()
     await flushPromises()
 
-    expect(wrapper.vm.showHeart).toBe(true) // 视觉上仍显示 HeartOverlay
+    expect(wrapper.vm.showHeart).toBe(true)
     expect(enableMyFavorites.value).toBe(false)
 
-    // 但 /gallery/load 不应加 include_favorite_status（双判断：showHeart + enableMyFavorites）
-    const payload = await getLastLoadPayload()
-    expect(payload).not.toBeNull()
-    expect('include_favorite_status' in payload).toBe(false)
+    expect(myFavoritesApiMock.images).toHaveBeenCalled()
+    const lastCall = myFavoritesApiMock.images.mock.calls[myFavoritesApiMock.images.mock.calls.length - 1]
+    expect(lastCall[0]).toBe(1)
+    expect(lastCall[1]).toBe(20)
   })
 
   it('querySource=random + enableMyFavorites=true → loadImages payload 同时含 random=true 与 include_favorite_status=true', async () => {

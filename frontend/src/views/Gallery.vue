@@ -370,6 +370,7 @@ import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
+import { myFavoritesApi } from '@/api/myFavorites'
 import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
@@ -1019,9 +1020,29 @@ const loadImages = async (page) => {
     loading.value = true
   }
   try {
-    // v2 我的最爱 / 随机浏览：根据当前 querySource 注入额外参数
+    // v2 我的最爱 / 随机浏览：
+    //   - querySource === 'my-favorites'：走独立的 /my_favorites/images 端点
+    //     （专门为收藏夹二级瀑布流服务，按收藏时间倒序分页 JOIN yande_data，
+    //     响应 shape 与 /gallery/load 对齐，前端无需特殊解析）
+    //   - 其它模式走 /gallery/load，按 querySource 注入 random / include_favorite_status
+    if (querySource.value === 'my-favorites') {
+      const pageSize = queryParams.value.page_size || 20
+      const response = await myFavoritesApi.images(targetPage, pageSize)
+      const data = response.data
+      const imageList = Array.isArray(data) ? data : []
+      if (currentPage.value === 1) {
+        images.value = imageList
+      } else {
+        images.value.push(...imageList)
+      }
+      hasMore.value = Boolean(response.has_more)
+      loadError.value = false
+      return
+    }
+
+    // v2 我的最爱 / 随机浏览（其余模式）：根据当前 querySource 注入额外参数
     //   - random=true: 仅在 querySource === 'random' 时追加（后端走 ORDER BY RANDOM() + DISTINCT image_id）
-    //   - include_favorite_status=true: 仅在 showHeart && enableMyFavorites 时追加（双判断见 spec §6.6）
+    //   - include_favorite_status=true: 仅在 showHeart && enableMyFavorites 时追加（双判断见 spec §6.6），
     //     后端仍会再判断一次 config.favorites.enable_my_favorites，关闭时强制不连表
     const extraParams = {}
     if (querySource.value === 'random') {
