@@ -437,7 +437,7 @@ const { displayFolders } = useFavoriteFoldersList({
 //   - showHeart=true → 渲染 HeartOverlay，并在 showHeart && enableMyFavorites 时调 /gallery/load 加 include_favorite_status
 //   - showHeart=false → 不渲染 HeartOverlay，也不加参数（保持旧 querySource 行为不变）
 const showHeart = computed(() => {
-  return querySource.value === 'my-favorites' || querySource.value === 'random'
+  return enableMyFavorites.value === true
 })
 
 // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
@@ -731,6 +731,16 @@ const stopSourceWatch = watch(querySource, (val) => {
 watch(() => route?.query?.querySource, (val) => {
   if (typeof val === 'string' && val && val !== querySource.value) {
     querySource.value = val
+    // 虚拟磁贴跳转后必须重新触发 loadImages（onMounted 已跑过，仅靠 ref 变化不重 fetch）
+    currentPage.value = 1
+    images.value = []
+    selectedImages.value = []
+    selectAll.value = false
+    // 切走 favorites 时清空 currentFavorite（防止 stale string id 进 favorites 端点 422）
+    if (val !== 'favorites') {
+      currentFavorite.value = null
+    }
+    loadImages()
   }
 })
 
@@ -1048,7 +1058,7 @@ const loadImages = async (page) => {
     if (querySource.value === 'random') {
       extraParams.random = true
     }
-    if (showHeart.value && enableMyFavorites.value) {
+    if (enableMyFavorites.value) {
       extraParams.include_favorite_status = true
     }
     // 防御性清理：querySource 切到非 favorites 模式时（前次 favorites folder-detail 残留的
@@ -1070,7 +1080,11 @@ const loadImages = async (page) => {
     const imageList = Array.isArray(data) ? data : []
     if (currentPage.value === 1) {
       images.value = imageList
-      if (currentFavorite.value) {
+      if (
+        currentFavorite.value &&
+        Number.isInteger(currentFavorite.value.id) &&
+        querySource.value === 'favorites'
+      ) {
         if (querySource.value === 'local') {
           updateLocalCount(currentFavorite.value.id).catch(() => {})
         } else {
@@ -1260,9 +1274,7 @@ const formatFileSize = (bytes) => {
 
 const getDetailUrl = (image) => {
   if (!image) return ''
-  // v2 我的最爱：详情页 fetch 原图时附带 include_favorite_status 参数
-  // 后端 /gallery/{id} 会根据此参数 + config.favorites.enable_my_favorites 双判断返回 is_favorited
-  const favStatusParam = showHeart.value && enableMyFavorites.value
+  const favStatusParam = enableMyFavorites.value
     ? `?include_favorite_status=${enableMyFavorites.value}`
     : ''
   // file_url 是本地原图路径，preview_url 是本地预览图路径

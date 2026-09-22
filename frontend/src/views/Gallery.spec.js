@@ -910,56 +910,43 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     return calls[calls.length - 1][1] || {}
   }
 
-  it('route.query.querySource=my-favorites → querySource 同步 + showHeart=true', async () => {
+  it('route.query.querySource=my-favorites → querySource 同步 + showHeart 跟随 enableMyFavorites', async () => {
     mockRoute.value.query = { querySource: 'my-favorites' }
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
     const wrapper = factory()
     await flushPromises()
 
     expect(wrapper.vm.querySource).toBe('my-favorites')
     expect(wrapper.vm.showHeart).toBe(true)
 
-    // WaterfallGallery 必须收到 showHeart=true（驱动 HeartOverlay 渲染）
     const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
     expect(wfg.exists()).toBe(true)
     expect(wfg.props('showHeart')).toBe(true)
 
-    // 持久化 watch 也应把 querySource 写入 localStorage（保持 gallery_source 契约）
     expect(localStorage.getItem('gallery_source')).toBe('my-favorites')
+
+    expect(myFavoritesApiMock.images).toHaveBeenCalled()
   })
 
-  it('route.query.querySource=random → showHeart=true + loadImages payload 含 random=true', async () => {
+  it('route.query.querySource=random → loadImages payload 含 random=true', async () => {
     mockRoute.value.query = { querySource: 'random' }
-    const wrapper = factory()
+    factory()
     await flushPromises()
 
-    expect(wrapper.vm.querySource).toBe('random')
-    expect(wrapper.vm.showHeart).toBe(true)
-
-    const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
-    expect(wfg.props('showHeart')).toBe(true)
-
-    // onMounted 触发了一次 loadImages → 应含 random=true
     const payload = await getLastLoadPayload()
     expect(payload).not.toBeNull()
     expect(payload.random).toBe(true)
   })
 
-  it('querySource=my-favorites 但 enableMyFavorites=false → showHeart=true 但 /gallery/load 不被调（走专用 /my_favorites/images）', async () => {
+  it('querySource=my-favorites → /gallery/load 不被调（走专用 /my_favorites/images）', async () => {
     mockRoute.value.query = { querySource: 'my-favorites' }
-    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
-    const { enableMyFavorites } = useFavoritesConfig()
-    enableMyFavorites.value = false
-
-    const wrapper = factory()
+    factory()
     await flushPromises()
 
-    expect(wrapper.vm.showHeart).toBe(true)
-    expect(enableMyFavorites.value).toBe(false)
-
     expect(myFavoritesApiMock.images).toHaveBeenCalled()
-    const lastCall = myFavoritesApiMock.images.mock.calls[myFavoritesApiMock.images.mock.calls.length - 1]
-    expect(lastCall[0]).toBe(1)
-    expect(lastCall[1]).toBe(20)
+    const calls = apiMock.post.mock.calls.filter((c) => c[0] === '/gallery/load')
+    expect(calls).toHaveLength(0)
   })
 
   it('querySource=random + enableMyFavorites=true → loadImages payload 同时含 random=true 与 include_favorite_status=true', async () => {
@@ -977,22 +964,33 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(payload.include_favorite_status).toBe(true)
   })
 
-  it('querySource=local（默认） → showHeart=false + payload 不含 random/include_favorite_status', async () => {
-    // 默认 local，无 querySource 路由 query，ensure 无副作用
+  it('querySource=local（默认） + enableMyFavorites=false → payload 不含 random/include_favorite_status', async () => {
     mockRoute.value.query = {}
-    const wrapper = factory()
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { enableMyFavorites } = useFavoritesConfig()
+    enableMyFavorites.value = false
+
+    factory()
     await flushPromises()
-
-    expect(wrapper.vm.querySource).toBe('local')
-    expect(wrapper.vm.showHeart).toBe(false)
-
-    const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
-    expect(wfg.props('showHeart')).toBe(false)
 
     const payload = await getLastLoadPayload()
     expect(payload).not.toBeNull()
     expect('random' in payload).toBe(false)
     expect('include_favorite_status' in payload).toBe(false)
+  })
+
+  it('querySource=local + enableMyFavorites=true → payload 含 include_favorite_status=true（不依赖 querySource）', async () => {
+    mockRoute.value.query = {}
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const { enableMyFavorites } = useFavoritesConfig()
+    enableMyFavorites.value = true
+
+    factory()
+    await flushPromises()
+
+    const payload = await getLastLoadPayload()
+    expect(payload).not.toBeNull()
+    expect(payload.include_favorite_status).toBe(true)
   })
 
   it('getDetailUrl 在 showHeart=true && enableMyFavorites=true 时附加 include_favorite_status=true', async () => {
@@ -1017,7 +1015,7 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(localUrl).toContain('include_favorite_status=true')
   })
 
-  it('getDetailUrl 在 enableMyFavorites=false 时不附加 include_favorite_status（双判断）', async () => {
+  it('getDetailUrl 在 enableMyFavorites=false 时不附加 include_favorite_status', async () => {
     mockRoute.value.query = { querySource: 'my-favorites' }
     const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
     const { enableMyFavorites } = useFavoritesConfig()
@@ -1032,11 +1030,11 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(url).not.toContain('include_favorite_status')
   })
 
-  it('getDetailUrl 在 querySource=local（showHeart=false）时不附加 include_favorite_status', async () => {
+  it('getDetailUrl 在 enableMyFavorites=true 时附加 include_favorite_status（不依赖 querySource）', async () => {
     mockRoute.value.query = {}
     const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
     const { enableMyFavorites } = useFavoritesConfig()
-    enableMyFavorites.value = true // 即便开关开了，showHeart=false 也不附加
+    enableMyFavorites.value = true
 
     const wrapper = factory()
     await flushPromises()
@@ -1044,7 +1042,7 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     const img = { id: 400, file_url: 'https://example.com/x.jpg' }
     const url = wrapper.vm.getDetailUrl(img)
     expect(url).toContain('/api/v1/gallery/cache/preview/fetch/400')
-    expect(url).not.toContain('include_favorite_status')
+    expect(url).toContain('include_favorite_status=true')
   })
 })
 
