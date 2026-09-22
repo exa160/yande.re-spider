@@ -214,14 +214,16 @@ describe('FolderTile', () => {
         global: {
           stubs: {
             'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
           },
         },
       })
       expect(wrapper.find('.virtual-tile').exists()).toBe(true)
       expect(wrapper.find('.virtual-tile').classes()).toContain('virtual-my-favorites')
       expect(wrapper.text()).toContain('我的最爱')
-      expect(wrapper.text()).toContain('5 张')
-      expect(wrapper.find('.folder-preview-grid').exists()).toBe(false)
+      expect(wrapper.text()).toContain('5')
+      expect(wrapper.find('.folder-preview-grid').exists()).toBe(true)
+      expect(wrapper.findAll('.folder-preview-cell')).toHaveLength(0)
     })
 
     it('renders virtual tile for 随机浏览 when id="random"', () => {
@@ -230,13 +232,14 @@ describe('FolderTile', () => {
         global: {
           stubs: {
             'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
           },
         },
       })
       expect(wrapper.find('.virtual-tile').exists()).toBe(true)
       expect(wrapper.find('.virtual-tile').classes()).toContain('virtual-random')
       expect(wrapper.text()).toContain('随机浏览')
-      expect(wrapper.text()).toContain('0 张')
+      expect(wrapper.text()).toContain('0')
     })
 
     it('does not emit long-press event for virtual tiles (no edit menu)', async () => {
@@ -245,6 +248,7 @@ describe('FolderTile', () => {
         global: {
           stubs: {
             'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
           },
         },
       })
@@ -264,6 +268,86 @@ describe('FolderTile', () => {
       })
       expect(wrapper.find('.virtual-tile').exists()).toBe(false)
       expect(wrapper.find('.folder-preview-grid').exists()).toBe(true)
+    })
+
+    // ---- Bug 2 hotfix: virtual tile skeleton aligned with real folder tile ----
+    // given 虚拟磁贴 isVirtual=true
+    // when 渲染 FolderTile
+    // then 应复用真实磁贴的 folder-preview-grid + folder-info 骨架
+
+    it('test_virtual_tile_has_folder_preview_grid_class', () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 'my-favorites', name: '我的最爱', isVirtual: true, local_count: 0 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+          },
+        },
+      })
+      expect(wrapper.find('.folder-preview-grid').exists()).toBe(true)
+    })
+
+    it('test_virtual_tile_has_folder_info_class', () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 'random', name: '随机浏览', isVirtual: true, local_count: 0 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+          },
+        },
+      })
+      expect(wrapper.find('.folder-info').exists()).toBe(true)
+      expect(wrapper.find('.folder-name').text()).toBe('随机浏览')
+      expect(wrapper.find('.el-tag-stub').exists()).toBe(true)
+    })
+
+    it('test_virtual_tile_renders_preview_images (when folder.preview_images provided)', () => {
+      const folder = {
+        id: 'my-favorites',
+        name: '我的最爱',
+        isVirtual: true,
+        local_count: 5,
+        preview_images: [
+          { id: 9001, width: 100, height: 100 },
+          { id: 9002, width: 100, height: 100 },
+          { id: 9003, width: 100, height: 100 },
+          { id: 9004, width: 100, height: 100 },
+        ],
+      }
+      const wrapper = mount(FolderTile, {
+        props: { folder, saveDataMode: false },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+          },
+        },
+      })
+      expect(wrapper.find('.folder-preview-grid').exists()).toBe(true)
+      expect(wrapper.findAll('.folder-preview-cell')).toHaveLength(4)
+      expect(wrapper.find('.virtual-tile').exists()).toBe(true)
+      expect(wrapper.find('.virtual-badge').exists()).toBe(true)
+    })
+
+    it('test_virtual_tile_does_not_have_red_dashed_gradient (regression: removed old style)', () => {
+      const wrapper = mount(FolderTile, {
+        props: { folder: { id: 'my-favorites', name: '我的最爱', isVirtual: true, local_count: 0 } },
+        global: {
+          stubs: {
+            'el-icon': { template: '<i><slot/></i>' },
+            'el-tag': { template: '<span class="el-tag-stub"><slot/></span>' },
+          },
+        },
+      })
+      const rootEl = wrapper.element
+      // given 旧 .virtual-tile 用了 #f56c6c dashed border + linear-gradient
+      // when 虚拟磁贴渲染
+      // then 不应残留上述样式
+      const tileStyle = window.getComputedStyle(rootEl)
+      expect(tileStyle.backgroundImage || '').not.toMatch(/#f56c6c|linear-gradient/)
+      expect(tileStyle.borderStyle || '').not.toBe('dashed')
     })
   })
 })

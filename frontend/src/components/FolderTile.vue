@@ -1,24 +1,8 @@
 <template>
   <div
-    v-if="folder.isVirtual"
-    class="folder-tile virtual-tile"
-    :class="`virtual-${folder.id}`"
-    @click="$emit('click', folder)"
-    @long-press="onLongPress"
-  >
-    <div class="virtual-icon">
-      <el-icon>
-        <StarFilled v-if="folder.id === 'my-favorites'" />
-        <MagicStick v-else />
-      </el-icon>
-      <span class="virtual-name">{{ folder.name }}</span>
-    </div>
-    <div class="virtual-count">{{ folder.local_count || 0 }} 张</div>
-  </div>
-  <div
-    v-else
     ref="tileRef"
     class="folder-tile"
+    :class="{ 'virtual-tile': folder.isVirtual, [`virtual-${folder.id}`]: folder.isVirtual }"
     @click="$emit('click', folder)"
     @long-press="onLongPress"
   >
@@ -44,6 +28,14 @@
     </div>
     <div class="folder-info">
       <span class="folder-name">{{ folder.name }}</span>
+      <el-icon
+        v-if="folder.isVirtual"
+        class="virtual-badge"
+        :title="folder.id === 'my-favorites' ? '我的最爱' : '随机浏览'"
+      >
+        <StarFilled v-if="folder.id === 'my-favorites'" />
+        <MagicStick v-else />
+      </el-icon>
       <el-tag size="small">{{ folder.local_count || 0 }}</el-tag>
     </div>
   </div>
@@ -301,41 +293,23 @@ html.dark-mode .folder-tile {
   filter: blur(20px) brightness(var(--safe-blur-brightness, 0.7));
 }
 
-.virtual-tile {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  padding: 16px 12px;
-  aspect-ratio: 4 / 3;
-  background: linear-gradient(135deg, #f56c6c22 0%, #f56c6c11 100%);
-  border: 1px dashed #f56c6c;
+/* 虚拟磁贴（我的最爱 / 随机浏览）
+ * 与真实磁贴共用 .folder-tile / .folder-preview-grid / .folder-info 骨架；
+ * 仅追加 .virtual-tile 的最小高度（无 preview_images 时维持 4:3 比例）
+ * 与 .virtual-badge 小角标（标识虚拟性质，与真实磁贴视觉对齐）。
+ */
+.virtual-tile .folder-preview-grid {
+  /* 无预览图时网格塌缩为 0 高度；保留 4:3 占位让信息区贴在底部，
+   * 与真实磁贴 "灰底预览 + 文件名 + 计数" 的视觉节奏一致。 */
+  min-height: 120px;
+  background: var(--bg-tertiary);
 }
-.virtual-icon {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.virtual-badge {
+  font-size: 14px;
+  color: var(--el-color-primary, #409EFF);
+  flex-shrink: 0;
 }
-.virtual-icon .el-icon {
-  font-size: 24px;
-  color: #f56c6c;
-}
-.virtual-name {
-  font-weight: bold;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.virtual-count {
-  font-size: 12px;
-  color: #999;
-}
-
-html.dark-mode .virtual-tile {
-  background: linear-gradient(135deg, #f56c6c33 0%, #f56c6c1a 100%);
-}
-html.dark-mode .virtual-count {
-  color: var(--text-muted);
+html.dark-mode .virtual-badge {
+  color: var(--el-color-primary, #79bbff);
 }
 </style>
