@@ -1,7 +1,8 @@
 """/api/v1/my-favorites/* 路由
 
-提供 5 个端点：
+提供 6 个端点：
 - GET    /my-favorites          分页列出我的最爱（按 created_at DESC）
+- GET    /my-favorites/images   分页列出我的最爱对应的 YandeData 图片（瀑布流二级页）
 - POST   /my-favorites/{id}     加入我的最爱（幂等；UNIQUE image_id 兜底）
 - DELETE /my-favorites/{id}     取消我的最爱（幂等）
 - GET    /my-favorites/count    我的最爱总数
@@ -9,12 +10,19 @@
 
 路由前缀说明：本文件由 APILoader 自动发现，APILoader 会把 file path（api/v1/my_favorites）
 作为 URL 前缀挂载到 FastAPI app，因此 router 自身不再声明 prefix。
+
+路由顺序：``/images`` 必须先于 ``/{image_id}`` 注册——FastAPI 按注册顺序匹配路径，
+``/{image_id}`` POST/DELETE 因方法不同不会冲突，但 ``/images`` 是 GET，必须确保
+在 ``/preview`` / ``/count`` 之后、``/{image_id}`` 之前的 GET 列表段中正确定位。
 """
+from typing import Optional
+
 from fastapi import APIRouter, Query
 
 from src.common.constant import ErrMsg
 from src.middleware.errors import APIException
 from src.models.response.base_response import BaseResponse
+from src.models.response.gallery import GalleryLoadResponse
 from src.models.response.my_favorites import (
     MyFavoriteCountResponse,
     MyFavoritesListResponse,
@@ -42,6 +50,46 @@ async def list_my_favorites(
                 # service 已把 ORM DateTime 序列化为 ISO 8601 字符串，直接传 Pydantic items 即可
                 data=items,
             ),
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+
+@router.get(
+    "/images",
+    response_model=GalleryLoadResponse,
+    summary="我的最爱图片列表（瀑布流二级页）",
+)
+async def list_my_favorites_images(
+    page: int = Query(1, ge=1, description="页码，从 1 开始"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    tile_size: Optional[str] = Query(
+        None,
+        description="tile 尺寸占位（adaptive/small/medium/large）。与 /preview 保持 URL "
+        "形态一致，方便前端共用 query 参数；本接口不直接消费该值。",
+    ),
+) -> GalleryLoadResponse:
+    """分页返回我的最爱对应的 YandeData 图片（瀑布流二级页）。
+
+    响应结构与 ``GET /api/v1/gallery/load`` 对齐（``GalleryLoadResponse``）：
+    前端用 ``response.data`` 作图片数组、用 ``response.has_more`` 判断是否继续翻页，
+    复用同一套解析逻辑，无需前端为收藏模式写特殊解析。
+
+    排序与 ``/my-favorites`` 一致：``my_favorite.created_at DESC``，保证收藏夹列表
+    与瀑布流二级页看到同样的收藏顺序。
+    """
+    try:
+        images, total = MyFavoritesService.list_images_paginated(
+            page=page, page_size=page_size
+        )
+        has_more = len(images) >= page_size
+        return GalleryLoadResponse(
+            message=ErrMsg.OK.msg,
+            data=images,
+            total=total,
+            page=page,
+            page_size=page_size,
+            has_more=has_more,
         )
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)

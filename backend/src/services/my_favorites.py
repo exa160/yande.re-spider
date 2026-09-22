@@ -1,11 +1,12 @@
 """我的最爱 业务逻辑服务
 
 提供：
-- add                : 加入我的最爱 + 条件触发自动下载
-- remove             : 取消我的最爱（幂等）
-- list_paginated     : 分页列出我的最爱（MyFavoritesListItem）
-- count              : 我的最爱总数
-- get_preview        : 我的最爱预览图元数据（MyFavoritePreviewImage）
+- add                       : 加入我的最爱 + 条件触发自动下载
+- remove                    : 取消我的最爱（幂等）
+- list_paginated            : 分页列出我的最爱（MyFavoritesListItem）
+- list_images_paginated     : 分页列出我的最爱对应的 YandeData 图片（瀑布流二级页）
+- count                     : 我的最爱总数
+- get_preview               : 我的最爱预览图元数据（MyFavoritePreviewImage）
 
 分层约束：api → services → dao；本文件仅编排 DAO / Repository / DownloadService，
 不直接拼 SQL。
@@ -20,10 +21,13 @@ DAO 调用约定：MyFavoriteDao 是纯 static 类，必须显式传入 session�
 from typing import List, Tuple
 
 from loguru import logger
+from sqlalchemy import func
 
 from src.common.settings import config
 from src.dao.my_favorite_dao import MyFavoriteDao
 from src.dao.yande_data_dao import YandeDataRepository
+from src.models.database.my_favorite import MyFavorite
+from src.models.database.yande import YandeData
 from src.models.response.my_favorites import (
     MyFavoritePreviewImage,
     MyFavoritesListItem,
@@ -97,6 +101,40 @@ class MyFavoritesService:
             for mf in records
         ]
         return items, total
+
+    @staticmethod
+    def list_images_paginated(
+        page: int = 1, page_size: int = 20
+    ) -> Tuple[List[YandeData], int]:
+        """分页列出我的最爱对应的 yande_data 图片，按收藏时间倒序。
+
+        与 ``list_paginated`` 的区别：后者返回 MyFavoritesListItem 记录，
+        本方法返回完整的 YandeData ORM 对象，供 Gallery.vue 瀑布流二级页
+        （``GET /api/v1/my_favorites/images``）直接渲染。
+
+        排序与 ``MyFavoritesService.list_paginated`` / ``MyFavoriteDao.list_paginated``
+        一致：``my_favorite.created_at DESC``，保证「收藏夹列表」与「瀑布流
+        二级页」看到同样的收藏顺序。
+
+        Returns:
+            (yande_images, total) — YandeData ORM 列表，total 为 my_favorite
+            表的全表总数（has_more 需调用方用 ``len(images) >= page_size`` 判断）。
+        """
+        offset = (page - 1) * page_size
+        with YandeDataRepository() as repo:
+            session = repo.session
+            total = (
+                session.query(func.count()).select_from(MyFavorite).scalar() or 0
+            )
+            rows = (
+                session.query(YandeData)
+                .join(MyFavorite, MyFavorite.image_id == YandeData.id)
+                .order_by(MyFavorite.created_at.desc())
+                .offset(offset)
+                .limit(page_size)
+                .all()
+            )
+        return rows, total
 
     @staticmethod
     def count() -> int:
