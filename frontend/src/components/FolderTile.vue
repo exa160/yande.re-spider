@@ -15,7 +15,7 @@
       >
         <img
           v-if="!saveDataMode"
-          :src="srcEnabled.has(img.id) ? previewUrl(img.id) : undefined"
+          :src="srcEnabled.has(img.id) ? previewUrl(img) : undefined"
           :alt="img.id.toString()"
           loading="lazy"
           :class="{ 'safe-blur': safeMode && img.rating && img.rating !== 'Safe' }"
@@ -62,16 +62,20 @@ const onLongPress = (e) => {
   emit('long-press', e, props.folder)
 }
 
-// 预览图 URL 策略：所有模式统一用 /cache/preview/{id}（最便宜的路径）
-// 缓存命中直接返回文件；缓存未命中走 @error fallback chain：
-//   1. /cache/preview/local/{id}（缓存未命中 + 有本地原图 → 从原图生成）
-//   2. /cache/preview/fetch/{id}（无本地原图 → 远端下载并缓存，未来「我的最爱」收藏未下载图时启用）
+// 预览图 URL 策略：
+//   1. 优先用 API 返回的 img.preview_url（直接 URL，避免触发 cache fallback → 避免 404）
+//   2. 否则走 /cache/preview/{id}（缓存命中直接返回文件；未命中走 @error fallback chain）
+//
 // cache-buster 时间戳（previewCacheBuster）让 <img> 在 fallback 写盘后重新请求 /cache/preview/{id}。
 //
-// 修复前 FolderTile 硬编码 /cache/preview/{id}，收藏夹预览场景下大量 404；
-// 原 handleCellError 只是 srcEnabled 重置，没有真正 fallback —— 本次重写。
-const previewUrl = (imageId) => {
-  const ts = previewCacheBuster.value.get(imageId)
+// 修复前 FolderTile 硬编码 /cache/preview/{id}，「我的最爱」二级瀑布流返回的
+// preview_url 直接 URL 被丢弃 → 触发 fallback → 缓存未命中导致大量 404。
+const previewUrl = (image) => {
+  if (image && image.preview_url) {
+    return image.preview_url
+  }
+  const imageId = image?.id
+  const ts = imageId !== undefined ? previewCacheBuster.value.get(imageId) : null
   return `/api/v1/gallery/cache/preview/${imageId}${ts ? `?ts=${ts}` : ''}`
 }
 
