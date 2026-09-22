@@ -1,10 +1,14 @@
 /**
  * 我的最爱 API 模块
  *
- * - add / remove: 加入/取消我的最爱（POST/DELETE /api/v1/my-favorites/{image_id}）
+ * - add / remove: 加入/取消我的最爱（POST/DELETE /api/v1/my_favorites/{image_id}）
  * - list: 分页列出我的最爱
  * - count: 总数（用于收藏夹列表前端插入磁贴的角标）
  * - getPreview: 我的最爱预览图（文件夹展示页用，独立接口）
+ *
+ * 路径说明：后端文件名是 `backend/src/api/v1/my_favorites.py`，由 APILoader
+ * (backend/src/api/__init__.py:48-60) 自动按文件路径派生 URL 前缀
+ * `/api/v1/my_favorites`（下划线，不是连字符）。
  */
 import api from './index'
 
@@ -15,7 +19,7 @@ export const myFavoritesApi = {
    * @returns {Promise<void>}
    */
   add(imageId) {
-    return api.post(`/my-favorites/${imageId}`)
+    return api.post(`/my_favorites/${imageId}`)
   },
 
   /**
@@ -24,7 +28,7 @@ export const myFavoritesApi = {
    * @returns {Promise<void>}
    */
   remove(imageId) {
-    return api.delete(`/my-favorites/${imageId}`)
+    return api.delete(`/my_favorites/${imageId}`)
   },
 
   /**
@@ -34,7 +38,7 @@ export const myFavoritesApi = {
    * @returns {Promise<{total: number, data: Array}>}
    */
   list(page = 1, pageSize = 20) {
-    return api.get('/my-favorites', { params: { page, page_size: pageSize } })
+    return api.get('/my_favorites', { params: { page, page_size: pageSize } })
   },
 
   /**
@@ -42,7 +46,7 @@ export const myFavoritesApi = {
    * @returns {Promise<{count: number}>}
    */
   count() {
-    return api.get('/my-favorites/count')
+    return api.get('/my_favorites/count')
   },
 
   /**
@@ -51,6 +55,6 @@ export const myFavoritesApi = {
    * @returns {Promise<{images: Array}>}
    */
   getPreview(limit = 20) {
-    return api.get('/my-favorites/preview', { params: { limit } })
+    return api.get('/my_favorites/preview', { params: { limit } })
   },
 }
