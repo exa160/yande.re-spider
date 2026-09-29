@@ -300,6 +300,15 @@ class YandeDataRepository(BaseDAO):
         rows = self.session.execute(stmt).scalars().all()
         return set(rows)
 
+    def count_downloaded(self) -> int:
+        """统计已下载原图的总数（down_flag=True）。
+
+        随机浏览磁贴角标用：随机浏览的候选池就是本地已下载图片，
+        所以总数 = 可随机浏览的图片数（与 query_random_for_tags(downloaded_only=True) 一致）。
+        """
+        stmt = select(func.count()).select_from(YandeData).where(YandeData.down_flag.is_(True))
+        return int(self.session.execute(stmt).scalar() or 0)
+
     def get_file_ext(self, image_id: int) -> Optional[str]:
         """只查询 file_ext，轻量级方法"""
         stmt = select(YandeData.file_ext).filter_by(id=image_id)
