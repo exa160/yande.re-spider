@@ -1060,6 +1060,97 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
 })
 
 // =============================================================================
+// 回归：刷新页面 vs 点击左上角「本地」tab 的收藏夹参数一致性
+// =============================================================================
+// 背景：
+//   enableMyFavorites 只持久化在后端（GET /config/favorites），localStorage legacy
+//   key 不含该开关（初始 false），配置拉取是 setup 时的异步 fire-and-forget。
+//   修复前：onMounted 立即 handleSearch({})，此刻配置尚未返回 → 首屏 /gallery/load
+//   不带 include_favorite_status；用户稍后点击「本地」tab 时配置已就绪 → 同一请求
+//   却带 include_favorite_status=true。两条路径参数不一致（刷新后首屏红心状态缺失）。
+//   修复：onMounted 先 await whenFavoritesConfigReady() 再做首屏加载。
+//
+// 测试手法：
+//   - 把 singleton 的 loaded 置 false，强制本次 factory() 重新发起 GET /config/favorites
+//     （模拟浏览器刷新后的冷启动）
+//   - apiMock.get 用 deferred 控制配置到达时机，验证「配置未落定前不发 /gallery/load」
+// =============================================================================
+describe('Gallery.vue 首屏配置等待 — 刷新 vs tab 点击收藏夹参数一致回归', () => {
+  const getLoadCalls = () => apiMock.post.mock.calls.filter((c) => c[0] === '/gallery/load')
+
+  it('本地模式 + 配置慢响应(enable_my_favorites=true) → 首屏等配置落定后才发请求且带 include_favorite_status=true', async () => {
+    localStorage.setItem('gallery_source', 'local')
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const cfg = useFavoritesConfig()
+    cfg.enableMyFavorites.value = false
+    cfg.loaded.value = false  // 模拟刷新冷启动：强制重新 GET /config/favorites
+
+    let resolveConfig
+    apiMock.get.mockImplementationOnce(() => new Promise((r) => { resolveConfig = r }))
+
+    factory()
+    await flushPromises()
+
+    // 配置未落定：首屏 /gallery/load 不得发出（发出即缺参数 → 本回归失败）
+    expect(getLoadCalls()).toHaveLength(0)
+    expect(cfg.enableMyFavorites.value).toBe(false)
+
+    // 配置到达：enable_my_favorites=true
+    resolveConfig({ data: { enable_my_favorites: true } })
+    await flushPromises()
+
+    const calls = getLoadCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][1].include_favorite_status).toBe(true)
+    expect(calls[0][1].source).toBe('local')
+  })
+
+  it('本地模式 + 配置返回 enable_my_favorites=false → 首屏不带 include_favorite_status（覆盖残留 true）', async () => {
+    localStorage.setItem('gallery_source', 'local')
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const cfg = useFavoritesConfig()
+    cfg.enableMyFavorites.value = true  // 残留 true，必须被后端配置覆盖
+    cfg.loaded.value = false
+    apiMock.get.mockResolvedValueOnce({ data: { enable_my_favorites: false } })
+
+    factory()
+    await flushPromises()
+
+    const calls = getLoadCalls()
+    expect(calls).toHaveLength(1)
+    expect('include_favorite_status' in calls[0][1]).toBe(false)
+    expect(cfg.enableMyFavorites.value).toBe(false)
+  })
+
+  it('刷新首屏与点击「本地」tab 的收藏夹参数一致（include_favorite_status / source 相同）', async () => {
+    localStorage.setItem('gallery_source', 'local')
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    const cfg = useFavoritesConfig()
+    cfg.enableMyFavorites.value = false
+    cfg.loaded.value = false
+    apiMock.get.mockResolvedValueOnce({ data: { enable_my_favorites: true } })
+
+    const wrapper = factory()
+    await flushPromises()
+
+    const refreshCalls = getLoadCalls()
+    expect(refreshCalls).toHaveLength(1)
+    const refreshPayload = refreshCalls[0][1]
+    expect(refreshPayload.include_favorite_status).toBe(true)
+
+    // 模拟点击左上角「本地」tab（querySource 已是 local，同值切换也应重新加载且参数一致）
+    wrapper.vm.handleSourceChange('local')
+    await flushPromises()
+
+    const tabCalls = getLoadCalls()
+    expect(tabCalls.length).toBeGreaterThanOrEqual(2)
+    const tabPayload = tabCalls[tabCalls.length - 1][1]
+    expect(tabPayload.include_favorite_status).toBe(refreshPayload.include_favorite_status)
+    expect(tabPayload.source).toBe(refreshPayload.source)
+  })
+})
+
+// =============================================================================
 // HeartOverlay 详情页回归测试（Task 19 Sub-task C）+ 元数据/动作分区契约
 // =============================================================================
 // 背景：Task 18 把 HeartOverlay inline 写到 Gallery.vue 的 .float-header-left。

@@ -283,3 +283,54 @@ describe('useFavoritesConfig — fetchMyFavoritesCount exported helper', () => {
     expect(s.myFavoritesCount.value).toBe(100)
   })
 })
+
+// =============================================================================
+// whenFavoritesConfigReady — 首屏配置等待契约
+// =============================================================================
+// 背景：enableMyFavorites 等 4 个开关只持久化在后端，localStorage 不含它们。
+//   Gallery 首屏 /gallery/load 需要携带与后端一致的 include_favorite_status，
+//   否则「刷新页面（配置未到 → 不带参）」与「点击 tab（配置已到 → 带参）」不一致。
+//   本契约保证：
+//   1. 首次 GET /config/favorites 落定后 Promise resolve，且 refs 已应用配置
+//   2. 请求失败同样 resolve（后端不可达不阻塞首屏）
+//   3. 从未调用 useFavoritesConfig() 时立即 resolve（不悬挂）
+// =============================================================================
+describe('useFavoritesConfig — whenFavoritesConfigReady（首屏配置等待契约）', () => {
+  it('首次 GET /config/favorites 落定后才 resolve，且 refs 已应用配置', async () => {
+    const api = (await import('@/api')).default
+    let resolveConfig
+    vi.mocked(api.get).mockImplementationOnce(() => new Promise((r) => { resolveConfig = r }))
+
+    const { useFavoritesConfig, whenFavoritesConfigReady } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+
+    let ready = false
+    whenFavoritesConfigReady().then(() => { ready = true })
+    await new Promise((r) => setTimeout(r, 0))
+    // 配置未落定 → 不应 resolve
+    expect(ready).toBe(false)
+    expect(s.enableMyFavorites.value).toBe(false)
+
+    resolveConfig({ data: { enable_my_favorites: true } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ready).toBe(true)
+    expect(s.enableMyFavorites.value).toBe(true)
+  })
+
+  it('配置请求失败时同样 resolve（不阻塞首屏）', async () => {
+    const api = (await import('@/api')).default
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('network down'))
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const { useFavoritesConfig, whenFavoritesConfigReady } = await import('./useFavoritesConfig')
+    useFavoritesConfig()
+
+    await expect(whenFavoritesConfigReady()).resolves.toBeUndefined()
+    warnSpy.mockRestore()
+  })
+
+  it('从未调用 useFavoritesConfig() 时立即 resolve（不悬挂）', async () => {
+    const { whenFavoritesConfigReady } = await import('./useFavoritesConfig')
+    await expect(whenFavoritesConfigReady()).resolves.toBeUndefined()
+  })
+})
