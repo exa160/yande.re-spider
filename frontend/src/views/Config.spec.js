@@ -57,9 +57,9 @@ const factory = () =>
           template: '<div class="el-form-item-stub"><label>{{ label }}</label><slot/></div>',
         },
         'el-radio-group': {
-          props: ['modelValue'],
+          props: ['modelValue', 'disabled'],
           emits: ['update:modelValue'],
-          template: '<div class="radio-group-stub"><slot/></div>',
+          template: '<div class="radio-group-stub" :data-disabled="String(disabled ?? false)"><slot/></div>',
         },
         'el-radio-button': {
           props: ['label', 'value'],
@@ -90,27 +90,27 @@ const clickMenuItem = async (wrapper, label) => {
 
 // =============================================================================
 // Task 19 重构：Config.vue 左侧菜单新增「收藏夹」分页（位于「高级功能」之上）
-// 高级功能 tab 现在只剩「缓存更新」section，4 个新开关 + 5 个迁移偏好全部
+// 高级功能 tab 现在只剩「缓存更新」section，3 个新开关 + 5 个迁移偏好全部
 // 移到独立的「收藏夹」tab。
 // =============================================================================
 describe('Config.vue 菜单结构 — 收藏夹分页位于高级之上', () => {
-  it('左菜单顺序：API / 下载器 / 数据库 / 收藏夹 / 高级功能 / 关于', async () => {
+  it('左菜单顺序：API / 下载器 / 数据库 / 收藏夹配置 / 高级功能 / 关于', async () => {
     const wrapper = factory()
     await flushPromises()
 
     const labels = wrapper.findAll('.menu-item').map((el) => el.text().trim())
-    // 顺序：API配置 → 下载器配置 → 数据库配置 → 收藏夹 → 高级功能 → 关于
-    //   收藏夹在「高级功能」之上是核心契约，确保用户能直接定位
-    expect(labels.indexOf('收藏夹')).toBeGreaterThan(-1)
+    // 顺序：API配置 → 下载器配置 → 数据库配置 → 收藏夹配置 → 高级功能 → 关于
+    //   收藏夹配置在「高级功能」之上是核心契约，确保用户能直接定位
+    expect(labels.indexOf('收藏夹配置')).toBeGreaterThan(-1)
     expect(labels.indexOf('高级功能')).toBeGreaterThan(-1)
-    expect(labels.indexOf('收藏夹')).toBeLessThan(labels.indexOf('高级功能'))
+    expect(labels.indexOf('收藏夹配置')).toBeLessThan(labels.indexOf('高级功能'))
   })
 
   it('点击「收藏夹」菜单 → 看到 .favorites-section 独立分页', async () => {
     const wrapper = factory()
     await flushPromises()
 
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     expect(favSection.exists()).toBe(true)
@@ -136,41 +136,43 @@ describe('Config.vue 菜单结构 — 收藏夹分页位于高级之上', () => 
     expect(text).not.toContain('每页收藏夹个数')
     expect(text).not.toContain('我的最爱')
     expect(text).not.toContain('随机浏览')
-    expect(text).not.toContain('非本地图片自动下载')
+    expect(text).not.toContain('在线图片收藏自动下载')
     const hasSaveFavoritesBtn = advancedDom.findAll('button').some((b) => b.text().includes('保存收藏夹配置'))
     expect(hasSaveFavoritesBtn).toBe(false)
   })
 })
 
-describe('Config.vue 收藏夹分页（4 个新开关 + saveFavoritesConfig）', () => {
+describe('Config.vue 收藏夹分页（3 个新开关 + saveFavoritesConfig）', () => {
   const findFavoritesSection = (wrapper) => {
     return wrapper.find('.favorites-section').element
       ? wrapper.find('.favorites-section')
       : null
   }
 
-  it('收藏夹分页渲染 4 个新开关：收藏夹展示 / 我的最爱 / 非本地图片自动下载 / 随机浏览', async () => {
+  it('收藏夹分页渲染 3 个新开关（radio-group 风格）：我的最爱 / 在线图片收藏自动下载 / 随机浏览', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     expect(favSection.exists()).toBe(true)
 
-    const switches = favSection.findAll('input.switch-stub')
-    expect(switches.length).toBe(4)
-
     const text = favSection.text()
-    expect(text).toContain('收藏夹展示')
     expect(text).toContain('我的最爱')
-    expect(text).toContain('非本地图片自动下载')
+    expect(text).toContain('在线图片收藏自动下载')
     expect(text).toContain('随机浏览')
+    // 「收藏夹展示」已移除，冗余于「主页显示收藏夹」
+    expect(text).not.toContain('收藏夹展示')
+    // 3 个新开关已统一为 radio-group，不再有裸 el-switch
+    expect(favSection.findAll('input.switch-stub').length).toBe(0)
+    // buttonMode + 我的最爱 + 自动下载 + 随机浏览 + 其余 4 个 = 8 个 radio group
+    expect(favSection.findAll('.radio-group-stub').length).toBeGreaterThanOrEqual(8)
   })
 
   it('收藏夹分页渲染 5 个迁移偏好 radio 组 + 保存按钮', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     expect(favSection.exists()).toBe(true)
@@ -196,24 +198,23 @@ describe('Config.vue 收藏夹分页（4 个新开关 + saveFavoritesConfig）',
   it('enableMyFavorites=false 时 autodownload switch 被禁用；翻转为 true 后解除禁用', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
-    const switches = favSection.findAll('input.switch-stub')
-    expect(switches.length).toBe(4)
-    // 索引 2 = 非本地图片自动下载（folder=0, myFavorites=1, autodownload=2, randomBrowse=3）
-    expect(switches[2].attributes('disabled')).toBeDefined()
+    // radio-group 顺序：主页显示收藏夹(0) / 我的最爱(1) / 在线图片收藏自动下载(2) / 随机浏览(3)
+    const groups = favSection.findAll('.radio-group-stub')
+    expect(groups[2].attributes('data-disabled')).toBe('true')
 
     wrapper.vm.favoritesForm.enableMyFavorites = true
     await flushPromises()
-    expect(switches[2].attributes('disabled')).toBeUndefined()
+    expect(groups[2].attributes('data-disabled')).toBe('false')
   })
 
-  it('点击「保存收藏夹配置」→ PUT /config/favorites 带 9 个 snake_case 字段', async () => {
+  it('点击「保存收藏夹配置」→ PUT /config/favorites 带 8 个 snake_case 字段（不含 enable_favorite_folder）', async () => {
     const { default: api } = await import('@/api')
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     wrapper.vm.favoritesForm.enableMyFavorites = true
     wrapper.vm.favoritesForm.tileSize = '8'
@@ -227,7 +228,6 @@ describe('Config.vue 收藏夹分页（4 个新开关 + saveFavoritesConfig）',
     expect(api.put).toHaveBeenCalledWith('/config/favorites', expect.objectContaining({
       enable_my_favorites: true,
       enable_random_browse: expect.any(Boolean),
-      enable_favorite_folder: expect.any(Boolean),
       enable_favorite_autodownload: expect.any(Boolean),
       button_mode: expect.any(String),
       tile_size: '8',
@@ -235,6 +235,9 @@ describe('Config.vue 收藏夹分页（4 个新开关 + saveFavoritesConfig）',
       include_online: expect.any(Boolean),
       folder_page_size: expect.any(Number),
     }))
+    // 冗余字段 enable_favorite_folder 不再随保存发送
+    const sent = api.put.mock.calls.find((c) => c[0] === '/config/favorites')?.[1]
+    expect(sent).not.toHaveProperty('enable_favorite_folder')
   })
 })
 
@@ -242,7 +245,7 @@ describe('Config.vue 收藏夹分页 — favoritesForm / composable 同步契约
   it('favoritesForm 初值 = composable 初始值（默认 shown / adaptive）', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     expect(wrapper.vm.favoritesForm.buttonMode).toBe('shown')
     expect(wrapper.vm.favoritesForm.tileSize).toBe('adaptive')
@@ -254,7 +257,7 @@ describe('Config.vue 收藏夹分页 — favoritesForm / composable 同步契约
 
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     expect(wrapper.vm.favoritesForm.buttonMode).toBe('hidden')
     expect(wrapper.vm.favoritesForm.tileSize).toBe('8')
@@ -263,7 +266,7 @@ describe('Config.vue 收藏夹分页 — favoritesForm / composable 同步契约
   it('favoritesForm 修改 → 写入 composable（composable 单一来源）', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     // 直接改 form 值模拟 radio click（已绑 v-model）
     wrapper.vm.favoritesForm.buttonMode = 'default'
@@ -284,7 +287,7 @@ describe('Config.vue 收藏夹分页 — favoritesForm / composable 同步契约
   it('includeOnline 是二联开关（关闭/开启）而非 el-switch', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     // includeOnline 二联开关：false / true 两个 radio-button（在收藏夹分页里）
     const favSection = wrapper.find('.favorites-section')
@@ -296,7 +299,7 @@ describe('Config.vue 收藏夹分页 — favoritesForm / composable 同步契约
   it('includeOnline 修改 → 写入 composable 与 localStorage', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     wrapper.vm.favoritesForm.includeOnline = true
     await flushPromises()
@@ -315,7 +318,7 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
   it('buttonMode 选项：hidden / shown / default', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     const labels = favSection.findAll('.radio-button-stub').map((b) => b.attributes('data-label'))
@@ -327,7 +330,7 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
   it('tileSize 选项：adaptive / 4 / 6 / 8', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     const labels = favSection.findAll('.radio-button-stub').map((b) => b.attributes('data-label'))
@@ -340,7 +343,7 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
   it('previewOrder 选项：random / desc / asc', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     const labels = favSection.findAll('.radio-button-stub').map((b) => b.attributes('data-label'))
@@ -352,7 +355,7 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
   it('folderPageSize 选项：8 / 12 / 20', async () => {
     const wrapper = factory()
     await flushPromises()
-    await clickMenuItem(wrapper, '收藏夹')
+    await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
     const labels = favSection.findAll('.radio-button-stub').map((b) => b.attributes('data-label'))

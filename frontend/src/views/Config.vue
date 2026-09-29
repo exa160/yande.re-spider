@@ -23,13 +23,13 @@
       >
         数据库配置
       </div>
-      <!-- Task 19：收藏夹单独分页，置于高级功能之上；4 个新开关 + 5 个迁移偏好全在此 -->
+      <!-- Task 19：收藏夹单独分页，置于高级功能之上；3 个新开关 + 5 个迁移偏好全在此 -->
       <div 
         class="menu-item" 
         :class="{ active: activeMenu === 'favorites' }"
         @click="activeMenu = 'favorites'"
       >
-        收藏夹
+        收藏夹配置
       </div>
       <div 
         class="menu-item" 
@@ -273,53 +273,7 @@
           <div class="advanced-desc">配置收藏夹按钮显示、我的最爱 / 随机浏览总开关，以及每文件夹预览图数量</div>
 
           <div class="refresh-controls">
-            <!-- 4 个新开关（我的最爱 + 随机浏览 总功能开关） -->
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">收藏夹展示</div>
-                <div class="refresh-params">
-                  <el-switch v-model="favoritesForm.enableFavoriteFolder" />
-                  <span class="param-tip">关闭后整个收藏夹模块隐藏</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">我的最爱</div>
-                <div class="refresh-params">
-                  <el-switch v-model="favoritesForm.enableMyFavorites" />
-                  <span class="param-tip">关闭后瀑布流图片右下角爱心隐藏，收藏夹列表我的最爱磁贴也隐藏</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">非本地图片自动下载</div>
-                <div class="refresh-params">
-                  <el-switch
-                    v-model="favoritesForm.enableFavoriteAutodownload"
-                    :disabled="!favoritesForm.enableMyFavorites"
-                  />
-                  <span class="param-tip">关闭后非本地图片加入我的最爱不会触发下载</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">随机浏览</div>
-                <div class="refresh-params">
-                  <el-switch v-model="favoritesForm.enableRandomBrowse" />
-                  <span class="param-tip">关闭后收藏夹列表随机浏览磁贴隐藏</span>
-                </div>
-              </div>
-            </div>
-
-            <el-divider class="favorites-divider" />
-
-            <!-- 5 个迁移的 UI 偏好 -->
+            <!-- 主页显示收藏夹（入口显隐，收藏夹模块总开关） -->
             <div class="refresh-item">
               <div class="refresh-info">
                 <div class="refresh-name">主页显示收藏夹</div>
@@ -328,6 +282,47 @@
                     <el-radio-button label="hidden">关闭</el-radio-button>
                     <el-radio-button label="shown">开启</el-radio-button>
                     <el-radio-button label="default">默认显示</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <!-- 我的最爱总开关：关闭时后端 include_favorite_status 联动不连表，避免 DB 开销 -->
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">我的最爱</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.enableMyFavorites" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">在线图片收藏自动下载</div>
+                <div class="refresh-params">
+                  <el-radio-group
+                    v-model="favoritesForm.enableFavoriteAutodownload"
+                    size="small"
+                    :disabled="!favoritesForm.enableMyFavorites"
+                  >
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">随机浏览</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.enableRandomBrowse" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
                   </el-radio-group>
                 </div>
               </div>
@@ -464,7 +459,6 @@ const {
   folderPageSize,
   enableMyFavorites,
   enableRandomBrowse,
-  enableFavoriteFolder,
   enableFavoriteAutodownload,
 } = useFavoritesConfig()
 // 本地表单：用 composable 初值初始化，watch 同步回 composable
@@ -477,7 +471,6 @@ const favoritesForm = reactive({
   folderPageSize: folderPageSize.value,
   enableMyFavorites: enableMyFavorites.value,
   enableRandomBrowse: enableRandomBrowse.value,
-  enableFavoriteFolder: enableFavoriteFolder.value,
   enableFavoriteAutodownload: enableFavoriteAutodownload.value,
 })
 watch(favoritesForm, (val) => {
@@ -502,9 +495,6 @@ watch(favoritesForm, (val) => {
   if (enableRandomBrowse.value !== val.enableRandomBrowse) {
     enableRandomBrowse.value = val.enableRandomBrowse
   }
-  if (enableFavoriteFolder.value !== val.enableFavoriteFolder) {
-    enableFavoriteFolder.value = val.enableFavoriteFolder
-  }
   if (enableFavoriteAutodownload.value !== val.enableFavoriteAutodownload) {
     enableFavoriteAutodownload.value = val.enableFavoriteAutodownload
   }
@@ -517,7 +507,6 @@ async function saveFavorites() {
     await saveFavoritesConfig({
       enable_my_favorites: favoritesForm.enableMyFavorites,
       enable_random_browse: favoritesForm.enableRandomBrowse,
-      enable_favorite_folder: favoritesForm.enableFavoriteFolder,
       enable_favorite_autodownload: favoritesForm.enableFavoriteAutodownload,
       button_mode: favoritesForm.buttonMode,
       tile_size: favoritesForm.tileSize,
@@ -1136,11 +1125,7 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-/* 收藏夹 section 内分隔线 + 保存按钮 */
-.favorites-divider {
-  margin: 4px 0 8px;
-}
-
+/* 收藏夹 section 保存按钮 */
 .favorites-save-row {
   display: flex;
   justify-content: flex-end;
