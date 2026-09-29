@@ -1,6 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import Gallery from './Gallery.vue'
+
+// 详情页走 <teleport to="body">，且 vite.config.js 的 test 段没有 setupFiles
+// （即未调用 VTU 的 enableAutoUnmount），因此 wrapper 不会被自动卸载，teleport
+// 出去的 DOM 会在 document.body 上跨用例累积。此时 document.body.querySelector()
+// 永远命中最早那个残留节点而非当前 wrapper 的节点 —— 顺序类断言会"因为错误的
+// 原因而通过"（改坏顺序也测不出来）。故每个用例后清空 body 兜底。
+afterEach(() => {
+  document.body.innerHTML = ''
+})
 
 // vue-router mock：Task 17 引入 useRoute()，必须 mock；测试间共享 reactive route 引用以便测试能 push querySource
 // useRoute() 返回同一 reactive 对象，测试通过改 mockRoute.value.query 模拟路由跳转（FavoritePanel 的虚拟磁贴跳转契约）
@@ -1051,10 +1060,12 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
 })
 
 // =============================================================================
-// HeartOverlay 详情页回归测试（Task 19 Sub-task C）
+// HeartOverlay 详情页回归测试（Task 19 Sub-task C）+ 元数据/动作分区契约
 // =============================================================================
 // 背景：Task 18 把 HeartOverlay inline 写到 Gallery.vue 的 .float-header-left。
-//       不是独立组件，未来 Gallery 重构可能悄悄把 HeartOverlay 移走 / 删除。
+//       后续重构（header = 纯元数据，footer = 纯动作）将 HeartOverlay 移到
+//       .float-footer-left 末尾，并重排 header 3 个元数据项为 ID → size → rating
+//       （与 WaterfallGallery 的 .image-info-content 一致）。
 //
 // 实施要点：详情页 v-if 走 <teleport to="body">，wrapper.find() 看不见被 teleport
 //          出去的 DOM，需改用 document.body.querySelector 定位 .heart-overlay。
@@ -1079,7 +1090,7 @@ describe('Gallery.vue 详情页 HeartOverlay 回归（Task 19）', () => {
     return merged
   }
 
-  it('详情页 + enableMyFavorites=true → HeartOverlay 必须渲染在 .float-header-left 内', async () => {
+  it('详情页 + enableMyFavorites=true → HeartOverlay 必须渲染在 .float-footer-left 内（不在 header）', async () => {
     const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
     const { enableMyFavorites } = useFavoritesConfig()
     enableMyFavorites.value = true
@@ -1090,18 +1101,22 @@ describe('Gallery.vue 详情页 HeartOverlay 回归（Task 19）', () => {
 
     const headerLeft = document.body.querySelector('.float-header-left')
     expect(headerLeft).not.toBeNull()
-    const heart = headerLeft.querySelector('.heart-overlay')
+    expect(headerLeft.querySelector('.heart-overlay')).toBeNull()
+
+    const footerLeft = document.body.querySelector('.float-footer-left')
+    expect(footerLeft).not.toBeNull()
+    const heart = footerLeft.querySelector('.heart-overlay')
     expect(heart).not.toBeNull()
 
-    const headerAllHearts = document.body.querySelectorAll('.float-header .heart-overlay').length
-    const headerLeftHearts = document.body.querySelectorAll('.float-header-left .heart-overlay').length
-    expect(headerAllHearts).toBe(headerLeftHearts)
-    expect(headerAllHearts).toBeGreaterThanOrEqual(1)
+    const footerAllHearts = document.body.querySelectorAll('.float-footer .heart-overlay').length
+    const footerLeftHearts = document.body.querySelectorAll('.float-footer-left .heart-overlay').length
+    expect(footerAllHearts).toBe(footerLeftHearts)
+    expect(footerAllHearts).toBeGreaterThanOrEqual(1)
 
     expect(wrapper.findComponent({ name: 'HeartOverlay' }).exists()).toBe(true)
   })
 
-  it('详情页 + enableMyFavorites=false → .float-header-left 不含 HeartOverlay', async () => {
+  it('详情页 + enableMyFavorites=false → .float-footer-left 也不含 HeartOverlay', async () => {
     const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
     const { enableMyFavorites } = useFavoritesConfig()
     enableMyFavorites.value = false
@@ -1110,9 +1125,9 @@ describe('Gallery.vue 详情页 HeartOverlay 回归（Task 19）', () => {
     await flushPromises()
     await openImageDetail(wrapper)
 
-    const headerLeft = document.body.querySelector('.float-header-left')
-    expect(headerLeft).not.toBeNull()
-    expect(headerLeft.querySelector('.heart-overlay')).toBeNull()
+    expect(document.body.querySelector('.float-header-left .heart-overlay')).toBeNull()
+    expect(document.body.querySelector('.float-footer-left .heart-overlay')).toBeNull()
+    expect(wrapper.findComponent({ name: 'HeartOverlay' }).exists()).toBe(false)
   })
 
   it('HeartOverlay :initial-favorited 与 currentImage.is_favorited 同步', async () => {
@@ -1124,14 +1139,132 @@ describe('Gallery.vue 详情页 HeartOverlay 回归（Task 19）', () => {
     await flushPromises()
 
     await openImageDetail(wrapper, { id: 200, is_favorited: true })
-    const heart = document.body.querySelector('.float-header-left .heart-overlay')
+    const heart = document.body.querySelector('.float-footer-left .heart-overlay')
     expect(heart).not.toBeNull()
     expect(heart.classList.contains('active')).toBe(true)
 
     await openImageDetail(wrapper, { id: 200, is_favorited: false })
-    const heartAfter = document.body.querySelector('.float-header-left .heart-overlay')
+    const heartAfter = document.body.querySelector('.float-footer-left .heart-overlay')
     expect(heartAfter).not.toBeNull()
     expect(heartAfter.classList.contains('active')).toBe(false)
+  })
+})
+
+// =============================================================================
+// 详情页 header/footer 分区契约（重构后）
+// =============================================================================
+// 契约：
+//   - .float-header-left 子元素顺序：ID → size → rating（与 WaterfallGallery .image-info-content 一致）
+//   - .float-header-left 仅含元数据（无 HeartOverlay、无下载按钮）
+//   - .float-footer-left 末尾（v-if/v-else 之外）始终含 HeartOverlay
+//     - down_flag=false 分支：下载按钮 → HeartOverlay
+//     - down_flag=true  分支：重新下载按钮 → 已下载 tag → HeartOverlay
+// =============================================================================
+describe('Gallery.vue 详情页 header/footer 分区契约', () => {
+  const openImageDetail = async (wrapper, image = {}) => {
+    const defaultImage = {
+      id: 100,
+      file_url: 'pictures/100.jpg',
+      preview_url: 'previews/100.jpg',
+      width: 1920,
+      height: 1080,
+      rating: 'Safe',
+      down_flag: true,
+      tags: [],
+    }
+    const merged = { ...defaultImage, ...image }
+    wrapper.vm.currentImage = merged
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+    return merged
+  }
+
+  it('.float-header-left 子元素顺序 = ID → size → rating（与瀑布流一致）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper, { id: 12345, width: 1920, height: 1080, rating: 'Questionable' })
+
+    const headerLeft = document.body.querySelector('.float-header-left')
+    expect(headerLeft).not.toBeNull()
+    const directChildren = headerLeft.children
+    expect(directChildren.length).toBe(3)
+
+    expect(directChildren[0].classList.contains('float-id')).toBe(true)
+    expect(directChildren[0].textContent.trim()).toBe('ID: 12345')
+
+    expect(directChildren[1].classList.contains('float-size')).toBe(true)
+    expect(directChildren[1].textContent.trim()).toBe('1920 × 1080')
+
+    // el-tag 测试桩渲染为 <span>（不带 el-tag class），按位置 + 文本识别为 rating 槽位
+    expect(directChildren[2].classList.contains('float-id')).toBe(false)
+    expect(directChildren[2].classList.contains('float-size')).toBe(false)
+    expect(directChildren[2].textContent.trim()).toBe('Questionable')
+  })
+
+  it('.float-header-left 仅含元数据（无 HeartOverlay、无下载按钮）', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper)
+
+    const headerLeft = document.body.querySelector('.float-header-left')
+    expect(headerLeft).not.toBeNull()
+    expect(headerLeft.querySelector('.heart-overlay')).toBeNull()
+    expect(headerLeft.querySelector('.float-download-btn, .float-redownload-btn, .float-downloaded-tag')).toBeNull()
+  })
+
+  it('down_flag=false 分支：.float-footer-left 顺序 = 下载按钮 → HeartOverlay', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper, { id: 100, down_flag: false })
+
+    const footerLeft = document.body.querySelector('.float-footer-left')
+    expect(footerLeft).not.toBeNull()
+    const directChildren = Array.from(footerLeft.children)
+    expect(directChildren.length).toBe(2)
+    expect(directChildren[0].classList.contains('float-download-btn')).toBe(true)
+    expect(directChildren[1].classList.contains('heart-overlay')).toBe(true)
+    expect(directChildren[1].classList.contains('float-heart')).toBe(true)
+  })
+
+  it('down_flag=true 分支：.float-footer-left 顺序 = 重新下载按钮 → 已下载 tag → HeartOverlay', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper, { id: 100, down_flag: true })
+
+    const footerLeft = document.body.querySelector('.float-footer-left')
+    expect(footerLeft).not.toBeNull()
+    const directChildren = Array.from(footerLeft.children)
+    expect(directChildren.length).toBe(3)
+    expect(directChildren[0].classList.contains('float-redownload-btn')).toBe(true)
+    expect(directChildren[1].classList.contains('float-downloaded-tag')).toBe(true)
+    expect(directChildren[2].classList.contains('heart-overlay')).toBe(true)
+    expect(directChildren[2].classList.contains('float-heart')).toBe(true)
+  })
+
+  it('HeartOverlay 在 footer 中始终作为最后一个直接子元素（与 v-if/v-else 之外的位置契约）', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    for (const downFlag of [false, true]) {
+      const wrapper = factory()
+      await flushPromises()
+      await openImageDetail(wrapper, { id: 100, down_flag: downFlag })
+
+      const footerLeft = document.body.querySelector('.float-footer-left')
+      expect(footerLeft).not.toBeNull()
+      const directChildren = Array.from(footerLeft.children)
+      const lastChild = directChildren[directChildren.length - 1]
+      expect(lastChild.classList.contains('heart-overlay')).toBe(true)
+    }
   })
 })
 

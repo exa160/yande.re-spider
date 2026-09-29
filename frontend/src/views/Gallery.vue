@@ -226,18 +226,11 @@
 
             <div class="float-header" :class="`overlay-${overlayColorScheme}`">
               <div class="float-header-left">
-                <HeartOverlay
-                  v-if="enableMyFavorites"
-                  :image-id="currentImage.id"
-                  :initial-favorited="currentImage.is_favorited === true"
-                  :show-heart="true"
-                  @changed="onFavoriteChanged"
-                />
                 <span class="float-id">ID: {{ currentImage.id }}</span>
+                <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
                 <el-tag :type="getRatingType(currentImage.rating)" size="small">
                   {{ currentImage.rating }}
                 </el-tag>
-                <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
               </div>
               <el-button circle @click="previewVisible = false" class="float-close-btn">
                 <el-icon><Close /></el-icon>
@@ -247,9 +240,9 @@
           <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
             <div class="float-footer-left">
               <template v-if="!currentImage.down_flag">
-                <el-button 
-                  type="primary" 
-                  @click.stop="handleDownload" 
+                <el-button
+                  type="primary"
+                  @click.stop="handleDownload"
                   :disabled="downloading"
                   class="float-download-btn"
                 >
@@ -264,8 +257,8 @@
                 </el-button>
               </template>
               <template v-else>
-                <el-button 
-                  @click.stop="handleDownload" 
+                <el-button
+                  @click.stop="handleDownload"
                   :disabled="downloading"
                   class="float-redownload-btn"
                   title="重新下载"
@@ -277,6 +270,14 @@
                   已下载
                 </el-tag>
               </template>
+              <HeartOverlay
+                v-if="enableMyFavorites"
+                class="float-heart"
+                :image-id="currentImage.id"
+                :initial-favorited="currentImage.is_favorited === true"
+                :show-heart="true"
+                @changed="onFavoriteChanged"
+              />
             </div>
             
             <div class="float-footer-right" @click="toggleInfoPanel">
