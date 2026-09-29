@@ -25,6 +25,33 @@
 | 新增 DAO | 继承 `BaseDAO`，使用 `self.session` 操作数据库 |
 | 配置常量 | 在 `common/constant.py` 中定义 `PathConstant`、`ErrMsg` 等 |
 | **升级版本 / 发版** | **3 条核心流程线**：dev 合入（feature → next_dev）/ 正式 release（feature → next_dev + version bump → tag/GH Release → next）/ dev 多次合入后的 release，详见 [docs/release.md](docs/release.md) |
+| **合并方式（Squash 策略）** | dev 合入（feature → next_dev）**可 squash**；release 合入（next_dev → next）**禁止 squash/rebase，必须 fast-forward**，保证 `next` 恒为 `next_dev` 的祖先（详见下节） |
+
+---
+
+## 🔀 合并方式规范（Squash 策略）
+
+> **背景（v1.2.0 事故复盘）**：v1.2.0 曾用 squash 把 next_dev 合入 next，squash commit 不在 next_dev 历史中，
+> 两分支历史分叉；下次 dev→release 合并时同一内容在两侧"各自变更"，冲突无法机械解决。
+> 2026-09-30 已用 `git rebase --onto origin/next <last-aligned-commit> next_dev` 将 next_dev 重新对齐到 next 之下修复。
+
+| 合并方向 | squash | 正确方式 |
+|---------|--------|---------|
+| `feature-*` → `next_dev`（dev 合入） | ✅ **可接受** | `gh pr merge --squash`，保持 dev 历史整洁 |
+| `next_dev` → `next`（release 合入） | ❌ **禁止** | **fast-forward**（`git merge --ff-only`），合入后两分支 tip 完全一致，见 [docs/release.md](docs/release.md) §2.5 |
+| `next` → `next_dev`（回流对齐） | ❌ 禁止 squash | 正常 merge，或按上述 `rebase --onto` 对齐 |
+
+**核心不变量**：`next` 必须始终是 `next_dev` 的祖先。release ff 合入后 `next == next_dev`，
+后续任何 dev→release 合并都不会因历史改写（squash/rebase）产生冲突。
+
+**发版后自检（必跑）**：
+
+```bash
+# 不变量检查：应输出 OK
+git merge-base --is-ancestor origin/next origin/next_dev && echo OK
+# release 刚合入后两分支内容应完全一致（空输出）
+git diff origin/next origin/next_dev
+```
 
 ---
 
@@ -235,4 +262,4 @@ services:
 
 ---
 
-*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节；v1.1.10 拆分 `config_file` 到 `user_config_dir` 后增加部署模式与配置路径章节；v1.1.10 release 复盘：Dev 发布流程迁入 docs/release.md，3 条核心流程线分明，禁止直接 push 到 next/next_dev，未经用户审核禁止 commit/push*
+*最后更新：v1.1.7 release 后增加密钥管理章节；v1.1.9 dev 流程建立后增加 Dev 发布流程章节；v1.1.10 拆分 `config_file` 到 `user_config_dir` 后增加部署模式与配置路径章节；v1.1.10 release 复盘：Dev 发布流程迁入 docs/release.md，3 条核心流程线分明，禁止直接 push 到 next/next_dev，未经用户审核禁止 commit/push；v1.2.1 新增「合并方式规范（Squash 策略）」章节——dev 可 squash、release 禁 squash 必须 ff-only（v1.2.0 squash 分叉事故复盘，next_dev 已 rebase 对齐）*
