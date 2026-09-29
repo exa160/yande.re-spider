@@ -22,6 +22,7 @@
 import { ref, watch } from 'vue'
 import api from '@/api'
 import { myFavoritesApi } from '@/api/myFavorites'
+import { randomBrowseApi } from '@/api/randomBrowse'
 
 /**
  * @typedef {import('vue').Ref} Ref
@@ -48,6 +49,8 @@ const state = {
   enableFavoriteAutodownload: ref(true),
   // 我的最爱总数（用于 FavoritePanel 角标 / 摘要）
   myFavoritesCount: ref(0),
+  // 随机浏览候选池总数（down_flag=True 的本地图片数，用于随机浏览磁贴角标）
+  randomBrowseCount: ref(0),
   // 首次加载完成标记（避免重复 GET）
   loaded: ref(false),
 }
@@ -142,6 +145,29 @@ export async function fetchMyFavoritesCount() {
 }
 
 /**
+ * 拉取随机浏览候选池总数写入 state.randomBrowseCount（失败仅警告，不抛）
+ * 仅在调用方已经判断 enable_random_browse=true 时调用
+ */
+export async function fetchRandomBrowseCount() {
+  try {
+    const res = await randomBrowseApi.getCount()
+    const count = res?.data?.count
+    if (typeof count === 'number') {
+      state.randomBrowseCount.value = count
+    } else if (count && typeof count === 'object' && typeof count.count === 'number') {
+      state.randomBrowseCount.value = count.count
+    } else {
+      state.randomBrowseCount.value = 0
+    }
+  } catch (e) {
+    // 静默 — 角标无数据不影响主功能
+    if (typeof console !== 'undefined') {
+      console.warn('Fetch random browse count failed:', e?.message || e)
+    }
+  }
+}
+
+/**
  * 把部分配置变更同步写回后端，并同步本地 state。
  *
  * @param {Record<string, any>} updates - snake_case 键值对（与后端契约一致）
@@ -163,6 +189,10 @@ export async function saveFavoritesConfig(updates) {
   // 如果刚开启「我的最爱」，立即拉取总数（角标显示用）
   if ('enable_my_favorites' in updates && updates.enable_my_favorites) {
     await fetchMyFavoritesCount()
+  }
+  // 同理：刚开启「随机浏览」时拉取候选池总数（随机浏览磁贴角标）
+  if ('enable_random_browse' in updates && updates.enable_random_browse) {
+    await fetchRandomBrowseCount()
   }
 }
 

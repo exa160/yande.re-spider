@@ -10,10 +10,12 @@
  *    同一组虚拟磁贴。把 prepend 逻辑提到本 composable，避免两份实现各自漂移。
  * 2. **分页语义保护**：虚拟磁贴只 prepend 到第一页；后续页（page>1）就是真实 folders 追加，
  *    避免翻页时反复 prepend 同一组磁贴导致用户视觉上看到重复的"我的最爱 / 随机浏览"。
- * 3. **可选预览图回填**：当 `fetchPreview=true` 时，「我的最爱」磁贴的 preview_images 通过
- *    GET /my-favorites/preview?limit=N 异步拉取，N 取自 useFavoritesConfig.tileSize
- *    （adaptive/small/medium/large → 8/4/6/8），与后端 `_preview_count_for_local_count`
- *    契约保持一致。`fetchPreview=false`（默认，与 FavoritePanel 行为一致）则不请求预览。
+ * 3. **可选预览图回填**：当 `fetchPreview=true` 时：
+ *    - 「我的最爱」磁贴的 preview_images 通过 GET /my_favorites/preview?limit=N 异步拉取
+ *    - 「随机浏览」磁贴的 preview_images 通过 GET /random_browse/preview?limit=N 异步拉取
+ *    N 取自 useFavoritesConfig.tileSize（adaptive/small/medium/large → 8/4/6/8），
+ *    与后端 `_preview_count_for_local_count` 契约保持一致。
+ *    `fetchPreview=false`（默认，与 FavoritePanel 行为一致）则不请求预览。
  * 4. **防抖与失败容忍**：API 失败时返回空预览图数组，磁贴仍显示，只是没有缩略图。
  *
  * @example
@@ -32,8 +34,9 @@
  *   })
  */
 import { computed, ref, watch } from 'vue'
-import { useFavoritesConfig, fetchMyFavoritesCount } from './useFavoritesConfig'
+import { useFavoritesConfig, fetchMyFavoritesCount, fetchRandomBrowseCount } from './useFavoritesConfig'
 import { myFavoritesApi } from '@/api/myFavorites'
+import { randomBrowseApi } from '@/api/randomBrowse'
 
 // 与后端 src/services/favorites.py:_preview_count_for_local_count 契约对齐
 const PREVIEW_COUNT_FOR_TILE_SIZE = {
@@ -75,16 +78,20 @@ export function useFavoriteFoldersList(options) {
     enableMyFavorites,
     enableRandomBrowse,
     myFavoritesCount,
+    randomBrowseCount,
     tileSize,
   } = useFavoritesConfig()
 
   // 我的最爱预览图（独立 ref，由 watch 触发异步加载）
   const myFavoritesPreview = ref([])
   const myFavoritesPreviewLoading = ref(false)
+  // 随机浏览预览图（独立 ref，与 myFavoritesPreview 独立加载/缓存）
+  const randomBrowsePreview = ref([])
+  const randomBrowsePreviewLoading = ref(false)
   // 记录上次拉取的配置签名，避免相同签名重复请求
   let lastLoadedFor = ''
 
-  // 计算「我的最爱」磁贴的预览图数量（基于当前 tileSize）
+  // 计算虚拟磁贴的预览图数量（基于当前 tileSize）
   const previewLimit = computed(() => {
     return PREVIEW_COUNT_FOR_TILE_SIZE[tileSize.value] ?? 8
   })
@@ -126,16 +133,49 @@ export function useFavoriteFoldersList(options) {
     }
   }
 
+  // 异步加载随机浏览预览图（每次 tileSize 变化或开关开启时重新抽样）
+  const loadRandomBrowsePreview = async () => {
+    if (!fetchPreview || !enableRandomBrowse.value) {
+      // 不拉取预览 / 开关关闭 → 清空预览图
+      randomBrowsePreview.value = []
+      return
+    }
+    const limit = previewLimit.value
+    randomBrowsePreviewLoading.value = true
+    try {
+      const res = await randomBrowseApi.getPreview(limit)
+      const images = res?.data?.images
+      const arr = Array.isArray(images)
+        ? images
+        : (Array.isArray(res?.data) ? res.data : [])
+      randomBrowsePreview.value = arr
+    } catch (e) {
+      // 失败时保持空数组（与我的最爱预览失败处理一致）
+      if (typeof console !== 'undefined') {
+        console.warn('Load random browse preview failed:', e?.message || e)
+      }
+      randomBrowsePreview.value = []
+    } finally {
+      randomBrowsePreviewLoading.value = false
+    }
+  }
+
   const reloadPreview = () => {
     lastLoadedFor = ''  // 强制 reload
-    return loadMyFavoritesPreview()
+    return Promise.all([loadMyFavoritesPreview(), loadRandomBrowsePreview()])
   }
 
   // 监听开关 + tileSize 变化触发重新加载
   watch(
-    [enableMyFavorites, tileSize],
+    [enableMyFavorites, enableRandomBrowse, tileSize],
     () => {
       loadMyFavoritesPreview()
+      loadRandomBrowsePreview()
+      // 角标总数：与 myFavoritesCount 同模式，值为 0 视为未加载（避免 Gallery 与
+      // FavoritePanel 两个调用方重复请求）
+      if (enableRandomBrowse.value && randomBrowseCount.value === 0) {
+        fetchRandomBrowseCount().catch(() => {})
+      }
     },
     { immediate: true }
   )
@@ -158,8 +198,10 @@ export function useFavoriteFoldersList(options) {
         id: 'random',
         name: '随机浏览',
         isVirtual: true,
-        local_count: 0,
-        preview_images: [],
+        // 角标 = 本地已下载图片总数（随机浏览的候选池大小）
+        local_count: randomBrowseCount.value,
+        // 随机浏览预览图（每次刷新页面会重新抽样；与瀑布流二级页不保证一致）
+        preview_images: randomBrowsePreview.value,
       })
     }
     return tiles
@@ -179,8 +221,12 @@ export function useFavoriteFoldersList(options) {
     displayFolders,
     /** 我的最爱预览图数组（用于诊断 / 详情调试） */
     myFavoritesPreview,
-    /** 当前是否正在异步加载预览图 */
+    /** 当前是否正在异步加载我的最爱预览图 */
     myFavoritesPreviewLoading: computed(() => myFavoritesPreviewLoading.value),
+    /** 随机浏览预览图数组 */
+    randomBrowsePreview,
+    /** 当前是否正在异步加载随机浏览预览图 */
+    randomBrowsePreviewLoading: computed(() => randomBrowsePreviewLoading.value),
     /** 手动强制 reload 预览图（page refresh、keyword 切换时调用） */
     reloadPreview,
   }
