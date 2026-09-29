@@ -46,6 +46,7 @@ class DatabaseTableNameConstant(ConstantModel):
     yande_artist: str = "yande_artists"
     tag_local_stats: str = "tag_local_stats"
     favorite_folder: str = "favorite_folders"
+    my_favorite: str = "my_favorite"
     download_task: str = "download_tasks"
 
 
@@ -116,6 +117,7 @@ class RouterMap(Enum):
     gallery = ["图库"]
     query = ["查询"]
     tag_cache = ["标签缓存"]
+    my_favorites = ["我的最爱"]
 
     @classmethod
     def get_tags(cls, name: str):

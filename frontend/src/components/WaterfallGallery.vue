@@ -89,6 +89,15 @@
                   {{ image.rating }}
                 </el-tag>
                 <div v-if="image.down_flag" class="downloaded-dot"></div>
+                <!-- v2 我的最爱：HeartOverlay 必须作为 image-info-content 的子元素渲染
+                     （不是单独 absolute 定位），由父级 flex/grid 容器自适应布局 -->
+                <HeartOverlay
+                  v-if="showHeart"
+                  :image-id="image.id"
+                  :initial-favorited="image.is_favorited === true"
+                  :show-heart="showHeart"
+                  @changed="(payload) => emit('favorite-toggled', payload)"
+                />
               </div>
             </div>
 
@@ -138,6 +147,8 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Loading, Picture, Check, RefreshRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import HeartOverlay from '@/components/HeartOverlay.vue'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 const props = defineProps({
   images: {
@@ -184,10 +195,28 @@ const props = defineProps({
     type: String,
     default: 'image',
     validator: (v) => ['image', 'folder'].includes(v),
+  },
+  // v2 我的最爱 / 随机浏览：是否在每个图片上显示 HeartOverlay
+  // - showHeart=true → 渲染 HeartOverlay，且 loadNewPage() 在 enableMyFavorites=true 时加 include_favorite_status
+  // - showHeart=false → 不渲染 HeartOverlay，loadNewPage() 也不加参数
+  showHeart: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['image-click', 'image-select', 'load-more', 'load-error', 'multi-select-start'])
+const emit = defineEmits([
+  'image-click',
+  'image-select',
+  'load-more',
+  'load-error',
+  'multi-select-start',
+  // v2 我的最爱：HeartOverlay @changed → 重新向上抛出（父级 Gallery.vue 可同步本地状态）
+  'favorite-toggled'
+])
+
+// v2 我的最爱 / 随机浏览总开关：singleton ref，跨组件共享
+const { enableMyFavorites } = useFavoritesConfig()
 
 // 监听 isLoadingMore prop，当父组件重置时同步状态
 watch(() => props.isLoadingMore, (newVal) => {
@@ -623,6 +652,40 @@ const loadMore = () => {
   if (loadingMore.value || props.loadError) return
   loadingMore.value = true
   emit('load-more')
+}
+
+/**
+ * v2 我的最爱 / 随机浏览智能分页加载（双判断）
+ *
+ * 与 Gallery.vue.loadImages 并存的另一种调用形式。父组件可优先使用本方法获得
+ * include_favorite_status 自动注入能力；旧 emit('load-more') + Gallery.vue.loadImages
+ * 链路保留作为 fallback（向后兼容）。
+ *
+ * 双判断（关键约束）：
+ *   include_favorite_status=true 仅在 BOTH showHeart=true AND enableMyFavorites.value=true 时才追加
+ *   任何一方为 false → params 中**完全不出现** include_favorite_status 键
+ *
+ * 后端双重判断回顾（Task 7/8 验证）：
+ *   前端不传 + config.enable_my_favorites=false → 后端强制不连表，is_favorited=None，无 JOIN 开销
+ *   前端传了 + config.enable_my_favorites=false   → 后端同样不连表（防御性）
+ *   前端传了 + config.enable_my_favorites=true   → 后端 LEFT JOIN 拿 is_favorited
+ *
+ * @param {number} [page=1]        请求的页码
+ * @param {number} [pageSize=20]    每页大小
+ * @param {object} [queryParams={}] 其它查询参数（tags/rating/...），会被合并到请求 body
+ * @returns {Promise<{data: Array, has_more: boolean}>}
+ */
+async function loadNewPage(page = 1, pageSize = 20, queryParams = {}) {
+  const params = {
+    page,
+    page_size: pageSize,
+    ...queryParams,
+  }
+  // 双判断：showHeart 为 UI 入口，enableMyFavorites 为后端契约开关
+  if (props.showHeart && enableMyFavorites.value) {
+    params.include_favorite_status = true
+  }
+  return await api.post('/gallery/load', params)
 }
 
 const handleLoadMoreClick = () => {

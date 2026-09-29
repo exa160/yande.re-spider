@@ -208,3 +208,6 @@ test_api.py
 .claude/settings.local.json
 backend/data/
 backend/config/
+
+# AI agent 会话状态（非项目代码）
+.omo/

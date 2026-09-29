@@ -8,41 +8,174 @@ from typing import List, Optional
 import requests
 from loguru import logger
 from PIL import Image
+from sqlalchemy import func, select
 
 
 from src.common.constant import CleanupMode
 from src.common.constant import ErrMsg
+from src.common.constant import Rating
 from src.common.constant import path_constant
+from src.common.settings import config
 from src.common.utils import get_error_type_from_exception
 from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
+from src.middleware.session import RequestSessionMiddleware
+from src.models.database.my_favorite import MyFavorite
 from src.models.database.yande import YandeData
 from src.models.request.gallery import GalleryLoadRequest
 from src.models.request.yande import YandeSearchTags
+from src.models.response.gallery import ImageDetail
 
 
 class GalleryService:
     """图库服务类"""
 
     @staticmethod
-    def query_local_database(params: GalleryLoadRequest) -> tuple[List[YandeData], int]:
+    def query_local_database(
+        params: GalleryLoadRequest,
+        include_favorite_status: Optional[bool] = None,
+        random: Optional[bool] = None,
+    ) -> tuple[List[YandeData], int]:
         """
-        查询本地数据库
+        查询本地数据库。
+
+        双判断 (binding constraint)：
+            effective_include_favorite = (req.include_favorite_status
+                                          AND config.favorites.enable_my_favorites)
+            只有两者都为 True 才会 LEFT JOIN my_favorite；其它情况保持原行为。
 
         Args:
-            params: 查询参数字典
+            params: GalleryLoadRequest（含 include_favorite_status / random 字段）
+            include_favorite_status: 覆盖 request.include_favorite_status（None=沿用 request）
+            random: 覆盖 request.random（None=沿用 request）
 
         Returns:
-            (图片列表, 总数)
+            (图片列表, 总数)；effective_include_favorite=True 时每个
+            YandeData 实例会附加运行时属性 is_favorited (True/False)
         """
+        req_include = (
+            include_favorite_status
+            if include_favorite_status is not None
+            else params.include_favorite_status
+        )
+        req_random = random if random is not None else params.random
+        effective_include_favorite = bool(
+            req_include and getattr(config.favorites, "enable_my_favorites", False)
+        )
+
+        if not effective_include_favorite and not req_random:
+            with YandeDataRepository() as repo:
+                repo.YandeDataQueryParams.model_validate(params)
+                images, total = repo.query(
+                    query_params=params,
+                    downloaded_only=True,
+                )
+            return images, total
+
         with YandeDataRepository() as repo:
             repo.YandeDataQueryParams.model_validate(params)
-            images, total = repo.query(
-                query_params=params,
-                downloaded_only=True,
+            images, total = GalleryService._query_local_with_options(
+                repo=repo,
+                params=params,
+                effective_include_favorite=effective_include_favorite,
+                random=req_random,
             )
+        return images, total
+
+    @staticmethod
+    def _query_local_with_options(
+        repo: YandeDataRepository,
+        params: GalleryLoadRequest,
+        effective_include_favorite: bool,
+        random: bool,
+    ) -> tuple[List[YandeData], int]:
+        """自构 SQL：LEFT JOIN my_favorite + 可选 ORDER BY RANDOM() + DISTINCT。
+
+        与 YandeDataRepository.query() 共用同一套 filter_funcs，保证 tags / rating /
+        file_types / size / author 等过滤条件一致。
+        """
+        session = repo.session
+        qp = repo.YandeDataQueryParams.model_validate(params)
+
+        filter_funcs = []
+        if qp.rating and len(qp.rating) != len(Rating):
+            filter_funcs.append(YandeData.rating.in_(qp.rating))
+        filter_funcs.append(YandeData.down_flag.is_(True))
+        for param_name in (
+            "tags",
+            "file_types",
+            "min_width",
+            "max_width",
+            "min_height",
+            "max_height",
+            "min_file_size",
+            "max_file_size",
+            "author",
+        ):
+            v = getattr(qp, param_name, None)
+            if v is None:
+                continue
+            if param_name == "tags":
+                cond = repo._tag_filter(v)
+                if cond is not None:
+                    filter_funcs.append(cond)
+            elif param_name == "file_types":
+                filter_funcs.append(YandeData.file_ext.in_(v))
+            elif param_name == "min_width":
+                filter_funcs.append(YandeData.width >= v)
+            elif param_name == "max_width":
+                filter_funcs.append(YandeData.width <= v)
+            elif param_name == "min_height":
+                filter_funcs.append(YandeData.height >= v)
+            elif param_name == "max_height":
+                filter_funcs.append(YandeData.height <= v)
+            elif param_name == "min_file_size":
+                filter_funcs.append(YandeData.file_size >= v * 1024)
+            elif param_name == "max_file_size":
+                filter_funcs.append(YandeData.file_size <= v * 1024)
+            elif param_name == "author":
+                filter_funcs.append(YandeData.author.contains(v))
+
+        offset = (qp.page - 1) * qp.page_size
+
+        if effective_include_favorite:
+            stmt = (
+                select(YandeData, MyFavorite.id)
+                .outerjoin(MyFavorite, MyFavorite.image_id == YandeData.id)
+                .filter(*filter_funcs)
+            )
+        else:
+            stmt = select(YandeData).filter(*filter_funcs)
+
+        if random:
+            # 用 .distinct() 而非 .distinct(YandeData.id)：后者编译为 PostgreSQL 专属
+            # DISTINCT ON (col)，在 SQLite/MariaDB 上会被静默忽略。
+            stmt = stmt.order_by(func.random()).distinct()
+        else:
+            sort_column = getattr(YandeData, qp.sort_by, YandeData.id)
+            if qp.sort_order == "desc":
+                stmt = stmt.order_by(sort_column.desc())
+            elif qp.sort_order == "asc":
+                stmt = stmt.order_by(sort_column.asc())
+            else:
+                stmt = stmt.order_by(sort_column.desc())
+
+        stmt = stmt.offset(offset).limit(qp.page_size)
+
+        rows = session.execute(stmt).all()
+
+        if effective_include_favorite:
+            images: List[YandeData] = []
+            for yande, fav_id in rows:
+                yande.is_favorited = fav_id is not None  # type: ignore[attr-defined]
+                images.append(yande)
+        else:
+            images = [row[0] for row in rows]
+
+        count_stmt = select(func.count()).select_from(YandeData).filter(*filter_funcs)
+        total = session.execute(count_stmt).scalar() or 0
         return images, total
 
     @staticmethod
@@ -102,6 +235,51 @@ class GalleryService:
             if img["id"] == image_id:
                 return img
         return None
+
+    @staticmethod
+    def get_image_detail(
+        image_id: int, include_favorite_status: bool = False
+    ) -> Optional[ImageDetail]:
+        """
+        根据 ID 获取单张图片详情（双判断 include_favorite_status）。
+
+        双判断 (binding constraint)：
+            effective_include_favorite = (include_favorite_status
+                                          AND config.favorites.enable_my_favorites)
+            只有两者都为 True 时才会查 my_favorite 表；其它情况
+            is_favorited 保持 None。
+
+        与 /gallery/load 的 query_local_database 行为一致：本接口
+        也强制双重判断，保证总开关关闭时不查表。
+
+        Args:
+            image_id: 图片 ID
+            include_favorite_status: 是否附带收藏状态（仍受总开关约束）
+
+        Returns:
+            ImageDetail 实例（包含 is_favorited），不存在返回 None
+        """
+        session = RequestSessionMiddleware.get_session()
+        yande = session.query(YandeData).filter(YandeData.id == image_id).first()
+        if not yande:
+            return None
+
+        is_favorited: Optional[bool] = None
+        effective = bool(
+            include_favorite_status
+            and getattr(config.favorites, "enable_my_favorites", False)
+        )
+        if effective:
+            is_favorited = (
+                session.query(MyFavorite)
+                .filter(MyFavorite.image_id == image_id)
+                .first()
+                is not None
+            )
+
+        return ImageDetail.model_validate(yande).model_copy(
+            update={"is_favorited": is_favorited}
+        )
 
     @staticmethod
     def get_statistics(source: str = "local") -> dict:

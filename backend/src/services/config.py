@@ -6,7 +6,7 @@ from sqlalchemy import URL, create_engine
 
 from src.common import config
 from src.common.constant import path_constant
-from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig
+from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig, FavoritesConfig
 from src.dao.database import engine_change_handler
 
 
@@ -17,6 +17,28 @@ class ConfigService:
     def get_system_config():
         """获取系统配置"""
         return config
+
+    @staticmethod
+    def get_favorites_config() -> FavoritesConfig:
+        """获取收藏夹配置（我的最爱 / 收藏夹 UI 开关 + 显示偏好）"""
+        return config.favorites
+
+    @staticmethod
+    def update_favorites_config(favorites_config: FavoritesConfig) -> bool:
+        """
+        更新收藏夹配置
+
+        Args:
+            favorites_config: 收藏夹配置数据
+
+        Returns:
+            是否成功
+        """
+        try:
+            config.update_config(FavoritesConfig.model_validate(favorites_config))
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def update_api_config(api_config: ApiConfig) -> bool:
@@ -121,7 +143,7 @@ class ConfigService:
         重置配置
 
         Args:
-            section: 配置段 (api/downloader/database)
+            section: 配置段 (api/downloader/database/favorites)
 
         Returns:
             (成功与否, 消息)
@@ -131,6 +153,7 @@ class ConfigService:
             "api": ApiConfig,
             "downloader": DownloaderConfig,
             "database": DatabaseConfig,
+            "favorites": FavoritesConfig,
         }
 
         reset_model = reset_map.get(section)
@@ -139,3 +162,13 @@ class ConfigService:
 
         config.update_config(reset_model())
         return True, "Reset success."
+
+
+def get_favorites_config() -> FavoritesConfig:
+    """模块级获取收藏夹配置便捷函数（与 ConfigService.get_favorites_config 等价）"""
+    return ConfigService.get_favorites_config()
+
+
+def update_favorites_config(favorites_config: FavoritesConfig) -> bool:
+    """模块级更新收藏夹配置便捷函数（与 ConfigService.update_favorites_config 等价）"""
+    return ConfigService.update_favorites_config(favorites_config)

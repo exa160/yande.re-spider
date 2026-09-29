@@ -1,6 +1,19 @@
 <template>
   <div class="favorite-panel">
     <template v-if="mode === 'list'">
+      <!-- 虚拟磁贴区：我的最爱 / 随机浏览（前端 prepend，受 useFavoritesConfig 开关控制） -->
+      <div v-if="virtualTiles.length > 0" class="virtual-tiles-row">
+        <div
+          v-for="tile in virtualTiles"
+          :key="tile.id"
+          class="virtual-tile-wrapper"
+          @click="handleVirtualTileClick(tile)"
+        >
+          <!-- compact-mode：panel 弹窗场景下虚拟磁贴无预览图时不渲染 grid 容器
+               （消除 virtual-tile-wrapper 内的空白占位） -->
+          <FolderTile :folder="tile" :compact-mode="true" />
+        </div>
+      </div>
       <div class="folder-list">
         <div
           v-for="folder in filteredFolders"
@@ -59,7 +72,7 @@
             </span>
           </div>
         </div>
-        <div v-if="folders.length === 0" class="empty-state">
+        <div v-if="foldersProp.length === 0" class="empty-state">
           <el-icon class="empty-icon"><FolderOpened /></el-icon>
           <div class="empty-text">暂无收藏夹</div>
         </div>
@@ -68,7 +81,7 @@
           <div class="empty-text">无匹配收藏夹</div>
         </div>
       </div>
-      <div v-if="folders.length > 0" class="tag-search-bar">
+      <div v-if="foldersProp.length > 0" class="tag-search-bar">
         <el-input
           v-model="folderSearchKeyword"
           placeholder="搜索收藏夹..."
@@ -251,24 +264,67 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, VideoPlay } from '@element-plus/icons-vue'
 import { triggerFolderSchedule } from '@/api/favorites'
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
+import FolderTile from './FolderTile.vue'
 
 const props = defineProps({
-  folders: { type: Array, required: true },
+  // 真实收藏夹列表（与 AdvancedQuery 保持兼容：原 prop 名 `folders` 仍可作为 fallback，
+  // 新代码推荐传 `realFolders`，与设计文档契约一致）
+  realFolders: { type: Array, default: null },
+  folders: { type: Array, default: null },
   colorOptions: { type: Array, required: true },
   sourceMode: { type: String, default: 'local' },
 })
 
-const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'triggered'])
+const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'triggered', 'virtual-tile-click', 'virtual-tile-navigate'])
+
+// 统一 prop 读取：优先 realFolders（新契约），fallback 到 folders（AdvancedQuery 老传法）
+const foldersProp = computed(() => props.realFolders ?? props.folders ?? [])
+
+const { enableMyFavorites, enableRandomBrowse, myFavoritesCount } = useFavoritesConfig()
+
+// 虚拟磁贴 prepend：复用 useFavoriteFoldersList composable（Task 19 重构消除重复实现）
+// 面板列表场景不需要 API 调（与 Gallery folders 视图不同），因此 fetchPreview=false
+// displayFolders 直接绑给模板，保持原行为不变
+const panelPageRef = ref(1)  // 面板总是"第 1 页"语义（prepend 总生效）
+const { displayFolders: displayFoldersList } = useFavoriteFoldersList({
+  realFolders: foldersProp,
+  page: panelPageRef,
+  fetchPreview: false,
+})
+// 兼容模板中既有的 `virtualTiles` 引用：从合并列表里筛出虚拟磁贴
+const virtualTiles = computed(() => displayFoldersList.value.filter(f => f.isVirtual))
+
+// 点击虚拟磁贴 → 让 Gallery 直接调 handleSourceChange 强制刷新。
+// 真实磁贴走原有 handleSelect（emit 'select'），行为不变。
+//
+// 关键设计（修复问题 5、9）：
+// 1. emit 'virtual-tile-click' 让 AdvancedQuery 主动关闭弹窗（showFavoritePanel=false），
+//    否则弹窗仍遮罩在 Gallery 之上，用户看不到主界面的瀑布流变化。
+// 2. emit 'virtual-tile-navigate' 让 Gallery 直接 handleSourceChange 强制刷新：
+//    - 绕过 vue-router 对同 url push 不发 navigation 事件的限制（重复点击失效）
+//    - 不污染 URL：之前 router.push 写 ?querySource=my-favorites 后，用户切回 favorites
+//      再点我的收藏 → URL 仍带旧 querySource → vue-router 检测到同 url 不发事件 →
+//      失效。新设计只 emit，URL 保持干净（state 由 localStorage 持久化 + URL 仅初始入口）
+function handleVirtualTileClick(tile) {
+  emit('virtual-tile-click', tile)
+  if (tile.id === 'my-favorites') {
+    emit('virtual-tile-navigate', 'my-favorites')
+  } else if (tile.id === 'random') {
+    emit('virtual-tile-navigate', 'random')
+  }
+}
 
 const mode = ref('list')
 const editingFolder = ref(null)
 
-// 编辑模式：从 props.folders 派生最新的 folder 对象（按 id 匹配）。
+// 编辑模式：从 foldersProp 派生最新的 folder 对象（按 id 匹配）。
 // 这样父组件刷新 favoriteFolders 后，编辑面板上的 last_synced_id 等字段自动同步，
 // 避免持久的旧引用导致"重置游标后仍显示未初始化"的问题。
 const currentEditingFolder = computed(() => {
   if (!editingFolder.value) return null
-  return props.folders.find(f => f.id === editingFolder.value.id) || editingFolder.value
+  return foldersProp.value.find(f => f.id === editingFolder.value.id) || editingFolder.value
 })
 
 // 通知父组件 mode 变化 (父组件用此隐藏 panel-header 等装饰性头部)
@@ -449,9 +505,10 @@ const formatLastScheduled = (dt) => {
 
 // 按 name / tags 过滤收藏夹（纯前端，零后端调用）
 const filteredFolders = computed(() => {
+  const list = foldersProp.value || []
   const kw = folderSearchKeyword.value.trim().toLowerCase()
-  if (!kw) return props.folders
-  return props.folders.filter(f =>
+  if (!kw) return list
+  return list.filter(f =>
     (f.name || '').toLowerCase().includes(kw) ||
     (f.tags || '').toLowerCase().includes(kw)
   )
@@ -589,6 +646,20 @@ defineExpose({ openCreate, openEdit, cancelForm })
   min-height: 0;
   overflow-y: auto;
   padding: 4px 0;
+}
+
+/* 虚拟磁贴（我的最爱 / 随机浏览）横排，紧贴列表上方 */
+.virtual-tiles-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color, #ebeef5);
+}
+.virtual-tile-wrapper {
+  flex: 0 1 calc(50% - 4px);
+  min-width: 140px;
+  cursor: pointer;
 }
 
 .folder-item {

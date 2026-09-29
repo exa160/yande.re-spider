@@ -23,6 +23,14 @@
       >
         数据库配置
       </div>
+      <!-- Task 19：收藏夹单独分页，置于高级功能之上；3 个新开关 + 5 个迁移偏好全在此 -->
+      <div 
+        class="menu-item" 
+        :class="{ active: activeMenu === 'favorites' }"
+        @click="activeMenu = 'favorites'"
+      >
+        收藏夹配置
+      </div>
       <div 
         class="menu-item" 
         :class="{ active: activeMenu === 'advanced' }"
@@ -255,12 +263,17 @@
           </div>
         </div>
 
-        <!-- 收藏夹 section（卡片化布局，与缓存更新一致） -->
-        <div class="advanced-section">
+        <!-- Task 19：收藏夹独立分页（已从高级里抽出，置于高级之上） -->
+      </div>
+
+      <!-- Task 19：收藏夹独立分页（放在高级之上，避免与高级功能混合导致配置散乱） -->
+      <div v-show="activeMenu === 'favorites'" class="config-section favorites-section">
+        <div class="favorites-inner-section">
           <div class="advanced-title">收藏夹</div>
-          <div class="advanced-desc">配置收藏夹按钮显示与每文件夹预览图数量</div>
+          <div class="advanced-desc">配置收藏夹按钮显示、我的最爱 / 随机浏览总开关，以及每文件夹预览图数量</div>
 
           <div class="refresh-controls">
+            <!-- 主页显示收藏夹（入口显隐，收藏夹模块总开关） -->
             <div class="refresh-item">
               <div class="refresh-info">
                 <div class="refresh-name">主页显示收藏夹</div>
@@ -269,6 +282,47 @@
                     <el-radio-button label="hidden">关闭</el-radio-button>
                     <el-radio-button label="shown">开启</el-radio-button>
                     <el-radio-button label="default">默认显示</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <!-- 我的最爱总开关：关闭时后端 include_favorite_status 联动不连表，避免 DB 开销 -->
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">我的最爱</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.enableMyFavorites" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">在线图片收藏自动下载</div>
+                <div class="refresh-params">
+                  <el-radio-group
+                    v-model="favoritesForm.enableFavoriteAutodownload"
+                    size="small"
+                    :disabled="!favoritesForm.enableMyFavorites"
+                  >
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">随机浏览</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.enableRandomBrowse" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
                   </el-radio-group>
                 </div>
               </div>
@@ -325,6 +379,17 @@
                 </div>
               </div>
             </div>
+
+            <div class="favorites-save-row">
+              <el-button
+                type="primary"
+                size="small"
+                :loading="savingFavorites"
+                @click="saveFavorites"
+              >
+                保存收藏夹配置
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -346,7 +411,7 @@ import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import PreviewCleanupDialog from '@/components/PreviewCleanupDialog.vue'
 import HeadersEditorDialog from '@/components/HeadersEditorDialog.vue'
-import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useFavoritesConfig, saveFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 // 编译时注入的版本号 - 单一来源 (vite.config.js define 替换)
 const appVersion = __APP_VERSION__
@@ -386,7 +451,16 @@ const saving = ref(false)
 const activeMenu = ref('api')
 
 // 收藏夹 UI 配置（与 Gallery 共享 singleton composable）
-const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize } = useFavoritesConfig()
+const {
+  buttonMode,
+  tileSize,
+  previewOrder,
+  includeOnline,
+  folderPageSize,
+  enableMyFavorites,
+  enableRandomBrowse,
+  enableFavoriteAutodownload,
+} = useFavoritesConfig()
 // 本地表单：用 composable 初值初始化，watch 同步回 composable
 // （不直接 v-model 到 composable，避免 Gallery 端外部修改造成循环）
 const favoritesForm = reactive({
@@ -395,6 +469,9 @@ const favoritesForm = reactive({
   previewOrder: previewOrder.value,
   includeOnline: includeOnline.value,
   folderPageSize: folderPageSize.value,
+  enableMyFavorites: enableMyFavorites.value,
+  enableRandomBrowse: enableRandomBrowse.value,
+  enableFavoriteAutodownload: enableFavoriteAutodownload.value,
 })
 watch(favoritesForm, (val) => {
   if (buttonMode.value !== val.buttonMode) {
@@ -412,7 +489,38 @@ watch(favoritesForm, (val) => {
   if (folderPageSize.value !== val.folderPageSize) {
     folderPageSize.value = val.folderPageSize
   }
+  if (enableMyFavorites.value !== val.enableMyFavorites) {
+    enableMyFavorites.value = val.enableMyFavorites
+  }
+  if (enableRandomBrowse.value !== val.enableRandomBrowse) {
+    enableRandomBrowse.value = val.enableRandomBrowse
+  }
+  if (enableFavoriteAutodownload.value !== val.enableFavoriteAutodownload) {
+    enableFavoriteAutodownload.value = val.enableFavoriteAutodownload
+  }
 })
+// 保存收藏夹配置（4 个新开关 + 5 个迁移偏好 → PUT /config/favorites）
+const savingFavorites = ref(false)
+async function saveFavorites() {
+  savingFavorites.value = true
+  try {
+    await saveFavoritesConfig({
+      enable_my_favorites: favoritesForm.enableMyFavorites,
+      enable_random_browse: favoritesForm.enableRandomBrowse,
+      enable_favorite_autodownload: favoritesForm.enableFavoriteAutodownload,
+      button_mode: favoritesForm.buttonMode,
+      tile_size: favoritesForm.tileSize,
+      preview_order: favoritesForm.previewOrder,
+      include_online: favoritesForm.includeOnline,
+      folder_page_size: favoritesForm.folderPageSize,
+    })
+    ElMessage.success('收藏夹配置已保存')
+  } catch (error) {
+    ElMessage.error('保存收藏夹配置失败')
+  } finally {
+    savingFavorites.value = false
+  }
+}
 
 // 窄屏下代理模式 segmented 垂直堆叠（<540px）
 const SEGMENTED_VERTICAL_BREAKPOINT = 540
@@ -1015,6 +1123,13 @@ onUnmounted(() => {
 .param-tip {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* 收藏夹 section 保存按钮 */
+.favorites-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 /* 暗色模式适配 */

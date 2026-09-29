@@ -81,7 +81,7 @@ const elementStubs = {
 const FavoritePanelStub = {
   name: 'FavoritePanel',
   props: ['folders', 'colorOptions', 'sourceMode'],
-  emits: ['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change'],
+  emits: ['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'virtual-tile-click', 'virtual-tile-navigate'],
   template: '<div class="favorite-panel-stub"><slot/></div>',
 }
 
@@ -222,10 +222,8 @@ describe('AdvancedQuery.vue defineExpose', () => {
     const wrapper = factory({ mode: 'favorites-folder-detail', sourceMode: 'favorites' })
     expect(typeof wrapper.vm.setIncludeOnline).toBe('function')
 
-    // 打开 advanced-panel 后第一次搜索（用 reset 干净状态）
-    wrapper.vm.reset()
-    await flushPromises()
-
+    // 模拟用户先选中具体收藏夹（folder chip 锁定），再切换 includeOnline
+    wrapper.vm.selectedFavorite = { id: 7, name: 'cat', tags: 'cat' }
     await wrapper.vm.setIncludeOnline(true)
     expect(wrapper.vm.includeOnline).toBe(true)
 
@@ -271,5 +269,78 @@ describe('AdvancedQuery.vue defineExpose', () => {
 
     // 全清空
     expect(wrapper.vm.selectedFavorite).toBeNull()
+  })
+})
+
+describe('AdvancedQuery.vue virtualFavorite chip（我的最爱 / 随机浏览）', () => {
+  beforeEach(() => {
+    globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+      unobserve: vi.fn(),
+    }))
+  })
+
+  it('virtualFavorite=null 时不显示 chip（普通 gallery / favorites-folders 视图）', () => {
+    const wrapper = factory({ virtualFavorite: null })
+    expect(wrapper.find('.virtual-favorite-tag').exists()).toBe(false)
+  })
+
+  it('virtualFavorite={ id: "my-favorites", name: "我的最爱" } 显示 "★ 我的最爱" + 🔒 锁定 chip', () => {
+    const wrapper = factory({ virtualFavorite: { id: 'my-favorites', name: '我的最爱' } })
+    const chip = wrapper.find('.virtual-favorite-tag')
+    expect(chip.exists()).toBe(true)
+    expect(chip.text()).toContain('★ 我的最爱')
+    // chip 是锁定的上下文标识，没有 input-tag-close（与 selectedFavorite 的 lockFavoriteChip=true 一致）
+    expect(chip.find('.input-tag-close').exists()).toBe(false)
+    // lock-icon 应存在（与 favorites folder-detail 的 selectedFavorite chip 一致）
+    expect(chip.find('.lock-icon').exists()).toBe(true)
+  })
+
+  it('virtualFavorite={ id: "random", name: "随机浏览" } 显示 "★ 随机浏览" + 🔒 锁定 chip', () => {
+    const wrapper = factory({ virtualFavorite: { id: 'random', name: '随机浏览' } })
+    const chip = wrapper.find('.virtual-favorite-tag')
+    expect(chip.exists()).toBe(true)
+    expect(chip.text()).toContain('★ 随机浏览')
+    expect(chip.find('.lock-icon').exists()).toBe(true)
+    expect(chip.find('.input-tag-close').exists()).toBe(false)
+  })
+
+  it('virtual favorite chip 不再 emit virtual-favorite-remove（X 入口已废弃，返回改用 BackButton）', () => {
+    const wrapper = factory({ virtualFavorite: { id: 'my-favorites', name: '我的最爱' } })
+    expect(wrapper.emitted('virtual-favorite-remove')).toBeFalsy()
+  })
+
+  it('virtualFavorite 与 selectedFavorite 互斥（virtualFavorite 优先）', async () => {
+    // 罕见场景：selectedFavorite 残留时 virtualFavorite 应覆盖
+    const wrapper = factory({
+      mode: 'favorites-folder-detail',
+      virtualFavorite: { id: 'random', name: '随机浏览' },
+    })
+    await wrapper.vm.selectFavorite({ id: 1, name: '真实收藏夹', tags: 'tag1' })
+    await flushPromises()
+
+    // 真实 favorite chip 不应显示（virtualFavorite 优先）
+    expect(wrapper.findAll('.favorite-tag:not(.virtual-favorite-tag)').length).toBe(0)
+    // 虚拟 favorite chip 应显示
+    expect(wrapper.find('.virtual-favorite-tag').exists()).toBe(true)
+  })
+
+  it('转发 FavoritePanel @virtual-tile-navigate 给父组件（修复问题 5：弹窗内重复点击失效）', async () => {
+    // 打开弹窗让 FavoritePanelStub 可被触发（mode='gallery' + 点击收藏夹按钮）
+    const wrapper = factory({ mode: 'gallery' })
+    const folderBtn = wrapper.findAll('button').find(b => b.element.title === '收藏夹')
+    await folderBtn.trigger('click')
+    await flushPromises()
+
+    // 模拟 FavoritePanel 转发：直接 emit virtual-tile-navigate 给 AdvancedQuery
+    //   （spec 用 stub，绕过 router push；这里测的是 AdvancedQuery 的转发逻辑）
+    const panelStub = wrapper.findComponent(FavoritePanelStub)
+    await panelStub.vm.$emit('virtual-tile-navigate', 'my-favorites')
+    await flushPromises()
+
+    // AdvancedQuery 应把该事件转发给父组件 Gallery
+    expect(wrapper.emitted('virtual-tile-navigate')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-navigate').at(-1)[0]).toBe('my-favorites')
   })
 })

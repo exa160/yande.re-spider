@@ -36,6 +36,13 @@ class ImageDetail(BaseModel):
     md5: str = Field(description="MD5 哈希值")
     score: Optional[int] = Field(description="评分")
     down_flag: bool = Field(description="是否已下载")
+    is_favorited: Optional[bool] = Field(
+        default=None,
+        description=(
+            "是否已加入我的最爱；仅 include_favorite_status=True 时由 service "
+            "LEFT JOIN my_favorite 后置入 True/False，否则保持 None"
+        ),
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

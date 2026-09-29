@@ -56,6 +56,17 @@ class GalleryLoadRequest(BaseModel):
         False,
         description="source='favorites' 时是否同时合并在线内容（与 local 去重合并）",
     )
+    include_favorite_status: bool = Field(
+        default=False,
+        description=(
+            "True 时响应中每个图片附带 is_favorited 字段（LEFT JOIN my_favorite）。"
+            "最终是否真的连表 = 此字段 AND config.favorites.enable_my_favorites（双判断）"
+        ),
+    )
+    random: bool = Field(
+        default=False,
+        description="True 时使用 ORDER BY RANDOM() + DISTINCT image_id 返回随机图片（仅 local source 生效）",
+    )
 
 
 class CleanupPreviewsRequest(BaseModel):
