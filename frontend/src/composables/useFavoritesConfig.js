@@ -58,6 +58,29 @@ const state = {
 // 是否已注册 watcher（module-scope，避免重复注册）
 let watcherInitialized = false
 
+// 首次 GET /config/favorites 的 Promise（useFavoritesConfig() 首次调用时创建）。
+// 消费方通过 whenFavoritesConfigReady() 等待配置落定，保证首屏请求携带的收藏夹相关
+// 参数（如 /gallery/load 的 include_favorite_status）与后端配置一致——
+// 修复「刷新页面时配置未返回 → 参数缺失，之后再点 tab → 参数存在」的不一致问题。
+let configFetchPromise = null
+
+/**
+ * 等待首次 GET /config/favorites 落定（成功或失败均 resolve，内部 catch 已吞掉错误，
+ * 后端不可达时不阻塞首屏）。
+ *
+ * 若 useFavoritesConfig() 尚未被调用过（Promise 未创建），立即 resolve。
+ *
+ * 典型用法（Gallery.vue onMounted）：
+ *   await whenFavoritesConfigReady()
+ *   // 此时 enableMyFavorites 已是后端真实值，首屏 /gallery/load 与后续
+ *   // 点击「本地」tab 触发的请求携带相同的 include_favorite_status
+ *
+ * @returns {Promise<void>}
+ */
+export function whenFavoritesConfigReady() {
+  return configFetchPromise || Promise.resolve()
+}
+
 /**
  * 每次调用都重新读 localStorage legacy key（与 v1 行为一致：LS 是 5 个 UI 偏好的事实来源）
  *
@@ -225,7 +248,7 @@ export function useFavoritesConfig() {
     state.loaded.value = true
 
     // 2) 仅首次调用异步拉取后端最新值（成功则覆盖 LS 兜底；字段缺失则保持 LS / default）
-    api.get('/config/favorites').then((res) => {
+    configFetchPromise = api.get('/config/favorites').then((res) => {
       const c = res && res.data
       if (!c || typeof c !== 'object') return
       // 防御性赋值：仅当字段存在且值合法时才覆盖（避免 mock 返回的无关 schema 污染 ref）

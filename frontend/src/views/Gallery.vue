@@ -375,7 +375,7 @@ import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import { myFavoritesApi } from '@/api/myFavorites'
 import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
-import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useFavoritesConfig, whenFavoritesConfigReady } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 
 const images = ref([])
@@ -1399,15 +1399,33 @@ const getDetailUrl = (image) => {
 }
 
 // 页面加载时自动查询本地
-onMounted(() => {
+onMounted(async () => {
   // 行为变更：mount 阶段不再根据 buttonMode 强制覆盖 querySource
   //   之前 buttonMode='default' 会强制 querySource = 'favorites'，无视 gallery_source 持久化值
   //   现统一保持 gallery_source 持久化值（默认 'local'）
   // buttonMode='default' 仍保留运行时切换语义：用户在 Config.vue 改 buttonMode 到 'default' 时
   //   由 Gallery.vue:686-690 的 watch(buttonMode) 触发跳 favorites
-  if (querySource.value === 'favorites') {
+  //
+  // 修复「刷新页面 vs 点击左上角 tab 收藏夹参数不一致」：
+  //   enableMyFavorites 只持久化在后端（GET /config/favorites），localStorage 不含该开关。
+  //   之前 mount 立即 handleSearch({})，此时配置尚未返回 → 首屏 /gallery/load 不带
+  //   include_favorite_status；用户稍后点击「本地」tab 时配置已就绪 → 同一请求却带
+  //   include_favorite_status=true。两条路径参数不一致（刷新后首屏红心状态缺失）。
+  //   现等待配置落定再做首屏加载，保证两条路径携带一致的收藏夹参数。
+  const startedInFavorites = querySource.value === 'favorites'
+  if (startedInFavorites) {
+    folderLoading.value = true
+  } else {
+    loading.value = true
+  }
+  await whenFavoritesConfigReady()
+  if (startedInFavorites) {
     favoritesView.value = 'folders'
     loadFolders(1)
+  } else if (querySource.value === 'favorites') {
+    // 等待配置期间 watch(buttonMode='default') 已切到 favorites 并触发过 loadFolders，
+    // 不再重复加载；回滚预置的 loading（favorites 视图用的是 folderLoading）
+    loading.value = false
   } else {
     handleSearch({})
   }
