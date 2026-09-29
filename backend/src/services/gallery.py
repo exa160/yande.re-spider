@@ -33,6 +33,45 @@ class GalleryService:
     """图库服务类"""
 
     @staticmethod
+    def _favorite_status_enabled(include_flag: Optional[bool]) -> bool:
+        """我的最爱总开关双判断（binding constraint）。
+
+        effective_include_favorite = include_favorite_status
+                                      AND config.favorites.enable_my_favorites
+
+        前端只在 enableMyFavorites=true 时才发该参数；后端再独立判一次总开关，
+        保证总开关关闭时任何路径都不会查 my_favorite（零 DB 开销）。
+        本地（LEFT JOIN）与在线（IN 批量查询）两条路径共用此判定，避免出现第三份副本。
+        """
+        return bool(
+            include_flag and getattr(config.favorites, "enable_my_favorites", False)
+        )
+
+    @staticmethod
+    def _attach_favorite_status(session, images: list) -> None:
+        """一次 IN 批量查询给图片挂 is_favorited 运行时属性（True/False）。
+
+        用于在线浏览与 include_online 合并路径：这些图片来自 upsert，不带
+        LEFT JOIN 结果，只能按 id 批量查一次 my_favorite。走 image_id UNIQUE
+        索引，比本地那条 LEFT JOIN 更轻。
+
+        依赖 expire_on_commit=False（dao/database.py）：调用点在 with 块内，
+        属性为 transient，不会被 SQLAlchemy 当作脏字段写回。
+        """
+        ids = [img.id for img in images]
+        if not ids:
+            return
+        favorited = set(
+            session.execute(
+                select(MyFavorite.image_id).where(MyFavorite.image_id.in_(ids))
+            )
+            .scalars()
+            .all()
+        )
+        for img in images:
+            img.is_favorited = img.id in favorited  # type: ignore[attr-defined]
+
+    @staticmethod
     def query_local_database(
         params: GalleryLoadRequest,
         include_favorite_status: Optional[bool] = None,
@@ -210,9 +249,13 @@ class GalleryService:
             return [], 0
 
         with YandeDataRepository() as repo:
-            # 批量 upsert（一次数据库操作），并返回当前记录的 down_flag
-            down_flags = repo.upsert_batch_with_down_flags(yande_data.model_dump())
-        return down_flags, len(down_flags)
+            # 批量 upsert（一次数据库操作），并返回当前记录
+            images = repo.upsert_batch_with_down_flags(yande_data.model_dump())
+            # 在线浏览同样需要收藏状态：upsert 走的是 on_conflict_do_update，
+            # 不会带出 my_favorite 信息，必须按 id 补查一次
+            if GalleryService._favorite_status_enabled(params.include_favorite_status):
+                GalleryService._attach_favorite_status(repo.session, images)
+        return images, len(images)
 
     @staticmethod
     def get_image_by_id(image_id: int, source: str = "local") -> Optional[dict]:
