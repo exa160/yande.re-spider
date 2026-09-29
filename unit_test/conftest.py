@@ -44,9 +44,17 @@ def _protect_sqlite_db():
     db_path = path_constant.sqlite_file
     backup_path = db_path.with_name(db_path.name + ".pytest_bak")
 
+    # 新 clone / CI 上 backend/data/ 整个目录都不存在（被 .gitignore 排除），
+    # 此时无库可备份。必须先判存在性，否则下面 copy2 会在 setup 抛
+    # FileNotFoundError，autouse 会让该目录下每个测试都失败。
+    if not db_path.exists():
+        yield
+        return
+
     # setup: 备份（copy2 保留 mtime，copy2 已存在会自动覆盖）
     shutil.copy2(db_path, backup_path)
 
+    restore_ok = False
     try:
         yield
     finally:
@@ -57,7 +65,9 @@ def _protect_sqlite_db():
             if _cached_engine is not None:
                 _cached_engine.dispose()
             shutil.copy2(backup_path, db_path)
+            restore_ok = True
         finally:
-            # 清理备份文件（无论还原是否成功都执行）
-            if backup_path.exists():
+            # 仅在还原成功后清理备份。还原失败时必须保留 .pytest_bak，
+            # 否则生产库处于被测试改动后的状态且备份已删，无法手工恢复。
+            if restore_ok and backup_path.exists():
                 backup_path.unlink()
