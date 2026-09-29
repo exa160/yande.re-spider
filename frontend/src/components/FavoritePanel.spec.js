@@ -23,10 +23,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-// router mock：必须在 FavoritePanel import 之前（vi.mock hoist）
-const routerPush = vi.fn()
+// router mock：使用 router 仅用于 useRoute 上下文（FavoritePanel 已不再用 useRouter）
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: routerPush }),
+  useRouter: () => ({ push: vi.fn() }),
   useRoute: () => ({}),
   createRouter: vi.fn(),
   createWebHistory: vi.fn(),
@@ -75,7 +74,7 @@ beforeEach(() => {
   cfg.enableMyFavorites.value = false
   cfg.enableRandomBrowse.value = false
   cfg.myFavoritesCount.value = 0
-  routerPush.mockClear()
+  // 注意：FavoritePanel 不再 router.push（URL 污染修复），故此处不验证 router.push 调用
 })
 
 describe('FavoritePanel.vue 虚拟磁贴 prepend', () => {
@@ -125,7 +124,7 @@ describe('FavoritePanel.vue 虚拟磁贴 prepend', () => {
     expect(wrapper.text()).not.toContain('随机浏览')
   })
 
-  it('点击「我的最爱」虚拟磁贴 → router.push 包含 querySource=my-favorites', async () => {
+  it('点击「我的最爱」虚拟磁贴 → emit virtual-tile-click + emit virtual-tile-navigate（修复问题 3、5、9：URL 污染 + 重复点击失效）', async () => {
     const cfg = useFavoritesConfig()
     cfg.enableMyFavorites.value = true
 
@@ -136,15 +135,22 @@ describe('FavoritePanel.vue 虚拟磁贴 prepend', () => {
     expect(myFavTile.exists()).toBe(true)
     await myFavTile.trigger('click')
 
-    expect(routerPush).toHaveBeenCalledTimes(1)
-    const arg = routerPush.mock.calls[0][0]
-    expect(arg).toBeTypeOf('object')
-    expect(arg.path).toBe('/')
-    expect(arg.query).toBeTypeOf('object')
-    expect(arg.query.querySource).toBe('my-favorites')
+    // emit 'virtual-tile-click' 让 AdvancedQuery 关闭弹窗
+    expect(wrapper.emitted('virtual-tile-click')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-click').length).toBe(1)
+    expect(wrapper.emitted('virtual-tile-click')[0][0].id).toBe('my-favorites')
+
+    // emit 'virtual-tile-navigate' 让 Gallery handleSourceChange 强制刷新（绕过 vue-router 同 url 不发事件的限制）
+    expect(wrapper.emitted('virtual-tile-navigate')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-navigate').length).toBe(1)
+    expect(wrapper.emitted('virtual-tile-navigate')[0][0]).toBe('my-favorites')
+
+    // 不再 router.push（修复问题 9：URL 污染 + 返回后我的收藏点击失效）
+    //   之前的实现：router.push 同 url 写 querySource 到 URL → 用户切回 favorites 再点我的收藏 → vue-router 检测到同 url 不发事件 → 失效
+    //   新实现：仅 emit，URL 保持干净（state 由 localStorage 持久化 + URL 仅作为分享链接初始入口）
   })
 
-  it('点击「随机浏览」虚拟磁贴 → router.push 包含 querySource=random', async () => {
+  it('点击「随机浏览」虚拟磁贴 → emit virtual-tile-click + emit virtual-tile-navigate', async () => {
     const cfg = useFavoritesConfig()
     cfg.enableRandomBrowse.value = true
 
@@ -155,12 +161,15 @@ describe('FavoritePanel.vue 虚拟磁贴 prepend', () => {
     expect(randomTile.exists()).toBe(true)
     await randomTile.trigger('click')
 
-    expect(routerPush).toHaveBeenCalledTimes(1)
-    const arg = routerPush.mock.calls[0][0]
-    expect(arg).toBeTypeOf('object')
-    expect(arg.path).toBe('/')
-    expect(arg.query).toBeTypeOf('object')
-    expect(arg.query.querySource).toBe('random')
+    // emit 'virtual-tile-click' 让 AdvancedQuery 关闭弹窗
+    expect(wrapper.emitted('virtual-tile-click')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-click').length).toBe(1)
+    expect(wrapper.emitted('virtual-tile-click')[0][0].id).toBe('random')
+
+    // emit 'virtual-tile-navigate' 让 Gallery handleSourceChange 强制刷新
+    expect(wrapper.emitted('virtual-tile-navigate')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-navigate').length).toBe(1)
+    expect(wrapper.emitted('virtual-tile-navigate')[0][0]).toBe('random')
   })
 
   it('两个开关同时开启时 prepend 两个虚拟磁贴，按「我的最爱 → 随机浏览」顺序', async () => {

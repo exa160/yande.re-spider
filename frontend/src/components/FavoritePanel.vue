@@ -9,7 +9,9 @@
           class="virtual-tile-wrapper"
           @click="handleVirtualTileClick(tile)"
         >
-          <FolderTile :folder="tile" />
+          <!-- compact-mode：panel 弹窗场景下虚拟磁贴无预览图时不渲染 grid 容器
+               （消除 virtual-tile-wrapper 内的空白占位） -->
+          <FolderTile :folder="tile" :compact-mode="true" />
         </div>
       </div>
       <div class="folder-list">
@@ -259,7 +261,6 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, VideoPlay } from '@element-plus/icons-vue'
 import { triggerFolderSchedule } from '@/api/favorites'
@@ -276,12 +277,11 @@ const props = defineProps({
   sourceMode: { type: String, default: 'local' },
 })
 
-const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'triggered'])
+const emit = defineEmits(['select', 'longPress', 'create', 'update', 'delete', 'reset-sync', 'mode-change', 'triggered', 'virtual-tile-click', 'virtual-tile-navigate'])
 
 // 统一 prop 读取：优先 realFolders（新契约），fallback 到 folders（AdvancedQuery 老传法）
 const foldersProp = computed(() => props.realFolders ?? props.folders ?? [])
 
-const router = useRouter()
 const { enableMyFavorites, enableRandomBrowse, myFavoritesCount } = useFavoritesConfig()
 
 // 虚拟磁贴 prepend：复用 useFavoriteFoldersList composable（Task 19 重构消除重复实现）
@@ -296,13 +296,23 @@ const { displayFolders: displayFoldersList } = useFavoriteFoldersList({
 // 兼容模板中既有的 `virtualTiles` 引用：从合并列表里筛出虚拟磁贴
 const virtualTiles = computed(() => displayFoldersList.value.filter(f => f.isVirtual))
 
-// 点击虚拟磁贴 → 跳到 Gallery 并通过 query 告知 Task 17 router 处理 querySource。
+// 点击虚拟磁贴 → 让 Gallery 直接调 handleSourceChange 强制刷新。
 // 真实磁贴走原有 handleSelect（emit 'select'），行为不变。
+//
+// 关键设计（修复问题 5、9）：
+// 1. emit 'virtual-tile-click' 让 AdvancedQuery 主动关闭弹窗（showFavoritePanel=false），
+//    否则弹窗仍遮罩在 Gallery 之上，用户看不到主界面的瀑布流变化。
+// 2. emit 'virtual-tile-navigate' 让 Gallery 直接 handleSourceChange 强制刷新：
+//    - 绕过 vue-router 对同 url push 不发 navigation 事件的限制（重复点击失效）
+//    - 不污染 URL：之前 router.push 写 ?querySource=my-favorites 后，用户切回 favorites
+//      再点我的收藏 → URL 仍带旧 querySource → vue-router 检测到同 url 不发事件 →
+//      失效。新设计只 emit，URL 保持干净（state 由 localStorage 持久化 + URL 仅初始入口）
 function handleVirtualTileClick(tile) {
+  emit('virtual-tile-click', tile)
   if (tile.id === 'my-favorites') {
-    router.push({ path: '/', query: { querySource: 'my-favorites' } })
+    emit('virtual-tile-navigate', 'my-favorites')
   } else if (tile.id === 'random') {
-    router.push({ path: '/', query: { querySource: 'random' } })
+    emit('virtual-tile-navigate', 'random')
   }
 }
 

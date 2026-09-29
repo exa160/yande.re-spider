@@ -19,7 +19,7 @@
           </el-button>
           <el-button
             v-if="buttonMode !== 'hidden' && querySource !== 'yande'"
-            :type="querySource === 'favorites' ? 'primary' : ''"
+            :type="isFavoritesActive ? 'primary' : ''"
             @click="handleSourceChange('favorites')"
           >
             收藏夹
@@ -91,16 +91,18 @@
 
     <!-- 搜索组件（独立于 toolbar） -->
     <BackButton
-      :visible="querySource === 'favorites' && favoritesView === 'folder-detail'"
-      @click="handleBackToFolders"
+      :visible="isBackVisible"
+      @click="handleBackClick"
     />
     <AdvancedQuery
       @search="handleSearch"
       @favorites-filter="handleFavoritesFilter"
+      @virtual-tile-navigate="handleVirtualTileNavigate"
       ref="queryRef"
       :source-mode="querySource"
       :mode="modeProp"
       :lock-favorite-chip="favoritesView === 'folder-detail'"
+      :virtual-favorite="virtualSelectedFavorite"
     />
 
     <!-- 瀑布流图库组件 -->
@@ -360,7 +362,7 @@ import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { ElImageViewer } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, ArrowUp, ArrowDown, Loading, MagicStick, Menu } from '@element-plus/icons-vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import FolderTile from '@/components/FolderTile.vue'
@@ -401,6 +403,7 @@ let folderSearchDebounce = null
 // v2 优先级：route.query.querySource 优先（FavoritePanel 虚拟磁点击中后 router.push 会带 query），
 // 否则读 localStorage 的 gallery_source，否则默认 'local'
 const route = useRoute()
+const router = useRouter()
 const initialSource = (() => {
   const fromRoute = route?.query?.querySource
   if (typeof fromRoute === 'string' && fromRoute) {
@@ -412,6 +415,19 @@ const initialSource = (() => {
 })()
 const querySource = ref(initialSource)
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
+
+// 虚拟 favorite chip（搜索栏显示用）—— 基于 querySource 派生：
+//   - 'my-favorites' → 显示 "★ 我的最爱"
+//   - 'random'       → 显示 "★ 随机浏览"
+//   - 其它           → null（不显示 chip）
+// 与 selectedFavorite（真实收藏夹 chip）互斥：favorites → 虚拟视图时 handleSourceChange
+// 已 _clearSelectedFavoriteNoSearch 清空 selectedFavorite；favorites folder-detail 时
+// virtualSelectedFavorite 必为 null（querySource='favorites'）。
+const VIRTUAL_FAVORITES = {
+  'my-favorites': { id: 'my-favorites', name: '我的最爱' },
+  'random': { id: 'random', name: '随机浏览' },
+}
+const virtualSelectedFavorite = computed(() => VIRTUAL_FAVORITES[querySource.value] || null)
 
 // 收藏夹 UI 配置（singleton composable，跨组件共享 + localStorage 持久化）
 // - buttonMode: 'hidden' / 'shown' / 'default'（default → 进首页直接跳 favorites）
@@ -852,17 +868,27 @@ const handleSearch = async (searchData) => {
     Number.isInteger(favoriteIdNum) && favoriteIdNum > 0 && String(favoriteIdNum) === String(searchData.favorite.id)
   const injectedFavoriteId = hasValidFavoriteId ? favoriteIdNum : undefined
 
+  // 模式降级：searchData.mode='favorites' 但未传有效 favorite_id（用户在收藏夹 tab
+  // 没选具体 folder 就点了搜索）→ 后端 favorites 分支必然返回空。降级为 'local'
+  // 至少用当前 tags/评分/排序拉本地 DB，避免误发 /gallery/load source='favorites' 无效请求。
+  const requestedMode = searchData.mode
+  const effectiveMode =
+    requestedMode === 'favorites' && injectedFavoriteId === undefined ? 'local' : requestedMode
+
   let params
-  if (searchData.mode) {
-    params = { ...searchData.params, source: searchData.mode }
+  if (effectiveMode) {
+    // 模式分支：effectiveMode 是 AdvancedQuery 内部传入的 source 候选值（'local' / 'yande' / 'favorites' / 'random'）
+    // 同 loadImages 防护：'random' 映射到 'local'（随机浏览走本地随机抽样，由 random=true 触发）
+    params = { ...searchData.params, source: effectiveMode === 'random' ? 'local' : effectiveMode }
     // source='favorites' 时注入 favorite_id（后端用其定位 folder → 取其 tags）
-    if (searchData.mode === 'favorites' && injectedFavoriteId !== undefined) {
+    if (effectiveMode === 'favorites' && injectedFavoriteId !== undefined) {
       params.favorite_id = injectedFavoriteId
     }
   } else {
     // 仅当 source 解析为 favorites 且 favorite_id 合法时才注入，避免切 querySource 时
     // 残留的 favorite/搜索组合把脏 favorite_id 写进 queryParams（后续 loadImages 会带出去 → 422）
-    const resolvedSource = querySource.value
+    // 'random' 同 loadImages 映射到 'local'
+    const resolvedSource = querySource.value === 'random' ? 'local' : querySource.value
     const shouldInjectFavorite = resolvedSource === 'favorites' && injectedFavoriteId !== undefined
     params = { ...searchData, source: resolvedSource }
     if (shouldInjectFavorite) {
@@ -958,7 +984,63 @@ const handleFavoritesFilter = (value) => {
   }, 200)
 }
 
+// AdvancedQuery 转发 FavoritePanel 虚拟磁贴点击 → 直接 handleSourceChange 强制刷新。
+// 绕过 vue-router 对同 url push 不发 navigation 事件的限制（修复问题 5：弹窗内
+// 「我的收藏」重复点击失效，必须先点别的虚拟磁贴切走再点回来才能 reload）。
+const handleVirtualTileNavigate = (source) => {
+  if (source === 'my-favorites' || source === 'random') {
+    handleSourceChange(source)
+  }
+}
+
+// BackButton 可见性：favorites folder-detail（真实收藏夹二级）+ 虚拟视图（我的最爱 / 随机浏览）
+// 虚拟视图的 chip 显示 🔒 锁定，返回只能通过 BackButton（与 favorites folder-detail 一致）
+const isBackVisible = computed(() => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') return true
+  if (querySource.value === 'my-favorites' || querySource.value === 'random') return true
+  return false
+})
+
+// BackButton click 调度：根据当前视图分发
+// - folder-detail → handleBackToFolders（保留 selectedFavorite 等状态精确清理）
+// - 虚拟视图 → handleSourceChange('favorites')（统一走 favorites tab 入口）
+const handleBackClick = () => {
+  if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') {
+    handleBackToFolders()
+  } else {
+    handleSourceChange('favorites')
+  }
+}
+
+// toolbar "收藏夹" 按钮高亮条件：扩展到虚拟视图（my-favorites / random 也属于收藏夹上下文）
+// 修复问题 8：进入虚拟视图后 toolbar 收藏夹 tab 焦点消失
+const isFavoritesActive = computed(() => {
+  return (
+    querySource.value === 'favorites' ||
+    querySource.value === 'my-favorites' ||
+    querySource.value === 'random'
+  )
+})
+
 const handleFolderClick = (folder) => {
+  // 虚拟磁贴（我的最爱 / 随机浏览）：直接 handleSourceChange 切换 querySource，
+  // 让 loadImages 走对应端点（my-favorites → /my_favorites/images；
+  //   random → /gallery/load?random=true），避免误入 favorites folder-detail 触发
+  // 防御性拦截清空 images（修复问题 4）。
+  //
+  // 不 router.push：之前写 ?querySource=my-favorites 到 URL 后，用户切回 favorites
+  // 再点我的收藏 → URL 仍带旧 querySource → vue-router 同 url 不发事件 → 失效。
+  // 新设计只走 Gallery 内部 handleSourceChange，URL 保持干净（state 由 localStorage
+  // 持久化 + URL 仅作为分享链接初始入口使用）。
+  if (folder?.isVirtual) {
+    if (folder.id === 'my-favorites') {
+      handleSourceChange('my-favorites')
+    } else if (folder.id === 'random') {
+      handleSourceChange('random')
+    }
+    return
+  }
+  // 真实收藏夹：进入 folder-detail 视图（原有逻辑）
   selectedFavoriteFolder.value = folder
   favoritesView.value = 'folder-detail'
   // 复用 AdvancedQuery 的 selectFavorite 设置搜索栏状态
@@ -986,14 +1068,24 @@ const handleBackToFolders = () => {
 const handleSourceChange = (newSource) => {
   const prevSource = querySource.value
 
-  // 切走 favorites 时清空 queryRef 状态（避免 stale tags / favorite 残留）
-  if (prevSource === 'favorites' && newSource !== 'favorites') {
-    queryRef.value?.reset()
-    queryRef.value?.resetAdvancedPanel()
-    // Gallery 自己的 queryParams 也需要清空——folder-detail 期间
-    // AdvancedQuery 通过 handleSearch 注入的 favorites tags / favorite_id 不能
-    // 残留用于后续 local/yande 搜索（与 AdvancedQuery 内部 queryParams 是两份独立状态）
-    queryParams.value = {}
+  // favorites ↔ 非 favorites 切换时清理搜索栏 stale state
+  if (prevSource !== newSource && (prevSource === 'favorites' || newSource === 'favorites')) {
+    if (newSource === 'favorites' && prevSource !== 'favorites') {
+      // 从 local/yande 切到 favorites：清空旧 source 的 searchText/selectedTags/selectedFavorite
+      // 进入 favorites-folders 视图后 searchText 会被复用为 favorites-filter 输入，
+      // 但旧的 selectedFavorite chip 不应保留（已脱离原 favorite 上下文）。
+      queryRef.value?.resetAdvancedPanel()
+      queryRef.value?._clearSelectedFavoriteNoSearch?.()
+      queryParams.value = {}
+    } else if (prevSource === 'favorites' && newSource !== 'favorites') {
+      // 切走 favorites 时清空 queryRef 状态（避免 stale tags / favorite 残留）
+      queryRef.value?.reset()
+      queryRef.value?.resetAdvancedPanel()
+      // Gallery 自己的 queryParams 也需要清空——folder-detail 期间
+      // AdvancedQuery 通过 handleSearch 注入的 favorites tags / favorite_id 不能
+      // 残留用于后续 local/yande 搜索（与 AdvancedQuery 内部 queryParams 是两份独立状态）
+      queryParams.value = {}
+    }
   }
 
   querySource.value = newSource
@@ -1050,6 +1142,21 @@ const loadImages = async (page) => {
       return
     }
 
+    // 防御性拦截：querySource='favorites' 但缺少 folder context（currentFavorite 无合法 id
+    // 且 queryParams.favorite_id 也不存在）→ 跳过 /gallery/load，避免触发后端空查询。
+    // 正常路径只在 selectFavorite(folder) → handleSearch 时注入 favorite_id；其它路径
+    // 误发 source='favorites' 都会因后端 favorite_dao.get_by_id(None) 返回空 → 用户看到 0 图。
+    if (
+      querySource.value === 'favorites' &&
+      !(currentFavorite.value && Number.isInteger(currentFavorite.value.id)) &&
+      !Number.isInteger(queryParams.value.favorite_id)
+    ) {
+      images.value = []
+      hasMore.value = false
+      loadError.value = false
+      return
+    }
+
     // v2 我的最爱 / 随机浏览（其余模式）：根据当前 querySource 注入额外参数
     //   - random=true: 仅在 querySource === 'random' 时追加（后端走 ORDER BY RANDOM() + DISTINCT image_id）
     //   - include_favorite_status=true: 仅在 showHeart && enableMyFavorites 时追加（双判断见 spec §6.6），
@@ -1065,10 +1172,14 @@ const loadImages = async (page) => {
     // queryParams 含 favorite_id / source='favorites'），剔除 favorite_id 并把 source 对齐
     // 当前 querySource。避免 FavoritePanel 虚拟磁贴点击 → router.push({query:{querySource:'random'|'my-favorites'}})
     // 触发 loadImages 时把字符串 favorite_id / 旧 source 发给后端导致 422。
+    //
+    // querySource='random' 不直接映射到后端 source='random'（后端只识别 local/yande/favorites，
+    // 未知 source 会落到 query_yande_api 在线分支）。随机浏览走本地随机抽样：
+    //   source='local' + random=true 触发后端 query_local_database(..., random=True) → ORDER BY RANDOM()
     const safeBase = { ...queryParams.value }
     if (querySource.value !== 'favorites') {
       delete safeBase.favorite_id
-      safeBase.source = querySource.value
+      safeBase.source = querySource.value === 'random' ? 'local' : querySource.value
     }
     const response = await api.post('/gallery/load', {
       ...safeBase,

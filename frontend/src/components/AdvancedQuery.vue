@@ -9,13 +9,26 @@
     <div v-else class="search-panel" :class="{ 'panel-expanded': showAdvanced }" ref="searchPanelRef">
       <!-- 一级搜索栏 -->
       <div class="search-bar">
-        <div class="search-input-wrapper" :class="{ 'has-input-tags': selectedTags.length > 0 || selectedFavorite }">
+        <div class="search-input-wrapper" :class="{ 'has-input-tags': selectedTags.length > 0 || selectedFavorite || virtualFavorite }">
           <el-icon class="search-icon"><Search /></el-icon>
           <!-- 输入框前缀：选中的标签 -->
-          <div class="input-tags-container" v-if="selectedTags.length > 0 || selectedFavorite">
+          <div class="input-tags-container" v-if="selectedTags.length > 0 || selectedFavorite || virtualFavorite">
             <div class="input-tags-wrapper">
+              <!-- 虚拟 favorite chip（我的最爱 / 随机浏览）：
+                   锁定的上下文标识（🔒 不可关闭），返回由 BackButton 触发。
+                   与 favorites folder-detail 的 selectedFavorite chip 视觉一致
+                   （都是锁定的 chip，让用户知道当前在某个收藏夹上下文里）。
+                   与 selectedFavorite 互斥：favorites → 虚拟视图 时 handleSourceChange
+                   已 _clearSelectedFavoriteNoSearch 清空 selectedFavorite。 -->
               <span
-                v-if="selectedFavorite"
+                v-if="virtualFavorite"
+                class="input-tag favorite-tag virtual-favorite-tag"
+              >
+                <span class="input-tag-text" :title="'★ ' + virtualFavorite.name">★ {{ virtualFavorite.name }}</span>
+                <span class="lock-icon" title="锁定虚拟收藏夹">🔒</span>
+              </span>
+              <span
+                v-else-if="selectedFavorite"
                 class="input-tag favorite-tag"
               >
                 <span class="input-tag-text" :title="'★ ' + selectedFavorite.name">★ {{ selectedFavorite.name }}</span>
@@ -72,6 +85,8 @@
                 @delete="handleDeleteFolder"
                 @reset-sync="handleResetFolderSync"
                 @mode-change="handleFavoriteModeChange"
+                @virtual-tile-click="handleVirtualTileClick"
+                @virtual-tile-navigate="handleVirtualTileNavigate"
               />
             </div>
 
@@ -381,6 +396,17 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // 虚拟 favorite chip（我的最爱 / 随机浏览）—— 由 Gallery.vue 根据 querySource 派生：
+  //   - null                          → 不显示 chip（普通 gallery / favorites-folders 视图）
+  //   - { id: 'my-favorites', name }  → 显示 "★ 我的最爱" chip，X 触发 'virtual-favorite-remove'
+  //   - { id: 'random', name }        → 显示 "★ 随机浏览" chip，X 触发 'virtual-favorite-remove'
+  // 与 selectedFavorite 互斥：querySource='my-favorites'|'random' 时 selectedFavorite 必为 null
+  // （handleSourceChange 在 favorites → 虚拟视图路径已 _clearSelectedFavoriteNoSearch）
+  virtualFavorite: {
+    type: Object,
+    default: null,
+    validator: (v) => v === null || (typeof v === 'object' && typeof v.id === 'string' && typeof v.name === 'string'),
+  },
 })
 
 const emit = defineEmits(['search', 'favorites-filter'])
@@ -598,6 +624,22 @@ const handleLongPress = (folder) => {
   favoritePanelRef.value?.openEdit(folder)
 }
 
+// FavoritePanel 虚拟磁贴（我的最爱 / 随机浏览）点击：FavoritePanel 自行 router.push 切换
+// querySource，但弹窗仍遮罩在 Gallery 之上，用户看不到主界面瀑布流变化。
+// 这里关闭弹窗让用户感知跳转已完成（路由变化在 router.push 处已触发）。
+const handleVirtualTileClick = (_tile) => {
+  showFavoritePanel.value = false
+  // 关闭弹窗时同步移除外部 click 监听器（toggleFavoritePanel 才会 add；
+  // 这里直接移除避免监听器泄漏）
+  document.removeEventListener('click', handleClickOutside)
+}
+
+// FavoritePanel 转发：让 Gallery 直接强制刷新（绕过 vue-router 同 url push 不发事件的限制）
+const handleVirtualTileNavigate = (source) => {
+  // 转发给父组件 Gallery.vue，由 Gallery 调 handleSourceChange(source) 强制 loadImages
+  emit('virtual-tile-navigate', source)
+}
+
 const handleFavoriteModeChange = (newMode) => {
   favoritePanelMode.value = newMode
 }
@@ -748,6 +790,10 @@ const buildCurrentTagsString = () => {
   return parts.join(' ')
 }
 
+// 虚拟 favorite chip（我的最爱 / 随机浏览）的锁图标 🔒：只读标识，不可点击关闭。
+// 返回由 Gallery.vue 的 BackButton 触发（BackButton 已在虚拟视图也显示）。
+// 旧版本曾用 emit 'virtual-favorite-remove' 通过 chip X 返回，已废弃。
+//
 // 选择收藏夹
 const selectFavorite = (folder) => {
   selectedFavorite.value = folder
@@ -1180,10 +1226,14 @@ const buildOnlineParams = () => {
 
 // 执行搜索
 const handleSearch = () => {
-  const mode = props.sourceMode || 'local'
+  // sourceMode='favorites' 但未选中具体收藏夹时，参数毫无意义（后端 source='favorites'
+  // 分支依赖 favorite_id 定位 folder，缺 favorite_id 必然返回空）。降级为 'local'，
+  // 至少把当前选中的标签/评分/排序应用到本地 DB，避免误触发空 /gallery/load。
+  const rawMode = props.sourceMode || 'local'
+  const mode = rawMode === 'favorites' && !selectedFavorite.value ? 'local' : rawMode
   const params = mode === 'local' ? buildLocalParams() : buildOnlineParams()
   // 二级页面 includeOnline 时把标志位传给父组件 / 后端
-  if (mode === 'favorites') {
+  if (rawMode === 'favorites' && selectedFavorite.value) {
     params.include_online = includeOnline.value
   }
   emit('search', { mode, params, favorite: selectedFavorite.value })
