@@ -83,21 +83,26 @@
             <!-- 图片信息悬浮层 -->
             <div class="image-info-overlay">
               <div class="image-info-content">
-                <span class="info-id">ID: {{ image.id }}</span>
-                <span class="info-size">{{ image.width }}x{{ image.height }}</span>
-                <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
-                  {{ image.rating }}
-                </el-tag>
-                <div v-if="image.down_flag" class="downloaded-dot"></div>
-                <!-- v2 我的最爱：HeartOverlay 必须作为 image-info-content 的子元素渲染
-                     （不是单独 absolute 定位），由父级 flex/grid 容器自适应布局 -->
-                <HeartOverlay
-                  v-if="showHeart"
-                  :image-id="image.id"
-                  :initial-favorited="image.is_favorited === true"
-                  :show-heart="showHeart"
-                  @changed="(payload) => emit('favorite-toggled', payload)"
-                />
+                <!-- 左右分栏与大图浏览（.float-header-left / .float-footer-left）保持同一套结构：
+                     左组=元数据，右组=操作。不靠 margin-left:auto 隐式吸空间，
+                     否则「已下载」dot 的有无会改变收藏按钮的位置。 -->
+                <div class="info-group-left">
+                  <span class="info-id">ID: {{ image.id }}</span>
+                  <span class="info-size">{{ image.width }}x{{ image.height }}</span>
+                  <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
+                    {{ image.rating }}
+                  </el-tag>
+                  <div v-if="image.down_flag" class="downloaded-dot"></div>
+                </div>
+                <div v-if="showHeart" class="info-group-right">
+                  <!-- v2 我的最爱：HeartOverlay 渲染在右组内（非 absolute 定位），由右组 flex 自适应 -->
+                  <HeartOverlay
+                    :image-id="image.id"
+                    :initial-favorited="image.is_favorited === true"
+                    :show-heart="showHeart"
+                    @changed="(payload) => emit('favorite-toggled', payload)"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1120,8 +1125,21 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
 .image-info-content {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   font-size: 11px;
+}
+
+.info-group-left,
+.info-group-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.info-group-right {
+  flex-shrink: 0;
 }
 
 .info-id {
@@ -1141,7 +1159,6 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
   height: 8px;
   background: #67C23A;
   border-radius: 50%;
-  margin-left: auto;
 }
 
 .retry-button {

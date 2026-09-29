@@ -1845,6 +1845,13 @@ html.dark-mode .selection-count {
   gap: 10px;
 }
 
+/* 大图底部的收藏标识：紧跟下载按钮，视觉上与 footer 右侧文字同色。
+   flex-shrink:0 防止「已下载」分支变长时星标被压扁。 */
+.float-heart {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .float-footer-right {
   display: flex;
   align-items: center;
