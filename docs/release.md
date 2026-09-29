@@ -17,6 +17,8 @@
 
 所有对受保护分支的更改，默认必须通过新建开发分支并提交 PR/MR 的方式进行。如需使用 `--admin` 绕过保护直接合并，必须事先得到用户的明确授权，且授权仅对当前单次操作有效。
 
+❌ **release 合入（`next_dev` → `next`）禁止使用 squash / rebase 合并方式**。squash 产生的 commit 不在 next_dev 历史中，两分支历史分叉，下次 dev→release 合并时同一内容在两侧"各自变更"，冲突无法机械解决（v1.2.0 实际踩坑，见 §6.2）。release 合入**必须 fast-forward**（§2.5），保证 `next` 恒为 `next_dev` 的祖先。dev 合入（`feature-*` → `next_dev`）可正常使用 squash。
+
 LLM 工作流约束：
 - 改代码前：先口头描述改动方案，等用户确认
 - 改代码后：先展示 `git diff` 给用户审核，等用户明确说"OK commit" 再 commit
@@ -179,6 +181,10 @@ git tag -a vX.Y.Z -F /tmp/vX.Y.Z-tag-msg.txt origin/next_dev
 git push origin vX.Y.Z
 ```
 
+> **tag 已存在但需要移动**（如历史对齐 rebase 后，旧 tag 指向已不在分支上的 commit）：
+> `git tag -f -a vX.Y.Z <new-sha> -F /tmp/vX.Y.Z-tag-msg.txt` + `git push origin +vX.Y.Z`。
+> GH Release 无需重建（编辑 notes 即可）；Docker Action 会随 tag 重推自动重建 `vX.Y.Z` 与 `latest` 镜像。
+
 ### 2.4 创建 GitHub Release & Issue
 
 > **坑**：`gh release create --target + --notes-file` 组合在 GH API 上有 500 错误 bug。必须**先 create 后 edit**。
@@ -243,13 +249,25 @@ gh pr create \
   --body "Release vX.Y.Z. Closes #N"
 ```
 
-合入（仅当用户授权用 `--admin`）：
+合入方式：**必须 fast-forward，禁止 squash/rebase**（§0 红线）。GitHub PR 页面的 merge/squash/rebase 三种方式均无法产生 ff 结果，因此 release 合入在本地执行（需用户授权直接 push `next`）：
 
 ```bash
-gh pr merge <N> --admin --squash --delete-branch=false
+git fetch origin
+git checkout next
+git merge --ff-only origin/next_dev
+git push origin next
+# ff-push next 后，指向同一 commit 的 release PR 会被 GitHub 自动关闭为 Merged
 ```
 
-PR merge 后，GitHub Actions 将自动构建并推送 `latest` 镜像。
+合入后自检（两分支必须一模一样）：
+
+```bash
+git rev-parse origin/next origin/next_dev   # 两个 SHA 必须相同
+git diff origin/next origin/next_dev       # 必须为空
+git merge-base --is-ancestor origin/next origin/next_dev && echo OK
+```
+
+合入后 GitHub Actions 对 `next` 构建 `rc-<sha>` 验证镜像（见 §5）；正式 `latest` 镜像由 §2.3 的 tag 推送触发，而非 next 合入。
 
 ---
 
@@ -315,6 +333,7 @@ Docker 镜像的构建与 Tag 分发由 `.github/workflows/docker-build-push.yml
 
 | 坑 / 问题 | 触发场景 | 解决方案 / 现状 |
 | --- | --- | --- |
+| **squash 合入 release 导致历史分叉** | v1.2.0 用 `--squash` 把 next_dev 合入 next：squash commit 不在 next_dev 历史中，下次 dev→release 合并时同一内容在两侧"各自变更"，冲突无法机械解决 | 已于 2026-09-30 用 `git rebase --onto origin/next <last-aligned-commit> next_dev` 对齐修复（跳过已 squash 的区间，只重放新增提交）。此后 release 一律 ff-only（§0 红线 + §2.5） |
 | `gh release create` 报 500 | 携带 `--target` 与 `--notes-file` 一并创建时 | 改为"先 create 空 release，再 edit 补充信息"。 |
 | `gh pr view` 报 GraphQL 错 | 旧版 GitHub CLI 与 Projects API 弃用冲突 | 使用 `--json title,body` 显式指定字段绕过，或升级 gh cli。 |
 | Reload 模式重复打印 banner | uvicorn `--reload` 模式下 | 预期行为。单次进程启动仅打印一次，reload 被视作新建进程。 |
