@@ -373,3 +373,120 @@ describe('WaterfallGallery v2 我的最爱 showHeart 集成', () => {
     })
   })
 })
+
+// =============================================================================
+// 收藏标识贴右契约（左右分栏）
+// =============================================================================
+// 回归：.downloaded-dot 曾带 margin-left:auto，在 flex 行里吸收全部剩余空间，
+// 导致「已下载」与否决定收藏按钮位置 —— 有 dot 时 dot 被顶到最右把 heart 一起
+// 带过去，无 dot 时 heart 紧贴评分靠左，同一控件位置随下载状态跳变。
+//
+// 修复改为左右分栏（与大图浏览 .float-header-left/.float-footer-left 同构）：
+// 左组=元数据，右组=收藏，靠 space-between 分开，不再依赖 margin-left:auto。
+//
+// 这里刻意断言样式表文本而非 DOM：DOM 顺序断言在结构上无法发现"谁带了
+// margin-left:auto"这类纯 CSS 回归，必须直接锁住样式契约。
+describe('WaterfallGallery 收藏标识贴右契约', () => {
+  const readStyleBlock = () => {
+    const fs = require('fs')
+    const path = require('path')
+    return fs.readFileSync(
+      path.resolve(__dirname, './WaterfallGallery.vue'),
+      'utf-8'
+    )
+  }
+
+  // 兼容逗号分组选择器（`.a,\n.a { ... }`）：定位到选择器后取其后的第一个 {...}
+  const ruleBody = (source, selector) => {
+    const sel = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/^\./, '\\.')
+    const start = source.search(new RegExp(sel + '\\s*(,|\\{)'))
+    if (start === -1) return null
+    const open = source.indexOf('{', start)
+    if (open === -1) return null
+    return source.slice(open + 1, source.indexOf('}', open))
+  }
+
+  const expectNoAutoMargin = (selector) => {
+    const body = ruleBody(readStyleBlock(), selector)
+    expect(body, `${selector} 规则未找到`).not.toBeNull()
+    expect(body).not.toMatch(/margin-left\s*:\s*auto/)
+  }
+
+  it('.downloaded-dot 不带 margin-left:auto（元数据应与 ID/尺寸/评分同在左组）', () => {
+    const body = ruleBody(readStyleBlock(), '.downloaded-dot')
+    expect(body).not.toBeNull()
+    expect(body).not.toMatch(/margin-left\s*:\s*auto/)
+  })
+
+  it('.image-info-content 用 space-between 分开左右两组，而非靠 auto margin', () => {
+    const body = ruleBody(readStyleBlock(), '.image-info-content')
+    expect(body).not.toBeNull()
+    expect(body).toMatch(/justify-content\s*:\s*space-between/)
+    // 旧实现是靠某个子元素的 margin-left:auto 吸空间，这里必须不存在
+    expectNoAutoMargin('.info-group-left')
+    expectNoAutoMargin('.info-group-right')
+  })
+
+  it('元数据在 .info-group-left，HeartOverlay 在 .info-group-right', async () => {
+    useFavoritesConfig().enableMyFavorites.value = true
+    const wrapper = factory({
+      showHeart: true,
+      images: [{
+        id: 1, preview_url: 'http://example.com/p1.jpg',
+        width: 800, height: 600, rating: 'Safe', down_flag: true, is_favorited: false,
+      }],
+    })
+    await wrapper.vm.$nextTick()
+
+    const left = wrapper.find('.image-info-content .info-group-left')
+    const right = wrapper.find('.image-info-content .info-group-right')
+    expect(left.exists()).toBe(true)
+    expect(right.exists()).toBe(true)
+
+    // 已下载 dot 属于元数据 → 左组
+    expect(left.find('.downloaded-dot').exists()).toBe(true)
+    expect(left.find('.info-id').exists()).toBe(true)
+    expect(left.find('.info-size').exists()).toBe(true)
+
+    // 收藏 → 右组，且左组内不得出现
+    expect(right.find('.heart-overlay').exists()).toBe(true)
+    expect(left.find('.heart-overlay').exists()).toBe(false)
+  })
+
+  it('dot 的有无不改变收藏按钮所在分组（不再随 down_flag 跳变）', async () => {
+    useFavoritesConfig().enableMyFavorites.value = true
+    const mk = (id, downFlag) => ({
+      id, preview_url: `http://example.com/p${id}.jpg`,
+      width: 800, height: 600, rating: 'Safe', down_flag: downFlag, is_favorited: false,
+    })
+    const wrapper = factory({
+      showHeart: true,
+      images: [mk(1, true), mk(2, false)],
+    })
+    await wrapper.vm.$nextTick()
+
+    const hearts = wrapper.findAllComponents({ name: 'HeartOverlay' })
+    expect(hearts.length).toBe(2)
+    for (const heart of hearts) {
+      // 两种下载状态下，heart 的父级都必须是右组
+      const parentClasses = heart.element.parentElement.className
+      expect(parentClasses).toContain('info-group-right')
+    }
+    // 未下载那张没有 dot，但 heart 位置不受影响
+    expect(wrapper.findAll('.downloaded-dot').length).toBe(1)
+  })
+
+  it('showHeart=false → 不渲染右组（不留空 flex item）', async () => {
+    useFavoritesConfig().enableMyFavorites.value = true
+    const wrapper = factory({
+      showHeart: false,
+      images: [{
+        id: 1, preview_url: 'http://example.com/p1.jpg',
+        width: 800, height: 600, rating: 'Safe', down_flag: true, is_favorited: false,
+      }],
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.info-group-right').exists()).toBe(false)
+    expect(wrapper.find('.info-group-left').exists()).toBe(true)
+  })
+})
