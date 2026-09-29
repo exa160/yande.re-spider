@@ -134,6 +134,11 @@ class MyFavoritesService:
                 .limit(page_size)
                 .all()
             )
+        # 本端点按定义只返回已收藏图片（INNER JOIN my_favorite 保证），故 is_favorited
+        # 恒为 True。必须显式置位：ImageDetail.from_attributes 会读 ORM 属性，缺失则
+        # 序列化为 null，前端 `image.is_favorited === true` 判 false → 爱心显示为空心。
+        for row in rows:
+            row.is_favorited = True  # type: ignore[attr-defined]
         return rows, total
 
     @staticmethod

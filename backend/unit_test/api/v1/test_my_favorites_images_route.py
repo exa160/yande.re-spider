@@ -115,6 +115,25 @@ def test_images_route_returns_paginated_response(in_memory_session):
     assert body["has_more"] is False  # 1 < 20 → 没更多
 
 
+def test_images_route_marks_all_images_as_favorited(in_memory_session):
+    """该端点按定义只返回已收藏图片，is_favorited 必须为 True。
+
+    回归：修复前 list_images_paginated 返回裸 YandeData，从未设 is_favorited，
+    序列化为 null → 前端 WaterfallGallery `image.is_favorited === true` 判 false
+    → 爱心渲染成空心 Star 而非实心 StarFilled。
+    """
+    _seed_yande(in_memory_session, 42)
+    in_memory_session.commit()
+    MyFavoriteDao.add(in_memory_session, image_id=42)
+    in_memory_session.commit()
+
+    client = _make_test_client()
+    resp = client.get("/api/v1/my_favorites/images?page=1&page_size=20")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"][0]["is_favorited"] is True
+
+
 def test_images_route_returns_empty_when_no_favorites(in_memory_session):
     """空收藏：data=[]，total=0，has_more=False。"""
     _seed_yande(in_memory_session, 1)  # 种 yande 但不收藏
