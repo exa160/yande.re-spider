@@ -155,6 +155,43 @@ class FavoritesConfig(ConfigModel):
         return v
 
 
+class TagCacheConfig(ConfigModel):
+    """标签缓存配置（yande_tags / yande_artists 的保鲜策略）
+
+    背景：标签面板的「本地 N / yande M」里，M 来自 ``yande_tags.count``，
+    是 yande.re 的远端数据。此前只能靠 Config.vue 的手动按钮刷新
+    （全量 / 增量），没有任何自动保鲜 → 面板上的在线数量会一直是旧快照。
+    这里补一个可开关的定时增量刷新。
+    """
+
+    enable_daily_refresh: bool = Field(
+        default=True,
+        description="是否启用标签缓存定时增量刷新",
+    )
+    refresh_cron: str = Field(
+        default="17 4 * * *",
+        description="定时刷新 cron（5 段，服务器本地时区）。默认每天 04:17",
+    )
+    batch_limit: int = Field(
+        default=100, ge=1, le=1000,
+        description="单次增量刷新的每页拉取条数",
+    )
+
+    @field_validator("refresh_cron")
+    @classmethod
+    def _validate_refresh_cron(cls, v: str) -> str:
+        """写配置时就校验 cron，避免把非法表达式持久化后注册定时任务才报错"""
+        from apscheduler.triggers.cron import CronTrigger
+
+        if not v or not v.strip():
+            raise ValueError("refresh_cron cannot be empty")
+        try:
+            CronTrigger.from_crontab(v.strip())
+        except Exception as e:
+            raise ValueError(f"invalid refresh_cron '{v}': {e}")
+        return v.strip()
+
+
 class Config(ConfigModel):
     app: AppConfig = AppConfig()
     database: DatabaseConfig = DatabaseConfig()
@@ -162,11 +199,12 @@ class Config(ConfigModel):
     downloader: DownloaderConfig = DownloaderConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     favorites: FavoritesConfig = FavoritesConfig()
+    tag_cache: TagCacheConfig = TagCacheConfig()
 
     @ConfigModel.set_frozen_data_
     def update_config(
         self,
-        config_model: DatabaseConfig | ApiConfig | DownloaderConfig | SchedulerConfig | FavoritesConfig,
+        config_model: DatabaseConfig | ApiConfig | DownloaderConfig | SchedulerConfig | FavoritesConfig | TagCacheConfig,
     ):
         for config_name, config_data in self.__dict__.items():
             logger.info(f"{isinstance(config_model, type(config_data))}， Checking config: {config_name}, type: {type(config_data)}, new type: {type(config_model)}")

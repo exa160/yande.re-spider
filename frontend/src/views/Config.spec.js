@@ -364,3 +364,70 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
     expect(labels).toContain('20')
   })
 })
+
+// =============================================================================
+// 标签缓存定时更新（PUT /config/tag-cache）
+// 标签面板「/ yande M」的数据源是 yande_tags.count，此前只能手动刷新；
+// 这里锁定开关 + cron + 每页条数能读写，以及保存走对端点。
+// =============================================================================
+describe('Config.vue 标签缓存定时更新', () => {
+  const tagCacheResp = {
+    enable_daily_refresh: true,
+    refresh_cron: '30 5 * * *',
+    batch_limit: 250,
+  }
+
+  it('切到高级功能 → GET /config/tag-cache 拉回配置', async () => {
+    const api = (await import('@/api')).default
+    api.get.mockClear()
+    api.get.mockImplementation((url) => {
+      if (url === '/config/tag-cache') return Promise.resolve({ data: tagCacheResp })
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = factory()
+    await flushPromises()
+    await clickMenuItem(wrapper, '高级功能')
+
+    expect(api.get).toHaveBeenCalledWith('/config/tag-cache')
+    expect(wrapper.vm.tagCacheForm.enableDailyRefresh).toBe(true)
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('30 5 * * *')
+    expect(wrapper.vm.tagCacheForm.batchLimit).toBe(250)
+  })
+
+  it('保存 → PUT /config/tag-cache 带 enable_daily_refresh / refresh_cron / batch_limit', async () => {
+    const api = (await import('@/api')).default
+    api.put.mockClear()
+
+    const wrapper = factory()
+    await flushPromises()
+    await clickMenuItem(wrapper, '高级功能')
+
+    wrapper.vm.tagCacheForm.enableDailyRefresh = false
+    wrapper.vm.tagCacheForm.refreshCron = '  0 6 * * *  '
+    wrapper.vm.tagCacheForm.batchLimit = 300
+    await wrapper.vm.saveTagCache()
+
+    expect(api.put).toHaveBeenCalledWith('/config/tag-cache', {
+      enable_daily_refresh: false,
+      refresh_cron: '0 6 * * *', // 去空格后提交
+      batch_limit: 300,
+    })
+  })
+
+  it('开关关闭时不显示 cron / 每页条数输入（避免误改无效项）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await clickMenuItem(wrapper, '高级功能')
+
+    wrapper.vm.tagCacheForm.enableDailyRefresh = true
+    await flushPromises()
+    const onHtml = wrapper.find('.tag-cache-cron-input').exists()
+    wrapper.vm.tagCacheForm.enableDailyRefresh = false
+    await flushPromises()
+    const offHtml = wrapper.find('.tag-cache-cron-input').exists()
+
+    expect(onHtml).toBe(true)
+    expect(offHtml).toBe(false)
+  })
+})
