@@ -3,6 +3,7 @@
 """
 
 import uuid
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 from loguru import logger
@@ -132,6 +133,63 @@ class DownloadService:
         """获取各状态任务数量（DB GROUP BY）"""
         from src.dao.download_task_dao import download_task_dao
         return download_task_dao.count_by_status()
+
+    @staticmethod
+    def get_image_states(finished_window: int = 30) -> dict:
+        """图片下载状态快照（供前端把「下载中 / 已下载」标识与后端队列对齐）。
+
+        背景：yande_data.down_flag 只在下载**完成**时才落库
+        （见 download_queue._update_image_database），因此前端在下单瞬间
+        无从得知「这张图正在下载」——收藏自动下载、单图/批量下载都表现为
+        「点了没反应」。本方法把队列状态按 image_id 暴露出去：
+
+        Args:
+            finished_window: 终态回看窗口（秒）。任务刚结束的这段时间内
+                仍会出现在 finished 里，前端据此把「下载中」收敛为
+                「已下载」或复位。
+
+        Returns:
+            {
+                "active": [{"image_id", "task_id", "status", "progress", "speed", "downloaded_size"}],
+                "finished": [{"image_id", "status"}],
+            }
+            status 取值：pending / downloading / paused / completed / failed / cancelled
+        """
+        from src.dao.download_task_dao import download_task_dao
+
+        since = datetime.now() - timedelta(seconds=max(0, finished_window))
+
+        with download_task_dao as dao:
+            active_records = dao.active_states_by_image()
+            finished_map = dao.finished_states_by_image(since)
+
+        # DB 状态是权威的（状态变化必落库），但 progress/speed 只在内存里
+        # 实时更新（progress_callback 不写 DB），需要按 task_id 从内存合并。
+        with task_store._lock:
+            memory = {t.task_id: t for t in task_store._tasks.values()}
+
+        active = []
+        for image_id, record in active_records.items():
+            mem = memory.get(record.task_id)
+            status = mem.status if mem else record.status
+            active.append(
+                {
+                    "image_id": image_id,
+                    "task_id": record.task_id,
+                    "status": status.value if hasattr(status, "value") else status,
+                    "progress": (mem.progress if mem else record.progress) or 0.0,
+                    "speed": (mem.speed if mem else record.speed) or 0.0,
+                    "downloaded_size": (
+                        (mem.downloaded_size if mem else record.downloaded_size) or 0
+                    ),
+                }
+            )
+
+        finished = [
+            {"image_id": image_id, "status": status}
+            for image_id, status in finished_map.items()
+        ]
+        return {"active": active, "finished": finished}
 
     @staticmethod
     def get_task(task_id: str) -> Optional[TaskStore.DownloadTask]:

@@ -153,6 +153,7 @@
           @load-more="loadMore"
           @load-error="handleLoadError"
           @multi-select-start="handleMultiSelectStart"
+          @favorite-toggled="onFavoriteChanged"
         />
       </template>
     </div>
@@ -239,7 +240,36 @@
 
           <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
             <div class="float-footer-left">
-              <template v-if="!currentImage.down_flag">
+              <!-- 三态：下载中（后端队列里有任务）/ 已下载（down_flag 或本次会话下载完成）/ 未下载。
+                   任务下发即打上 queued 态（useDownloadState），因此「点下载 → 看到下载中」
+                   无网络等待；收藏自动下载由轮询对账兜住。 -->
+              <template v-if="currentDownState === 'downloading'">
+                <el-button
+                  type="primary"
+                  disabled
+                  class="float-download-btn"
+                >
+                  <span class="download-loading">
+                    <el-icon class="is-loading"><Loading /></el-icon>
+                    下载中...
+                  </span>
+                </el-button>
+              </template>
+              <template v-else-if="currentDownState === 'downloaded'">
+                <el-button
+                  @click.stop="handleDownload"
+                  :disabled="downloading"
+                  class="float-redownload-btn"
+                  title="重新下载"
+                >
+                  <el-icon><Download /></el-icon>
+                </el-button>
+                <el-tag type="success" class="float-downloaded-tag">
+                  <el-icon><Check /></el-icon>
+                  已下载
+                </el-tag>
+              </template>
+              <template v-else>
                 <el-button
                   type="primary"
                   @click.stop="handleDownload"
@@ -255,20 +285,6 @@
                     下载原图
                   </template>
                 </el-button>
-              </template>
-              <template v-else>
-                <el-button
-                  @click.stop="handleDownload"
-                  :disabled="downloading"
-                  class="float-redownload-btn"
-                  title="重新下载"
-                >
-                  <el-icon><Download /></el-icon>
-                </el-button>
-                <el-tag type="success" class="float-downloaded-tag">
-                  <el-icon><Check /></el-icon>
-                  已下载
-                </el-tag>
               </template>
               <HeartOverlay
                 v-if="enableMyFavorites"
@@ -374,9 +390,14 @@ import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
 import { myFavoritesApi } from '@/api/myFavorites'
-import { updateOnlineCount, updateLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
+// 注意：updateLocalCount 打的是 /favorites/{id}/refresh（后端重跑 COUNT，昂贵），
+// 本文件的角标写入一律走 setLocalCount（O(1) 的 /local-count）
+// refreshOnlineCount 打的是 yande.re 远程 API —— 后端已加 600s TTL 兜底，
+// 重复调用直接命中缓存，不会真的打远端
+import { setLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
 import { useFavoritesConfig, whenFavoritesConfigReady } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
+import { useDownloadState } from '@/composables/useDownloadState'
 
 const images = ref([])
 const loading = ref(false)
@@ -494,6 +515,19 @@ const previewVisible = ref(false)
 const currentImage = ref(null)
 const previewContainerStyle = ref({})
 const downloading = ref(false)
+// 任务下发请求在途标记（防重复点击）；「下载中」的权威来源是 useDownloadState
+const {
+  downStateOf,
+  markQueued,
+  sync: syncDownloadStates,
+  start: startDownloadSync,
+  stop: stopDownloadSync,
+  onCompleted: onDownloadCompleted,
+} = useDownloadState()
+// 当前大图的下载态：'downloading' | 'paused' | 'downloaded' | 'none'
+const currentDownState = computed(() => downStateOf(currentImage.value))
+// 下载完成订阅的退订句柄（onMounted 注册 / onUnmounted 注销）
+let unsubscribeDownloadCompleted = null
 const overlayColorScheme = ref('dark') // 'dark' or 'light'
 const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
 const viewerVisible = ref(false)
@@ -591,9 +625,22 @@ const onViewerSwitch = (index) => {
 // v2 我的最爱 / 随机浏览：HeartOverlay 切换后乐观更新 currentImage.is_favorited
 // 详情页浮层与 WaterfallGallery 共享同一份 image 数据源（来自 /gallery/load + include_favorite_status），
 // 直接写入当前 currentImage，避免再发一次 /gallery/{id} 拉详情
+//
+// 两个触发源都走这里：详情页 HeartOverlay 的 @changed，以及**瀑布流卡片**红心的
+// @favorite-toggled（WaterfallGallery 把卡片上的 changed 透传成 favorite-toggled）。
+// 早期只接了详情页，导致卡片上收藏时这里完全不执行 —— 收藏自动下载被后端触发后
+// 前端无感知，没有「下载中」，只等得到轮询对账后的「已下载」小绿点。
+//
+// payload.downloadStarted：开启收藏自动下载时后端顺带建了下载任务，立即标记「下载中」
+// （后端触发、前端无感知，是「收藏自动下载打开时标识不变」的根因修复）
 const onFavoriteChanged = (payload) => {
+  if (!payload) return
   if (currentImage.value && currentImage.value.id === payload.imageId) {
     currentImage.value.is_favorited = payload.favorited
+  }
+  if (payload.downloadStarted) {
+    markQueued([payload.imageId])
+    syncDownloadStates()
   }
 }
 
@@ -1192,16 +1239,21 @@ const loadImages = async (page) => {
     const imageList = Array.isArray(data) ? data : []
     if (currentPage.value === 1) {
       images.value = imageList
-      if (
-        currentFavorite.value &&
-        Number.isInteger(currentFavorite.value.id) &&
-        querySource.value === 'favorites'
-      ) {
-        if (querySource.value === 'local') {
-          updateLocalCount(currentFavorite.value.id).catch(() => {})
-        } else {
-          refreshOnlineCount(currentFavorite.value.id).catch(() => {})
-        }
+      const folder = currentFavorite.value
+      if (folder && Number.isInteger(folder.id) && querySource.value === 'favorites') {
+        // 收藏夹二级页：把 local_count 直接对齐成 /gallery/load 返回的 total。
+        //
+        // 依据：api/v1/gallery.py 的 favorites 分支是「先取 folder.tags → 查本地
+        // (downloaded_only=True)」，所以 response.total 恰好等于「匹配该收藏夹标签的
+        // 已下载图片数」= local_count 的定义。一条 UPDATE by PK 搞定（O(1)），
+        // 不需要 /favorites/{id}/refresh 那种 tags LIKE + COUNT 全表扫描。
+        //
+        // 沿革：本分支最早是 534f776 的外层 `if (querySource === 'local')`，
+        // 后来被外层 `querySource === 'favorites'` 守卫包住 → 变成永不可达的死代码，
+        // 只剩 else 分支的 refreshOnlineCount 还在跑（那是打 yande.re 远程 API 的）。
+        folder.local_count = response.total
+        setLocalCount(folder.id, response.total).catch(() => {})
+        refreshOnlineCount(folder.id).catch(() => {})
       }
     } else {
       images.value.push(...imageList)
@@ -1326,6 +1378,10 @@ const batchDownload = async () => {
     const response = await api.post('/download/task/batch', tasks)
     const { data } = response
 
+    // 乐观标记：任务已入队，UI 立刻转「下载中」（原先批量下载完全不改标识）
+    markQueued(tasks.map(t => t.image_id))
+    syncDownloadStates()
+
     ElMessage.success(`成功创建 ${data.task_ids?.length || tasks.length} 个下载任务`)
     selectedImages.value = []
     selectAll.value = false
@@ -1337,16 +1393,49 @@ const batchDownload = async () => {
   }
 }
 
+// 下载完成 → 当前收藏夹角标增量 +N（O(1)，不触发 /favorites/{id}/refresh 的 COUNT 扫描）
+//
+// 为什么不用 updateLocalCount：那个封装打的是 POST /favorites/{id}/refresh，
+// 后端会跑一遍 `tags LIKE ... AND down_flag=1` 的 COUNT（随已下载库线性放大，
+// 且路由未走 to_thread 会阻塞事件循环）。这里改走后端已有的
+// POST /favorites/{id}/local-count（一条 UPDATE by PK）。
+//
+// 正确性边界（刻意接受的弱一致）：
+//   - 只对「当前收藏夹页里已经加载出来的图」计数，避免给无关收藏夹虚增；
+//   - 用户返回收藏夹列表时 handleBackToFolders → loadFolders(1) 会全量重算，
+//     任何期间的漂移（漏加/多加）都会在那一步被纠正回真实值。
+const handleImagesDownloaded = (ids) => {
+  if (!Array.isArray(ids) || ids.length === 0) return
+  const folder = currentFavorite.value
+  const folderId = Number(folder?.id)
+  if (querySource.value !== 'favorites' || !Number.isInteger(folderId)) return
+
+  const visible = new Set(images.value.map((img) => img.id))
+  const newly = ids.filter((id) => visible.has(id))
+  if (newly.length === 0) return
+
+  folder.local_count = (folder.local_count || 0) + newly.length
+  setLocalCount(folderId, folder.local_count).catch(() => {
+    // 失败不打扰用户：下次进入收藏夹列表会全量重算
+  })
+}
+
 const handleDownload = async () => {
   if (!currentImage.value) return
+  // 「下载中」期间禁止重复下发（重新下载同样走这里）
+  if (downStateOf(currentImage.value) === 'downloading') return
 
+  const imageId = currentImage.value.id
   downloading.value = true
   try {
     await api.post('/download/task', {
-      image_id: currentImage.value.id
+      image_id: imageId
     })
+    // 不再乐观写 down_flag —— DB 要等下载完成才更新，那样会标出「假已下载」。
+    // 改为标记 queued，由 useDownloadState 轮询后端队列收敛为已下载/失败。
+    markQueued([imageId])
+    syncDownloadStates()
     ElMessage.success('下载任务已创建')
-    currentImage.value.down_flag = true
   } catch (error) {
     ElMessage.error('创建下载任务失败')
   } finally {
@@ -1437,10 +1526,17 @@ onMounted(async () => {
   })
   // 键盘左右箭头切换图片
   window.addEventListener('keydown', handleKeydown)
+  // 启动下载状态轮询（单例，引用计数）：既对账本前端下的任务，
+  // 也发现「收藏自动下载」这类后端触发的任务
+  startDownloadSync()
+  unsubscribeDownloadCompleted = onDownloadCompleted(handleImagesDownloaded)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  stopDownloadSync()
+  unsubscribeDownloadCompleted?.()
+  unsubscribeDownloadCompleted = null
 })
 
 // 键盘事件处理

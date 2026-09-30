@@ -238,32 +238,6 @@ class FavoritesService:
             return None
 
     @staticmethod
-    def update_online_count(folder_id: int, count: int) -> bool:
-        """更新在线数量"""
-        folder = favorite_dao.get_by_id(folder_id)
-        if not folder:
-            return False
-
-        favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
-        return True
-
-    @staticmethod
-    def refresh_online_count(folder_id: int) -> Optional[int]:
-        """从 yande.re XML API 刷新在线数量"""
-        folder = favorite_dao.get_by_id(folder_id)
-        if not folder:
-            return None
-
-        yande_api = YandeApi()
-        count = yande_api.get_count(folder.tags or "")
-
-        if count < 0:
-            return None
-
-        favorite_dao.update(folder_id, online_count=count, last_refresh=datetime.now())
-        return count
-
-    @staticmethod
     def update_local_count(folder_id: int, count: int) -> bool:
         """更新本地数量"""
         folder = favorite_dao.get_by_id(folder_id)
@@ -272,6 +246,51 @@ class FavoritesService:
 
         favorite_dao.update(folder_id, local_count=count, last_refresh=datetime.now())
         return True
+
+    @staticmethod
+    def refresh_online_count(
+        folder_id: int, max_age_seconds: int = 600, force: bool = False
+    ) -> Optional[int]:
+        """从 yande.re XML API 刷新收藏夹的在线图片数量（带 TTL 保鲜）
+
+        online_count 是**远端数据**（yande.re 全站该 tags 的图片数），本地算不出来，
+        每次刷新都是一次真实 HTTP 请求到 yande.re。因此：
+
+        - TTL：距 ``online_refreshed_at`` 不足 ``max_age_seconds`` 时直接返回缓存值，
+          不打远端。避免「进一次收藏夹二级页 = 打一次 yande.re」这种无节制调用；
+        - force=True 跳过 TTL，供将来加「手动刷新」按钮用；
+        - 刷新时刻写 ``online_refreshed_at``，**不再写 last_refresh**——后者语义是
+          「本地数据最后变动时间」，被 online/local 共用会让 TTL 判定失效
+          （刚重算过 local_count 的 folder 会把陈旧的 online_count 当成新鲜的）。
+
+        Args:
+            folder_id: 收藏夹 ID
+            max_age_seconds: 缓存有效期（秒），0 = 每次都打远端
+            force: True 时忽略 TTL 强制刷新
+
+        Returns:
+            刷新后的在线数量；收藏夹不存在或远端失败（get_count 返回 -1）时返回 None
+        """
+        folder = favorite_dao.get_by_id(folder_id)
+        if not folder:
+            return None
+
+        now = datetime.now()
+        if not force and max_age_seconds > 0 and folder.online_refreshed_at:
+            age = (now - folder.online_refreshed_at).total_seconds()
+            if age < max_age_seconds:
+                return folder.online_count
+
+        yande_api = YandeApi()
+        count = yande_api.get_count(folder.tags or "")
+
+        if count < 0:
+            return None
+
+        favorite_dao.update(
+            folder_id, online_count=count, online_refreshed_at=now
+        )
+        return count
 
     @staticmethod
     def _refresh_local_count(folder_id: int):

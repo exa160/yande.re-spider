@@ -101,7 +101,29 @@ describe('HeartOverlay.vue', () => {
     await flushPromises()
     expect(myFavoritesApi.add).toHaveBeenCalledWith(42)
     expect(wrapper.emitted('changed')).toBeTruthy()
-    expect(wrapper.emitted('changed')[0][0]).toEqual({ imageId: 42, favorited: true })
+    // downloadStarted=false：后端未开启收藏自动下载（或响应里没有该字段）
+    expect(wrapper.emitted('changed')[0][0]).toEqual({
+      imageId: 42,
+      favorited: true,
+      downloadStarted: false,
+    })
+  })
+
+  it('download_started=true → changed 事件带 downloadStarted=true（收藏自动下载已建任务）', async () => {
+    const { myFavoritesApi } = await import('@/api/myFavorites')
+    myFavoritesApi.add.mockClear()
+    myFavoritesApi.add.mockResolvedValueOnce({
+      data: { download_started: true, task_id: 'task-1' },
+    })
+    const wrapper = factory({ showHeart: true, initialFavorited: false })
+    await wrapper.find('.heart-overlay').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('changed')[0][0]).toEqual({
+      imageId: 42,
+      favorited: true,
+      downloadStarted: true,
+    })
   })
 
   it('removes favorite when clicking an already-favorited heart', async () => {
@@ -143,7 +165,11 @@ describe('HeartOverlay.vue', () => {
     await wrapper.find('.heart-overlay').trigger('click')
     await flushPromises()
     expect(onChanged).toHaveBeenCalled()
-    expect(onChanged.mock.calls[0][0]).toEqual({ imageId: 42, favorited: true })
+    expect(onChanged.mock.calls[0][0]).toEqual({
+      imageId: 42,
+      favorited: true,
+      downloadStarted: false,
+    })
     expect(onParentClick).not.toHaveBeenCalled()
     wrapper.unmount()
   })

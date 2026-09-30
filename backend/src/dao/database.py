@@ -83,6 +83,9 @@ def _auto_migrate(engine) -> None:
         Column("last_schedule_status", String(16), nullable=True),
         Column("last_schedule_stats", JSON, nullable=True),
         Column("last_synced_id", Integer, nullable=True),
+        # online_count 的 TTL 判定列：必须与 last_refresh 分开，
+        # 否则「刚重算过 local_count」会让过期的 online_count 被误判为新鲜
+        Column("online_refreshed_at", DateTime, nullable=True),
     ]
 
     dialect = engine.dialect

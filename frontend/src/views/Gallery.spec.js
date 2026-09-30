@@ -41,10 +41,17 @@ vi.mock('@/api/tagCache', () => ({
   tagCacheApi: { getTagsByNames: vi.fn().mockResolvedValue({ data: {} }) },
 }))
 
+// setLocalCount：下载完成后收藏夹角标的 O(1) 增量写入（不打 /refresh 的 COUNT）
+// updateLocalCount：/refresh 那条昂贵路径，Gallery 已不再引用（保留 mock 以便断言「没被调用」）
+const { setLocalCountMock, updateLocalCountMock } = vi.hoisted(() => ({
+  setLocalCountMock: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+  updateLocalCountMock: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+}))
+
 vi.mock('@/api/favorites', () => ({
   getFoldersWithPreview: (...args) => getFoldersWithPreviewMock(...args),
-  updateOnlineCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
-  updateLocalCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+  updateLocalCount: updateLocalCountMock,
+  setLocalCount: setLocalCountMock,
   refreshOnlineCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
 }))
 
@@ -65,6 +72,10 @@ vi.mock('@/api/myFavorites', () => ({
   myFavoritesApi: myFavoritesApiMock,
 }))
 
+// 下载态单例（useDownloadState）：Gallery 与 WaterfallGallery 共用，
+// 测试里直接 markQueued / sync 模拟「点下载」与「后端队列变化」
+import { useDownloadState } from '@/composables/useDownloadState'
+
 // useFavoritesConfig 是 module-level singleton：每次 factory() 都注册新的 Vue watch。
 // 不做任何清理 → 前面测试的 watch 仍存活，previewOrder 变化时 N 个 watch 触发 N 次 reload
 // → spy 计数膨胀。Vue test-utils 的 wrapper.unmount() 销毁 component-scope watch 但 happy-dom
@@ -84,6 +95,8 @@ beforeEach(async () => {
   mountedWrappers.length = 0
   getFoldersWithPreviewMock.mockClear()
   Object.values(myFavoritesApiMock).forEach((m) => m.mockClear && m.mockClear())
+  setLocalCountMock.mockClear()
+  updateLocalCountMock.mockClear()
   apiMock.post.mockClear()
   apiMock.get.mockClear()
   mockRoute.value.query = {}
@@ -1359,8 +1372,405 @@ describe('Gallery.vue 详情页 header/footer 分区契约', () => {
   })
 })
 
-describe('Gallery.vue virtualSelectedFavorite + 虚拟磁贴导航（修复问题 5 + 6）', () => {
-  // 虚拟 favorite chip 由 Gallery.vue 基于 querySource 派生，传给 AdvancedQuery。
+// =============================================================================
+// 下载态三态标记（下载中 / 已下载 / 未下载）
+//
+// 背景（本次修复的三个问题）：
+//   1. 单图下载：原先 POST 成功后直接 `currentImage.down_flag = true`，
+//      属于「假已下载」——DB 的 down_flag 要等下载完成才更新，任务失败时
+//      前端仍显示已下载。现改为标记「下载中」，由 useDownloadState 轮询
+//      /download/tasks/states 收敛。
+//   2. 批量下载：原先只创建任务、完全不改标识。
+//   3. 收藏自动下载：后端触发，前端无感知；现由 HeartOverlay 透传的
+//      downloadStarted 先打标记，再由轮询兜底。
+// =============================================================================
+describe('Gallery.vue 下载态标记（单图 / 批量 / 收藏自动下载）', () => {
+  const { downStateOf, markQueued, sync, _resetForTest } = useDownloadState()
+
+  const openImageDetail = async (wrapper, image = {}) => {
+    const merged = {
+      id: 8001,
+      file_url: 'pictures/8001.jpg',
+      preview_url: 'previews/8001.jpg',
+      width: 1920,
+      height: 1080,
+      rating: 'Safe',
+      down_flag: false,
+      tags: [],
+      ...image,
+    }
+    wrapper.vm.currentImage = merged
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+    return merged
+  }
+
+  const footerLeft = () => document.body.querySelector('.float-footer-left')
+
+  beforeEach(() => {
+    _resetForTest()
+  })
+
+  it('单图下载：不再乐观写 down_flag，改标「下载中」（按钮禁用 + 转圈文案）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const image = await openImageDetail(wrapper, { id: 8001, down_flag: false })
+
+    await wrapper.vm.handleDownload()
+    await flushPromises()
+
+    expect(apiMock.post).toHaveBeenCalledWith('/download/task', { image_id: 8001 })
+    // 关键：down_flag 保持 false（DB 未落库前不得标已下载）
+    expect(image.down_flag).toBe(false)
+    expect(downStateOf(image)).toBe('downloading')
+    expect(footerLeft().textContent).toContain('下载中')
+    // 「已下载」tag 与「下载原图」按钮都不应出现
+    expect(footerLeft().querySelector('.float-downloaded-tag')).toBeNull()
+  })
+
+  it('下载完成后（轮询到 completed）→ 变「已下载」tag + 重新下载按钮', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const image = await openImageDetail(wrapper, { id: 8002, down_flag: false })
+    await wrapper.vm.handleDownload()
+    await flushPromises()
+    expect(downStateOf(image)).toBe('downloading')
+
+    apiMock.get.mockResolvedValueOnce({
+      data: { data: { active: [], finished: [{ image_id: 8002, status: 'completed' }] } },
+    })
+    await sync()
+    await flushPromises()
+
+    expect(downStateOf(image)).toBe('downloaded')
+    const children = Array.from(footerLeft().children)
+    expect(children[0].classList.contains('float-redownload-btn')).toBe(true)
+    expect(children[1].classList.contains('float-downloaded-tag')).toBe(true)
+  })
+
+  it('下载失败（轮询到 failed）→ 复位为未下载，不残留「下载中」', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const image = await openImageDetail(wrapper, { id: 8003, down_flag: false })
+    await wrapper.vm.handleDownload()
+    await flushPromises()
+
+    apiMock.get.mockResolvedValueOnce({
+      data: { data: { active: [], finished: [{ image_id: 8003, status: 'failed' }] } },
+    })
+    await sync()
+    await flushPromises()
+
+    expect(downStateOf(image)).toBe('none')
+    expect(footerLeft().querySelector('.float-download-btn')).not.toBeNull()
+    expect(footerLeft().textContent).toContain('下载原图')
+  })
+
+  it('下载中重复点击不重复下发任务', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await openImageDetail(wrapper, { id: 8004, down_flag: false })
+
+    await wrapper.vm.handleDownload()
+    await flushPromises()
+    apiMock.post.mockClear()
+    await wrapper.vm.handleDownload()
+    await flushPromises()
+
+    expect(apiMock.post).not.toHaveBeenCalled()
+  })
+
+  it('批量下载：所有选中图片都被标记「下载中」（原先完全不变）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const picked = [
+      { id: 8101, down_flag: false },
+      { id: 8102, down_flag: false },
+      { id: 8103, down_flag: false },
+    ]
+    wrapper.vm.selectedImages = picked
+    await flushPromises()
+
+    await wrapper.vm.batchDownload()
+    await flushPromises()
+
+    expect(apiMock.post).toHaveBeenCalledWith(
+      '/download/task/batch',
+      picked.map((i) => ({ image_id: i.id }))
+    )
+    picked.forEach((i) => expect(downStateOf(i)).toBe('downloading'))
+    // 选区已清空
+    expect(wrapper.vm.selectedImages).toEqual([])
+  })
+
+  it('收藏自动下载：HeartOverlay 回报 downloadStarted → 立即「下载中」', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    const image = await openImageDetail(wrapper, { id: 8201, down_flag: false })
+
+    // 后端已建下载任务（POST /my_favorites/{id} 返回 download_started=true）
+    wrapper.vm.onFavoriteChanged({ imageId: 8201, favorited: true, downloadStarted: true })
+    await flushPromises()
+
+    expect(downStateOf(image)).toBe('downloading')
+    expect(footerLeft().textContent).toContain('下载中')
+  })
+
+  it('收藏未触发自动下载（downloadStarted=false）→ 标识不动', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    const image = await openImageDetail(wrapper, { id: 8202, down_flag: false })
+
+    wrapper.vm.onFavoriteChanged({ imageId: 8202, favorited: true, downloadStarted: false })
+    await flushPromises()
+
+    expect(downStateOf(image)).toBe('none')
+    expect(footerLeft().textContent).toContain('下载原图')
+  })
+})
+
+// =============================================================================
+// 收藏夹角标增量：下载完成 → O(1) +N，走 POST /favorites/{id}/local-count
+//
+// 为什么不用 updateLocalCount：它打的是 /favorites/{id}/refresh，后端会重跑
+// `tags LIKE ... AND down_flag=1` 的 COUNT（随已下载库线性放大，且该路由
+// 未走 asyncio.to_thread → 阻塞事件循环）。批量下载按张刷新会放大 N 倍。
+// =============================================================================
+describe('Gallery.vue 收藏夹角标增量（下载完成 → +N）', () => {
+  const { sync, _resetForTest } = useDownloadState()
+
+  const complete = async (ids) => {
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          active: [],
+          finished: ids.map((image_id) => ({ image_id, status: 'completed' })),
+        },
+      },
+    })
+    await sync()
+    await flushPromises()
+  }
+
+  /** 把 Gallery 置于「某收藏夹的二级页」：querySource=favorites + currentFavorite + images */
+  const enterFolderDetail = async (wrapper, folder, images) => {
+    wrapper.vm.querySource = 'favorites'
+    wrapper.vm.currentFavorite = folder
+    wrapper.vm.images = images
+    await flushPromises()
+  }
+
+  const mkImg = (id) => ({ id, down_flag: false, preview_url: `p${id}.jpg` })
+
+  beforeEach(() => {
+    _resetForTest()
+  })
+
+  it('收藏夹二级页里下载完成 1 张 → setLocalCount(上次值+1)，且不打 /refresh', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const folder = { id: 42, name: 'f1', local_count: 100 }
+    await enterFolderDetail(wrapper, folder, [mkImg(8301), mkImg(8302)])
+
+    await complete([8301])
+
+    expect(setLocalCountMock).toHaveBeenCalledTimes(1)
+    expect(setLocalCountMock).toHaveBeenCalledWith(42, 101)
+    expect(folder.local_count).toBe(101)
+  })
+
+  it('一轮内完成多张 → 只发一次请求，增量等于张数', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const folder = { id: 43, name: 'f2', local_count: 7 }
+    await enterFolderDetail(wrapper, folder, [mkImg(8303), mkImg(8304), mkImg(8305)])
+
+    await complete([8303, 8304, 8305])
+
+    expect(setLocalCountMock).toHaveBeenCalledTimes(1)
+    expect(setLocalCountMock).toHaveBeenCalledWith(43, 10)
+  })
+
+  it('完成的图不在当前收藏夹已加载列表里 → 不虚增（避免给无关收藏夹加数）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const folder = { id: 44, name: 'f3', local_count: 50 }
+    await enterFolderDetail(wrapper, folder, [mkImg(8306)])
+
+    await complete([9999]) // 别处下载的图
+
+    expect(setLocalCountMock).not.toHaveBeenCalled()
+    expect(folder.local_count).toBe(50)
+  })
+
+  it('非收藏夹视图（本地浏览）下载完成 → 不动任何收藏夹角标', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.querySource = 'local'
+    wrapper.vm.currentFavorite = null
+    wrapper.vm.images = [mkImg(8307)]
+    await flushPromises()
+
+    await complete([8307])
+
+    expect(setLocalCountMock).not.toHaveBeenCalled()
+  })
+
+  it('虚拟磁贴 id（my-favorites / random 字符串）不会被当成收藏夹去 +1', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await enterFolderDetail(wrapper, { id: 'my-favorites', local_count: 5 }, [mkImg(8308)])
+
+    await complete([8308])
+
+    expect(setLocalCountMock).not.toHaveBeenCalled()
+  })
+
+  it('同一张图重复回放 completed → 不会重复累加', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const folder = { id: 45, name: 'f5', local_count: 20 }
+    await enterFolderDetail(wrapper, folder, [mkImg(8309)])
+
+    await complete([8309])
+    await complete([8309]) // 终态窗口内后端再次回放同一条
+    await complete([8309])
+
+    expect(setLocalCountMock).toHaveBeenCalledTimes(1)
+    expect(folder.local_count).toBe(21)
+  })
+})
+
+// =============================================================================
+// 瀑布流卡片收藏 → 「下载中」回归
+//
+// Bug：WaterfallGallery 把卡片 HeartOverlay 的 changed 透传成 favorite-toggled，
+// 但 Gallery 从未绑定 @favorite-toggled → onFavoriteChanged 根本不执行。
+// 症状：在线图片点卡片红心收藏 → 后端建了下载任务 → 前端无「下载中」，
+//       等下载完成后被轮询对账标成「已下载」小绿点（只有绿点，没有下载中）。
+// =============================================================================
+describe('Gallery.vue 卡片收藏事件接线（favorite-toggled）', () => {
+  const { downStateOf, _resetForTest } = useDownloadState()
+
+  const emitCardFavorite = async (wrapper, payload) => {
+    wrapper.findComponent({ name: 'WaterfallGallery' }).vm.$emit('favorite-toggled', payload)
+    await flushPromises()
+  }
+
+  beforeEach(() => {
+    _resetForTest()
+  })
+
+  it('卡片收藏且后端已建下载任务 → 立即标记「下载中」', async () => {
+    const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
+    useFavoritesConfig().enableMyFavorites.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+    const image = { id: 8401, down_flag: false }
+
+    await emitCardFavorite(wrapper, { imageId: 8401, favorited: true, downloadStarted: true })
+
+    expect(downStateOf(image)).toBe('downloading')
+  })
+
+  it('卡片收藏未触发自动下载 → 不标记下载态（不误标）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const image = { id: 8402, down_flag: false }
+
+    await emitCardFavorite(wrapper, { imageId: 8402, favorited: true, downloadStarted: false })
+
+    expect(downStateOf(image)).toBe('none')
+  })
+
+  it('卡片收藏时详情页开着同一张图 → 同步 currentImage.is_favorited', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.currentImage = { id: 8403, is_favorited: false, down_flag: false }
+    await flushPromises()
+
+    await emitCardFavorite(wrapper, { imageId: 8403, favorited: true, downloadStarted: false })
+
+    expect(wrapper.vm.currentImage.is_favorited).toBe(true)
+  })
+
+  it('取消收藏（favorited=false）不碰下载态', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const image = { id: 8404, down_flag: true }
+
+    await emitCardFavorite(wrapper, { imageId: 8404, favorited: false, downloadStarted: false })
+
+    expect(downStateOf(image)).toBe('downloaded')
+  })
+})
+
+// =============================================================================
+// 收藏夹二级页 local_count 对齐（恢复 534f776 的原意，去掉死分支）
+//
+// /gallery/load 的 favorites 分支是「按 folder.tags 查本地已下载图」，
+// 所以 response.total 就是 local_count 的定义 → 直接 O(1) 写回，无需 COUNT。
+// 旧代码把这条包进了永不可达的 `if (querySource === 'local')` 死分支。
+// =============================================================================
+describe('Gallery.vue 收藏夹二级页 local_count 对齐', () => {
+  const { _resetForTest } = useDownloadState()
+
+  beforeEach(() => {
+    _resetForTest()
+  })
+
+  const loadFolderPage = async (wrapper, folder, total) => {
+    wrapper.vm.querySource = 'favorites'
+    wrapper.vm.currentFavorite = folder
+    wrapper.vm.currentPage = 1
+    apiMock.post.mockResolvedValueOnce({ data: [], has_more: false, total })
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+  }
+
+  it('进入收藏夹二级页 → setLocalCount(folderId, /gallery/load 的 total)', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const folder = { id: 46, name: 'f6', local_count: 999 }
+
+    await loadFolderPage(wrapper, folder, 128)
+
+    expect(setLocalCountMock).toHaveBeenCalledWith(46, 128)
+    expect(folder.local_count).toBe(128)
+  })
+
+  it('不再调用 updateLocalCount（/refresh 那条 COUNT 路径在 Gallery 里已无引用）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const folder = { id: 47, name: 'f7', local_count: 1 }
+
+    await loadFolderPage(wrapper, folder, 5)
+
+    expect(updateLocalCountMock).not.toHaveBeenCalled()
+  })
+
+  it('非收藏夹视图（本地浏览）→ 不写任何收藏夹角标', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.querySource = 'local'
+    wrapper.vm.currentFavorite = null
+    wrapper.vm.currentPage = 1
+    apiMock.post.mockResolvedValueOnce({ data: [], has_more: false, total: 77 })
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    expect(setLocalCountMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Gallery.vue virtualSelectedFavorite + 虚拟磁贴导航（修复问题 5 + 6）', () => {  // 虚拟 favorite chip 由 Gallery.vue 基于 querySource 派生，传给 AdvancedQuery。
   // 弹窗内 FavoritePanel 虚拟磁点击中后，Gallery 监听 @virtual-tile-navigate 强制
   // handleSourceChange 刷新（绕过 vue-router 同 url push 不发事件的限制）。
 

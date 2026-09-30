@@ -20,6 +20,8 @@ from src.models.response.download import (
     BatchTaskCreatedResponse,
     BatchTaskCreatedData,
     TaskStatusCountResponse,
+    ImageDownloadStates,
+    ImageDownloadStatesResponse,
 )
 from src.services.download import DownloadService
 
@@ -104,6 +106,40 @@ async def get_task_status_counts() -> TaskStatusCountResponse:
     try:
         counts = await asyncio.to_thread(DownloadService.get_status_counts)
         return TaskStatusCountResponse(message=ErrMsg.OK.msg, data=counts)
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+
+@router.get(
+    "/tasks/states",
+    response_model=ImageDownloadStatesResponse,
+    summary="图片下载状态快照（下载中 / 已下载标识的数据源）",
+)
+async def get_image_download_states(
+    finished_window: int = Query(
+        30, ge=0, le=300, description="终态回看窗口（秒）"
+    ),
+) -> ImageDownloadStatesResponse:
+    """按 image_id 返回下载队列状态快照。
+
+    ``yande_data.down_flag`` 只在下载完成时才落库，前端在「刚下单」到
+    「下载完成」之间没有任何可见反馈（收藏自动下载更是完全由后端触发）。
+    本接口把队列状态按 image_id 暴露出来：
+
+    - ``active``：pending / downloading / paused 的任务（含内存实时进度）
+    - ``finished``：最近 ``finished_window`` 秒内进入终态的任务，
+      前端据此把「下载中」收敛为「已下载」或复位
+
+    前端按 2s（有进行中任务）/ 5s（空闲）轮询，单次开销为两条带索引的
+    小查询。
+    """
+    try:
+        states = await asyncio.to_thread(
+            DownloadService.get_image_states, finished_window
+        )
+        return ImageDownloadStatesResponse(
+            message=ErrMsg.OK.msg, data=ImageDownloadStates.model_validate(states)
+        )
     except Exception as e:
         raise APIException(ErrMsg.QUERY_ERROR, e=e)
 

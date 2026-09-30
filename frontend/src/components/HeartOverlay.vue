@@ -28,7 +28,8 @@
  *   - showHeart:        是否渲染按钮（默认 false，外部按需控制显隐）
  *
  * Emits:
- *   - changed({ imageId, favorited })  切换完成后通知父组件同步状态
+ *   - changed({ imageId, favorited, downloadStarted })  切换完成后通知父组件同步状态；
+ *     downloadStarted=true 表示后端「收藏自动下载」已建任务，父组件据此打「下载中」标记
  */
 import { ref, watch } from 'vue'
 import { Star, StarFilled } from '@element-plus/icons-vue'
@@ -58,13 +59,21 @@ async function toggle() {
   if (loading.value) return
   loading.value = true
   try {
+    let downloadStarted = false
     if (isFavorited.value) {
       await myFavoritesApi.remove(props.imageId)
     } else {
-      await myFavoritesApi.add(props.imageId)
+      // 开启「收藏自动下载」时后端会顺带建下载任务，响应 data.download_started 告知前端，
+      // 让该图立刻转「下载中」（否则只能等下一次状态轮询才发现）
+      const resp = await myFavoritesApi.add(props.imageId)
+      downloadStarted = resp?.data?.download_started === true
     }
     isFavorited.value = !isFavorited.value
-    emit('changed', { imageId: props.imageId, favorited: isFavorited.value })
+    emit('changed', {
+      imageId: props.imageId,
+      favorited: isFavorited.value,
+      downloadStarted,
+    })
   } catch (e) {
     ElMessage.error('操作失败：' + (e?.message || ''))
   } finally {

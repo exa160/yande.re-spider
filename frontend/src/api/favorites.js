@@ -59,19 +59,35 @@ export function previewFolder(folderId, limit = 6) {
   return api.get(`/favorites/${folderId}/preview?limit=${limit}`)
 }
 
-// 更新在线数量
-export function updateOnlineCount(folderId, count) {
-  return api.post(`/favorites/${folderId}/online-count?count=${count}`)
+// 刷新在线数量（打 yande.re XML API 取该 tags 的全站总数）
+// 后端带 TTL 保鲜：默认 600s 内的重复调用直接返回缓存，不打远端；
+// 需要强制刷新时传 { force: true }（后端会忽略 TTL）。
+export function refreshOnlineCount(folderId, params = {}) {
+  return api.post(`/favorites/${folderId}/refresh-online`, null, { params })
 }
 
-// 更新本地数量
+/**
+ * 重算收藏夹的本地数量（后端跑一次 tags LIKE + down_flag 的 COUNT）
+ *
+ * ⚠️ 开销随已下载库线性放大，不要在高频路径调用。
+ * 需要「写入一个已知值」时用 setLocalCount（O(1)）；此函数保留给手动刷新按钮。
+ */
 export function updateLocalCount(folderId, count) {
   return api.post(`/favorites/${folderId}/refresh`)
 }
 
-// 从 yande API 刷新在线数量
-export function refreshOnlineCount(folderId) {
-  return api.post(`/favorites/${folderId}/refresh-online`)
+/**
+ * 直接写入收藏夹的本地图片数量 —— O(1)：后端一条 UPDATE by PK，不重算 COUNT。
+ *
+ * 用于「下载完成 → 收藏夹角标 +N」的增量修正：调用方自己累加出目标值再传进来。
+ * 后端契约见 POST /api/v1/favorites/{folder_id}/local-count（count 为必填 query 参数）。
+ *
+ * @param {number} folderId
+ * @param {number} count 目标值（不是增量）
+ * @returns {Promise<{data: {count: number}}>}
+ */
+export function setLocalCount(folderId, count) {
+  return api.post(`/favorites/${folderId}/local-count`, null, { params: { count } })
 }
 
 export function triggerFolderSchedule(folderId) {
@@ -96,8 +112,8 @@ export default {
   deleteFolder,
   reorderFolders,
   previewFolder,
-  updateOnlineCount,
   updateLocalCount,
+  setLocalCount,
   refreshOnlineCount,
   triggerFolderSchedule,
   getFolderScheduleStatus,

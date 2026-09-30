@@ -18,7 +18,7 @@ MyFavoriteDao 的 static 方法。这样：
 
 DAO 调用约定：MyFavoriteDao 是纯 static 类，必须显式传入 session。
 """
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 from sqlalchemy import func
@@ -39,7 +39,7 @@ class MyFavoritesService:
     """我的最爱业务编排。"""
 
     @staticmethod
-    async def add(image_id: int) -> None:
+    async def add(image_id: int) -> Dict[str, Any]:
         """加入我的最爱；满足条件时异步触发下载。
 
         业务规则：
@@ -47,6 +47,14 @@ class MyFavoritesService:
         2. 写入 my_favorite（UNIQUE 约束保证幂等）
         3. 仅当 ``not yande_data.down_flag AND config.favorites.enable_favorite_autodownload``
            时才触发下载；下载失败不回滚收藏（已 commit），仅记录 warning
+
+        Args:
+            image_id: yande 图片 ID
+
+        Returns:
+            ``{"download_started": bool, "task_id": str | None}``。
+            前端据此立即把该图标记为「下载中」，不必等下一次状态轮询
+            （收藏自动下载是后端触发的，前端此前完全无感知）。
 
         Raises:
             ValueError: image_id 不存在于 yande_data
@@ -63,13 +71,16 @@ class MyFavoritesService:
                 and config.favorites.enable_favorite_autodownload
             )
 
+        task_id: Optional[str] = None
         if should_download:
             try:
-                await DownloadService.create_task(image_id)
+                task_id = await DownloadService.create_task(image_id)
                 logger.info(f"My favorite auto-download triggered for {image_id}")
             except Exception as e:
                 # 收藏已提交，下载失败不影响数据一致性
                 logger.warning(f"Auto-download failed for {image_id}: {e}")
+
+        return {"download_started": task_id is not None, "task_id": task_id}
 
     @staticmethod
     def remove(image_id: int) -> None:

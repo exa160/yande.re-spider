@@ -113,6 +113,10 @@ class FavoriteFolder(Base):
     sort_order = Column(Integer, default=0, comment="排序权重")
     local_count = Column(Integer, default=0, comment="本地图片数量")
     online_count = Column(Integer, default=0, comment="在线图片数量(缓存)")
+    online_refreshed_at = Column(
+        DateTime, nullable=True,
+        comment="online_count 最后一次远程刷新时间（TTL 判定用；不与 last_refresh 混用）",
+    )
     last_refresh = Column(DateTime, nullable=True, comment="最后刷新时间")
     created_at = Column(DateTime, default=datetime.now, comment="创建时间")
     updated_at = Column(
