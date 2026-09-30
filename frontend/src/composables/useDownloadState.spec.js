@@ -19,7 +19,7 @@ vi.mock('@/api', () => ({ default: apiMock }))
 
 import { useDownloadState } from './useDownloadState'
 
-const { sync, markQueued, reset, downStateOf, start, stop, _resetForTest } = useDownloadState()
+const { sync, markQueued, reset, downStateOf, activeCount, start, stop, _resetForTest } = useDownloadState()
 
 /** 构造后端 /download/tasks/states 的响应体（axios 拦截器已剥出 response.data） */
 const statesResponse = ({ active = [], finished = [] }) => ({
@@ -267,6 +267,72 @@ describe('useDownloadState — 下载完成订阅（收藏夹角标增量用）'
     )
     await expect(sync()).resolves.toBe(true)
     expect(downStateOf({ id: 416 })).toBe('downloaded')
+  })
+})
+
+describe('useDownloadState — 进行中计数（工具栏角标）', () => {
+  it('空闲时为 0（角标不显示）', () => {
+    expect(activeCount.value).toBe(0)
+  })
+
+  it('本地乐观标记立即计入（点下载无需等网络往返）', () => {
+    markQueued([1, 2, 3])
+    expect(activeCount.value).toBe(3)
+  })
+
+  it('轮询对账到后端队列后按后端为准（收藏自动下载这类未触发的任务也会被计入）', async () => {
+    apiMock.get.mockResolvedValueOnce(
+      statesResponse({
+        active: [
+          { image_id: 900, status: 'downloading' },
+          { image_id: 901, status: 'pending' },
+        ],
+      })
+    )
+    await expect(sync()).resolves.toBe(true)
+    expect(activeCount.value).toBe(2)
+  })
+
+  it('paused 不计入（暂停不是"正在下载"，角标亮着会误导）', async () => {
+    apiMock.get.mockResolvedValueOnce(
+      statesResponse({ active: [{ image_id: 902, status: 'paused' }] })
+    )
+    await expect(sync()).resolves.toBe(true)
+    expect(downStateOf({ id: 902 })).toBe('paused')
+    expect(activeCount.value).toBe(0)
+  })
+
+  it('任务完成后从计数里移除（角标随之消失）', async () => {
+    markQueued([903])
+    expect(activeCount.value).toBe(1)
+    apiMock.get.mockResolvedValueOnce(
+      statesResponse({ finished: [{ image_id: 903, status: 'completed' }] })
+    )
+    await expect(sync()).resolves.toBe(true)
+    expect(activeCount.value).toBe(0)
+  })
+
+  it('失败/取消的任务不计入', async () => {
+    markQueued([904])
+    apiMock.get.mockResolvedValueOnce(
+      statesResponse({ finished: [{ image_id: 904, status: 'failed' }] })
+    )
+    await expect(sync()).resolves.toBe(true)
+    expect(activeCount.value).toBe(0)
+  })
+
+  it('同轮里既有完成又有进行中：只数还在跑的（已完成的不占角标）', async () => {
+    markQueued([905, 906])
+    expect(activeCount.value).toBe(2)
+    apiMock.get.mockResolvedValueOnce(
+      statesResponse({
+        finished: [{ image_id: 905, status: 'completed' }],
+        active: [{ image_id: 906, status: 'downloading' }],
+      })
+    )
+    await expect(sync()).resolves.toBe(true)
+    expect(downStateOf({ id: 905 })).toBe('downloaded')
+    expect(activeCount.value).toBe(1)
   })
 })
 

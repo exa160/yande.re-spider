@@ -43,7 +43,7 @@
  * 采用模块级单例（与 `useFavoritesConfig` 一致）：Gallery 详情页与
  * WaterfallGallery 瀑布流共享同一份状态，任意一处触发、处处可见。
  */
-import { reactive, readonly } from 'vue'
+import { reactive, readonly, computed } from 'vue'
 import api from '@/api'
 
 /** 进行中（UI 显示「下载中」）的状态集合 */
@@ -146,6 +146,22 @@ const reset = (imageIds) => {
 
 /** 是否存在「进行中」状态（用于选择轮询节奏） */
 const hasActiveStates = () => Object.values(states).some((s) => ACTIVE_STATES.has(s))
+
+/**
+ * 进行中任务数（工具栏角标用）。
+ *
+ * 口径与卡片上的「下载中」完全一致：queued + pending + downloading，
+ * **不含 paused**（暂停不是"正在下载"，角标亮着会误导用户）。
+ * 数据来源是同一份 states —— 既含本地乐观标记，也含轮询对账到的后端队列，
+ * 因此收藏自动下载这类前端未触发的任务同样会被计入，且刷新页面后立即正确。
+ */
+const activeCount = computed(() => {
+  let n = 0
+  Object.keys(states).forEach((k) => {
+    if (ACTIVE_STATES.has(states[k])) n += 1
+  })
+  return n
+})
 
 /**
  * 与后端队列对账。返回是否成功（失败时静默重试，不打断 UI）。
@@ -274,6 +290,7 @@ const _resetForTest = () => {
 
 export const useDownloadState = () => ({
   states: readonly(states),
+  activeCount,
   downStateOf,
   isActive,
   isDownloaded,

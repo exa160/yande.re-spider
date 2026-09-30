@@ -160,6 +160,11 @@ const factory = () => {
         'el-button': { template: '<button class="el-button"><slot/></button>' },
         'el-button-group': { template: '<div><slot/></div>' },
         'el-icon': { template: '<i><slot/></i>' },
+        // el-badge 渲染出 value 才能断言工具栏下载入口的角标数字
+        'el-badge': {
+          props: ['value', 'hidden', 'max', 'type'],
+          template: `<div class="el-badge-stub"><slot/><sup v-if="!hidden && value > 0" class="el-badge-content">{{ value > max ? max + '+' : value }}</sup></div>`,
+        },
         'el-tag': { template: '<span><slot/></span>' },
         'el-tooltip': { template: '<div><slot/></div>' },
         'el-dialog': { template: '<div><slot/></div>' },
@@ -1532,6 +1537,211 @@ describe('Gallery.vue 下载态标记（单图 / 批量 / 收藏自动下载）'
 
     expect(downStateOf(image)).toBe('none')
     expect(footerLeft().textContent).toContain('下载原图')
+  })
+})
+
+// =============================================================================
+// 工具栏下载入口：进行中角标 + 动效
+//
+// 痛点：卡片上的「下载中」只覆盖当前视野里的图，滚走/切页就看不见，
+// 用户点完下载没有任何全局反馈。右上角角标把「还有几个在跑」显性化。
+// =============================================================================
+describe('Gallery.vue 工具栏下载入口（角标 + 动效）', () => {
+  const { markQueued, sync, _resetForTest } = useDownloadState()
+
+  // 用 wrapper.find 而非 document.querySelector：Gallery 不 teleport，但历史上
+  // teleport 出去的 DOM 会在 body 上跨用例累积，document 查询会命中旧 wrapper
+  const badgeText = (wrapper) => wrapper.find('.download-indicator .el-badge-content').text()
+
+  // 强制工具栏渲染分支。Gallery 的 useMobileMenu 靠 offsetWidth 测量两侧是否重叠，
+  // happy-dom 里 offsetWidth 恒为 0 → 必然判定成「移动端」（圆点菜单），
+  // 桌面端那枚下载按钮压根不会渲染，测不到。这里按 class 造出两种宽度布局。
+  const withToolbarLayout = (kind) => {
+    const original = Object.getOwnPropertyDescriptor(
+      globalThis.HTMLElement.prototype,
+      'offsetWidth'
+    )
+    Object.defineProperty(globalThis.HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get() {
+        if (this.classList?.contains('top-toolbar')) return kind === 'desktop' ? 1000 : 300
+        if (this.closest?.('.toolbar-left')) return kind === 'desktop' ? 60 : 200
+        return 0
+      },
+    })
+    return () =>
+      Object.defineProperty(globalThis.HTMLElement.prototype, 'offsetWidth', original)
+  }
+
+  let restoreLayout = null
+
+  beforeEach(() => {
+    _resetForTest()
+    restoreLayout = withToolbarLayout('desktop')
+  })
+
+  afterEach(() => {
+    restoreLayout?.()
+    restoreLayout = null
+  })
+
+  it('空闲：工具栏下载入口无角标、用普通图标（无动效 SVG）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.find('.download-indicator').exists()).toBe(true)
+    expect(wrapper.find('.download-indicator .el-badge-content').exists()).toBe(false)
+    expect(wrapper.find('.download-indicator .dl-anim').exists()).toBe(false)
+  })
+
+  it('点单图下载 → 角标立刻显示 1，入口切到动效图标', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.currentImage = { id: 8601, down_flag: false, preview_url: 'p.jpg' }
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+
+    await wrapper.vm.handleDownload()
+    await flushPromises()
+
+    expect(badgeText(wrapper)).toBe('1')
+    expect(wrapper.find('.download-indicator .dl-anim').exists()).toBe(true)
+  })
+
+  it('批量下载 → 角标显示选中张数', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.images = [
+      { id: 8611, down_flag: false, preview_url: 'a.jpg' },
+      { id: 8612, down_flag: false, preview_url: 'b.jpg' },
+      { id: 8613, down_flag: false, preview_url: 'c.jpg' },
+    ]
+    wrapper.vm.selectedImages = [wrapper.vm.images[0], wrapper.vm.images[1]]
+    await flushPromises()
+
+    await wrapper.vm.batchDownload()
+    await flushPromises()
+
+    expect(badgeText(wrapper)).toBe('2')
+  })
+
+  it('收藏自动下载（前端未触发）→ 轮询对账后角标也会亮', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.find('.download-indicator .el-badge-content').exists()).toBe(false)
+
+    apiMock.get.mockResolvedValueOnce({
+      data: { data: { active: [{ image_id: 8621, status: 'downloading' }], finished: [] } },
+    })
+    await sync()
+    await flushPromises()
+
+    expect(badgeText(wrapper)).toBe('1')
+  })
+
+  it('任务全部完成 → 角标消失、回到普通图标（不留残影）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    markQueued([8631, 8632])
+    await flushPromises()
+    expect(badgeText(wrapper)).toBe('2')
+
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          active: [],
+          finished: [
+            { image_id: 8631, status: 'completed' },
+            { image_id: 8632, status: 'completed' },
+          ],
+        },
+      },
+    })
+    await sync()
+    await flushPromises()
+
+    expect(wrapper.find('.download-indicator .el-badge-content').exists()).toBe(false)
+    expect(wrapper.find('.download-indicator .dl-anim').exists()).toBe(false)
+  })
+
+  it('点击下载入口仍然打开下载管理对话框', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    markQueued([8641])
+    await flushPromises()
+
+    await wrapper.find('.download-indicator button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.vm.showDownloadDialog).toBe(true)
+  })
+
+  it('tooltip 文案带上进行中数量（用户不必点进去才知道有几个）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.vm.downloadTooltipText).toBe('下载管理')
+
+    markQueued([8651, 8652, 8653])
+    await flushPromises()
+    expect(wrapper.vm.downloadTooltipText).toBe('下载管理（3 个下载中）')
+  })
+})
+
+// 移动端圆点菜单里也有一枚下载入口：同一组件、同样要带角标，
+// 否则窄屏用户反而看不到「有几个在下载」
+describe('Gallery.vue 移动端菜单的下载入口', () => {
+  const { markQueued, _resetForTest } = useDownloadState()
+
+  let restoreLayout = null
+
+  beforeEach(() => {
+    _resetForTest()
+    // 容器窄 / 左侧按钮宽 → useMobileMenu 判定为移动端
+    const original = Object.getOwnPropertyDescriptor(
+      globalThis.HTMLElement.prototype,
+      'offsetWidth'
+    )
+    Object.defineProperty(globalThis.HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get() {
+        if (this.classList?.contains('top-toolbar')) return 300
+        if (this.closest?.('.toolbar-left')) return 200
+        return 0
+      },
+    })
+    restoreLayout = () =>
+      Object.defineProperty(globalThis.HTMLElement.prototype, 'offsetWidth', original)
+  })
+
+  afterEach(() => {
+    restoreLayout?.()
+    restoreLayout = null
+  })
+
+  it('展开圆点菜单后：下载入口同样带角标与动效', async () => {
+    const wrapper = factory()
+    wrapper.vm.mobileMenuExpanded = true
+    await flushPromises()
+    expect(wrapper.vm.useMobileMenu).toBe(true)
+
+    markQueued([8661, 8662])
+    await flushPromises()
+
+    const badge = wrapper.find('.mobile-expand-menu .download-indicator .el-badge-content')
+    expect(badge.text()).toBe('2')
+    expect(wrapper.find('.mobile-expand-menu .dl-anim').exists()).toBe(true)
+  })
+
+  it('点击移动端下载入口：打开下载管理并收起菜单', async () => {
+    const wrapper = factory()
+    wrapper.vm.mobileMenuExpanded = true
+    await flushPromises()
+
+    await wrapper.find('.mobile-expand-menu .download-indicator button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.vm.showDownloadDialog).toBe(true)
+    expect(wrapper.vm.mobileMenuExpanded).toBe(false)
   })
 })
 

@@ -58,9 +58,10 @@
                 <el-icon v-if="isDarkMode"><Sunny /></el-icon>
                 <el-icon v-else><Moon /></el-icon>
               </el-button>
-              <el-button circle @click="showDownloadDialog = true; mobileMenuExpanded = false">
-                <el-icon><Download /></el-icon>
-              </el-button>
+              <DownloadIndicator
+                :count="activeDownloadCount"
+                @click="showDownloadDialog = true; mobileMenuExpanded = false"
+              />
               <el-button circle @click="showConfigDialog = true; mobileMenuExpanded = false">
                 <el-icon><Setting /></el-icon>
               </el-button>
@@ -75,10 +76,11 @@
               <el-icon v-else><Moon /></el-icon>
             </el-button>
           </el-tooltip>
-          <el-tooltip content="下载管理" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
-            <el-button circle @click="showDownloadDialog = true">
-              <el-icon><Download /></el-icon>
-            </el-button>
+          <el-tooltip :content="downloadTooltipText" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
+            <DownloadIndicator
+              :count="activeDownloadCount"
+              @click="showDownloadDialog = true"
+            />
           </el-tooltip>
           <el-tooltip content="配置" :effect="isDarkMode ? 'dark' : 'light'" :trigger="isTouchDevice ? 'click' : 'hover'" :auto-close="isTouchDevice ? 1000 : 0" :show-after="isTouchDevice ? 0 : 100" :enterable="false">
             <el-button circle @click="showConfigDialog = true">
@@ -385,6 +387,7 @@ import WaterfallGallery from '@/components/WaterfallGallery.vue'
 import FolderTile from '@/components/FolderTile.vue'
 import BackButton from '@/components/BackButton.vue'
 import HeartOverlay from '@/components/HeartOverlay.vue'
+import DownloadIndicator from '@/components/DownloadIndicator.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
@@ -518,6 +521,7 @@ const downloading = ref(false)
 // 任务下发请求在途标记（防重复点击）；「下载中」的权威来源是 useDownloadState
 const {
   downStateOf,
+  activeCount: activeDownloadCount,
   markQueued,
   sync: syncDownloadStates,
   start: startDownloadSync,
@@ -526,6 +530,11 @@ const {
 } = useDownloadState()
 // 当前大图的下载态：'downloading' | 'paused' | 'downloaded' | 'none'
 const currentDownState = computed(() => downStateOf(currentImage.value))
+// 工具栏下载入口的 tooltip：有任务在跑时把数量说清楚，否则用户点进去才知道
+const downloadTooltipText = computed(() => {
+  const n = activeDownloadCount.value
+  return n > 0 ? `下载管理（${n} 个下载中）` : '下载管理'
+})
 // 下载完成订阅的退订句柄（onMounted 注册 / onUnmounted 注销）
 let unsubscribeDownloadCompleted = null
 const overlayColorScheme = ref('dark') // 'dark' or 'light'
@@ -1634,7 +1643,9 @@ html.dark-mode .top-toolbar {
   z-index: 101;
 }
 
-.mobile-expand-menu .el-button {
+/* :deep 必需：DownloadIndicator 内部的 el-button 属于子组件作用域，
+   普通的 scoped 选择器匹配不到，暗色模式下会退回 EP 默认白底 */
+.mobile-expand-menu :deep(.el-button) {
   background: var(--bg-tertiary);
   border-color: var(--border-color);
 }
