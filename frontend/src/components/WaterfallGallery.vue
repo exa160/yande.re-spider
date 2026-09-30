@@ -92,7 +92,18 @@
                   <el-tag :type="getRatingType(image.rating)" size="small" class="info-rating">
                     {{ image.rating }}
                   </el-tag>
-                  <div v-if="image.down_flag" class="downloaded-dot"></div>
+                  <!-- 下载态：进行中（转圈）/ 已下载（绿点）。
+                       状态来自 useDownloadState 单例，后端队列里存在任务即为「进行中」，
+                       收藏自动下载也会被轮询对账捕获。
+                       两种指示器都留在 .info-group-left 内，收藏按钮位置不受其有无影响。 -->
+                  <el-icon
+                    v-if="downStateOf(image) === 'downloading'"
+                    class="is-loading info-downloading"
+                    title="下载中"
+                  >
+                    <Loading />
+                  </el-icon>
+                  <div v-else-if="downStateOf(image) === 'downloaded'" class="downloaded-dot"></div>
                 </div>
                 <div v-if="showHeart" class="info-group-right">
                   <!-- v2 我的最爱：HeartOverlay 渲染在右组内（非 absolute 定位），由右组 flex 自适应 -->
@@ -154,6 +165,7 @@ import { ElMessage } from 'element-plus'
 import api from '@/api'
 import HeartOverlay from '@/components/HeartOverlay.vue'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useDownloadState } from '@/composables/useDownloadState'
 
 const props = defineProps({
   images: {
@@ -222,6 +234,10 @@ const emit = defineEmits([
 
 // v2 我的最爱 / 随机浏览总开关：singleton ref，跨组件共享
 const { enableMyFavorites } = useFavoritesConfig()
+
+// 下载态（下载中 / 已下载）：与 Gallery 详情页共用同一单例，本组件只读不轮询，
+// 轮询由 Gallery.vue 的 mount/unmount 生命周期驱动（避免多个定时器）
+const { downStateOf } = useDownloadState()
 
 // 监听 isLoadingMore prop，当父组件重置时同步状态
 watch(() => props.isLoadingMore, (newVal) => {
@@ -1159,6 +1175,13 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
   height: 8px;
   background: #67C23A;
   border-radius: 50%;
+}
+
+/* 下载中：与 .downloaded-dot 同尺寸的转圈指示器，保证两种状态下
+   元数据组的排版宽度一致（收藏按钮位置不跳动） */
+.info-downloading {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .retry-button {

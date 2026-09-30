@@ -94,3 +94,38 @@ class TaskStatusCountResponse(BaseResponse[TaskStatusCount]):
     """任务状态计数响应"""
 
     ...
+
+
+class ActiveImageState(BaseModel):
+    """单张图片的进行中下载任务"""
+
+    image_id: int = Field(description="yande 图片 ID")
+    task_id: str = Field(description="任务 UUID")
+    status: str = Field(description="pending | downloading | paused")
+    progress: float = Field(0.0, description="进度 0-1（内存实时值）")
+    speed: float = Field(0.0, description="下载速度 bytes/s（内存实时值）")
+    downloaded_size: int = Field(0, description="已下载大小（字节）")
+
+
+class FinishedImageState(BaseModel):
+    """单张图片刚结束（窗口期内）的下载任务"""
+
+    image_id: int = Field(description="yande 图片 ID")
+    status: str = Field(description="completed | failed | cancelled")
+
+
+class ImageDownloadStates(BaseModel):
+    """图片下载状态快照（前端「下载中 / 已下载」标识的数据源）"""
+
+    active: List[ActiveImageState] = Field(
+        default_factory=list, description="进行中任务（同一 image_id 只保留最新一条）"
+    )
+    finished: List[FinishedImageState] = Field(
+        default_factory=list, description="窗口期内终态任务，用于收敛「下载中」标识"
+    )
+
+
+class ImageDownloadStatesResponse(BaseResponse[ImageDownloadStates]):
+    """图片下载状态快照响应"""
+
+    ...

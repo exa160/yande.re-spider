@@ -183,30 +183,39 @@ async def preview_folder(
     "/{folder_id}/refresh", response_model=FavoriteFolderRefreshResponse, summary="手动刷新收藏夹数量"
 )
 async def refresh_folder_count(folder_id: int) -> FavoriteFolderRefreshResponse:
-    """手动刷新指定收藏夹的本地数量"""
-    result = FavoritesService.get_folder(folder_id)
+    """手动刷新指定收藏夹的本地数量。
+
+    ``to_thread`` 是必须的：``_refresh_local_count`` 会跑一次
+    ``tags LIKE ... AND down_flag=1`` 的 COUNT（随已下载库线性放大），
+    同步写在 async 路由里会阻塞事件循环。
+    """
+    result = await asyncio.to_thread(FavoritesService.get_folder, folder_id)
     if not result:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
     return FavoriteFolderRefreshResponse(message="刷新成功", data=result)
 
 
 @router.post(
-    "/{folder_id}/online-count", response_model=FolderCountResponse, summary="更新在线数量"
-)
-async def update_online_count(folder_id: int, count: int) -> FolderCountResponse:
-    """更新收藏夹的在线图片数量"""
-    success = FavoritesService.update_online_count(folder_id, count)
-    if not success:
-        raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)
-    return FolderCountResponse(message="更新成功", data={"count": count})
-
-
-@router.post(
     "/{folder_id}/refresh-online", response_model=FolderCountResponse, summary="刷新在线数量"
 )
-async def refresh_online_count(folder_id: int) -> FolderCountResponse:
-    """从 yande.re XML API 刷新收藏夹的在线图片数量"""
-    count = FavoritesService.refresh_online_count(folder_id)
+async def refresh_online_count(
+    folder_id: int,
+    max_age_seconds: int = Query(
+        600,
+        ge=0,
+        le=86400,
+        description="缓存有效期（秒）。距上次远程刷新不足该值时直接返回缓存，不打 yande.re",
+    ),
+    force: bool = Query(False, description="忽略 TTL 强制刷新（供手动刷新按钮用）"),
+) -> FolderCountResponse:
+    """从 yande.re XML API 刷新收藏夹的在线图片数量（带 TTL）。
+
+    ``to_thread`` 是必须的：``YandeApi.get_count`` 是同步 requests，跨网络往返直接
+    写在 async 路由里会阻塞整个事件循环（下载进度上报、前端轮询全被卡住）。
+    """
+    count = await asyncio.to_thread(
+        FavoritesService.refresh_online_count, folder_id, max_age_seconds, force
+    )
     if count is None:
         raise APIException(ErrMsg.QUERY_ERROR)
     return FolderCountResponse(message="刷新成功", data={"count": count})

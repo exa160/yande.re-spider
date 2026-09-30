@@ -141,6 +141,43 @@ def test_add_for_downloaded_image_does_not_trigger_download(seed_image, enable_a
         mock_dl.create_task.assert_not_called()
 
 
+# ============================================================
+# add() 返回值契约：download_started / task_id
+#
+# 前端靠这个字段在「收藏自动下载」时立刻打「下载中」标记，
+# 否则只能等下一次 /download/tasks/states 轮询才发现。
+# ============================================================
+
+
+def test_add_returns_download_started_true_with_task_id(seed_image, enable_autodownload_true):
+    """触发自动下载时返回 download_started=True 与 task_id。"""
+    with patch("src.services.my_favorites.DownloadService") as mock_dl:
+        mock_dl.create_task = AsyncMock(return_value="task-uuid-1")
+        result = asyncio.run(MyFavoritesService.add(42))
+    assert result == {"download_started": True, "task_id": "task-uuid-1"}
+
+
+def test_add_returns_download_started_false_when_autodownload_off(
+    seed_image, enable_autodownload_false
+):
+    """未开启自动下载：download_started=False，task_id=None。"""
+    with patch("src.services.my_favorites.DownloadService") as mock_dl:
+        mock_dl.create_task = AsyncMock()
+        result = asyncio.run(MyFavoritesService.add(42))
+    assert result == {"download_started": False, "task_id": None}
+
+
+def test_add_returns_download_started_false_when_create_task_fails(
+    seed_image, enable_autodownload_true
+):
+    """建任务失败（收藏已提交）不抛错，但 download_started=False。"""
+    with patch("src.services.my_favorites.DownloadService") as mock_dl:
+        mock_dl.create_task = AsyncMock(side_effect=RuntimeError("boom"))
+        result = asyncio.run(MyFavoritesService.add(42))
+    assert result == {"download_started": False, "task_id": None}
+    assert MyFavoritesService.count() == 1
+
+
 def test_remove_is_idempotent(seed_image, enable_autodownload_true):
     """remove() 对不存在的 image_id 不报错（幂等）。"""
     # 不抛异常即通过

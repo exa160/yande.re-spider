@@ -6,7 +6,13 @@ from sqlalchemy import URL, create_engine
 
 from src.common import config
 from src.common.constant import path_constant
-from src.common.settings import ApiConfig, DownloaderConfig, DatabaseConfig, FavoritesConfig
+from src.common.settings import (
+    ApiConfig,
+    DatabaseConfig,
+    DownloaderConfig,
+    FavoritesConfig,
+    TagCacheConfig,
+)
 from src.dao.database import engine_change_handler
 
 
@@ -22,6 +28,23 @@ class ConfigService:
     def get_favorites_config() -> FavoritesConfig:
         """获取收藏夹配置（我的最爱 / 收藏夹 UI 开关 + 显示偏好）"""
         return config.favorites
+
+    @staticmethod
+    def get_tag_cache_config() -> TagCacheConfig:
+        """获取标签缓存配置（定时增量刷新开关 + cron）"""
+        return config.tag_cache
+
+    @staticmethod
+    def update_tag_cache_config(tag_cache_config: TagCacheConfig) -> bool:
+        """更新标签缓存配置，并在保存后立刻重挂定时任务（免重启生效）"""
+        from src.lifecycle.scheduler import SchedulerLifecycle
+
+        try:
+            config.update_config(TagCacheConfig.model_validate(tag_cache_config))
+            SchedulerLifecycle.reload_tag_cache_schedule()
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def update_favorites_config(favorites_config: FavoritesConfig) -> bool:
@@ -143,7 +166,7 @@ class ConfigService:
         重置配置
 
         Args:
-            section: 配置段 (api/downloader/database/favorites)
+            section: 配置段 (api/downloader/database/favorites/tag_cache)
 
         Returns:
             (成功与否, 消息)
@@ -154,6 +177,7 @@ class ConfigService:
             "downloader": DownloaderConfig,
             "database": DatabaseConfig,
             "favorites": FavoritesConfig,
+            "tag_cache": TagCacheConfig,
         }
 
         reset_model = reset_map.get(section)
@@ -172,3 +196,13 @@ def get_favorites_config() -> FavoritesConfig:
 def update_favorites_config(favorites_config: FavoritesConfig) -> bool:
     """模块级更新收藏夹配置便捷函数（与 ConfigService.update_favorites_config 等价）"""
     return ConfigService.update_favorites_config(favorites_config)
+
+
+def get_tag_cache_config() -> TagCacheConfig:
+    """模块级获取标签缓存配置便捷函数（与 ConfigService.get_tag_cache_config 等价）"""
+    return ConfigService.get_tag_cache_config()
+
+
+def update_tag_cache_config(tag_cache_config: TagCacheConfig) -> bool:
+    """模块级更新标签缓存配置便捷函数（与 ConfigService.update_tag_cache_config 等价）"""
+    return ConfigService.update_tag_cache_config(tag_cache_config)

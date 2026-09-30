@@ -7,7 +7,7 @@
 - recover_downloading_tasks() 处理崩溃残留
 """
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
 from sqlalchemy import case, func, select, update
@@ -15,6 +15,11 @@ from sqlalchemy import case, func, select, update
 from src.common.constant import TaskStatus
 from src.dao.database import BaseDAO
 from src.models.database.yande import DownloadTask
+
+# 活跃状态：任务还在队列里（前端据此显示「下载中」）
+ACTIVE_STATUSES = (TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.PAUSED)
+# 终态：任务已结束（前端据此收敛「下载中 → 已下载 / 复位」）
+FINISHED_STATUSES = (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
 
 
 class DownloadTaskDao(BaseDAO):
@@ -141,6 +146,54 @@ class DownloadTaskDao(BaseDAO):
         for status_val, count in rows:
             key = status_val.value if hasattr(status_val, "value") else status_val
             result[key] = count
+        return result
+
+    def active_states_by_image(self) -> Dict[int, DownloadTask]:
+        """活跃任务（pending/downloading/paused）按 image_id 聚合。
+
+        同一张图片可能存在多条任务（重复点下载），按 created_at DESC 排序后
+        「首次出现即最新」，同名 image_id 只保留最新一条。
+
+        Returns:
+            {image_id: DownloadTask}；无活跃任务返回空 dict
+        """
+        rows = (
+            self.session.query(DownloadTask)
+            .filter(DownloadTask.status.in_(ACTIVE_STATUSES))
+            .order_by(DownloadTask.image_id.asc(), DownloadTask.created_at.desc())
+            .all()
+        )
+        result: Dict[int, DownloadTask] = {}
+        for row in rows:
+            result.setdefault(row.image_id, row)
+        return result
+
+    def finished_states_by_image(self, since: datetime) -> Dict[int, str]:
+        """窗口期内进入终态的任务按 image_id 聚合，返回 {image_id: status}。
+
+        与 active_states_by_image 同理，同一 image_id 只保留 updated_at 最新的一条。
+        窗口（since）由调用方给出，用于让前端在「任务刚结束」这一小段时间内
+        仍能观察到 completed/failed，从而把「下载中」标识收敛掉。
+
+        Args:
+            since: 终态时间的下界（updated_at >= since）
+
+        Returns:
+            {image_id: 'completed' | 'failed' | 'cancelled'}
+        """
+        rows = (
+            self.session.query(DownloadTask)
+            .filter(
+                DownloadTask.status.in_(FINISHED_STATUSES),
+                DownloadTask.updated_at >= since,
+            )
+            .order_by(DownloadTask.image_id.asc(), DownloadTask.updated_at.desc())
+            .all()
+        )
+        result: Dict[int, str] = {}
+        for row in rows:
+            status = row.status.value if hasattr(row.status, "value") else row.status
+            result.setdefault(row.image_id, status)
         return result
 
     def query_tasks(

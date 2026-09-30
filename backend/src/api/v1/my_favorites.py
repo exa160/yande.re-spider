@@ -99,12 +99,16 @@ async def list_my_favorites_images(
 async def add_my_favorite(image_id: int) -> BaseResponse:
     """加入我的最爱。幂等（UNIQUE image_id 兜底）。
 
+    响应 ``data`` 为 ``{"download_started": bool, "task_id": str | None}``：
+    开启收藏自动下载且该图未下载时，后端顺带创建下载任务并回传 task_id，
+    前端据此**立刻**把该图标为「下载中」，无需等下一次状态轮询。
+
     ValueError 表示 image_id 在 yande_data 中不存在（service 层抛出），
     统一映射为 404 NOT_FOUND，与 ErrMsg 约定保持一致。
     """
     try:
-        await MyFavoritesService.add(image_id)
-        return BaseResponse(message="已加入我的最爱")
+        result = await MyFavoritesService.add(image_id)
+        return BaseResponse(message="已加入我的最爱", data=result)
     except ValueError as e:
         raise APIException(ErrMsg.NOT_FOUND, data={"detail": str(e)})
     except Exception as e:

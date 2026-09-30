@@ -42,7 +42,7 @@ def test_auto_migrate_skips_when_table_missing():
     eng.dispose()
 
 
-def test_auto_migrate_adds_all_seven_columns_to_sqlite(sqlite_engine_without_schedule_cols):
+def test_auto_migrate_adds_all_desired_columns_to_sqlite(sqlite_engine_without_schedule_cols):
     insp = inspect(sqlite_engine_without_schedule_cols)
     before = {c["name"] for c in insp.get_columns("favorite_folders")}
     assert "schedule_enabled" not in before
@@ -59,6 +59,8 @@ def test_auto_migrate_adds_all_seven_columns_to_sqlite(sqlite_engine_without_sch
     assert "last_scheduled_at" in after
     assert "last_schedule_status" in after
     assert "last_schedule_stats" in after
+    # online_count 的 TTL 判定列（与 last_refresh 分开，见 FavoritesService.refresh_online_count）
+    assert "online_refreshed_at" in after
 
 
 def test_auto_migrate_is_idempotent(sqlite_engine_without_schedule_cols):
@@ -134,10 +136,13 @@ def test_auto_migrate_runs_against_a_mariadb_shaped_engine(monkeypatch):
 
     _auto_migrate(_FakeMariadbEngine())
 
-    assert len(captured) == 7, f"expected 7 ALTER statements, got {len(captured)}: {captured}"
+    assert len(captured) == 9, f"expected 9 ALTER statements, got {len(captured)}: {captured}"
     for sql in captured:
         assert sql.startswith("ALTER TABLE favorite_folders ADD COLUMN")
-        assert "schedule" in sql.lower()
+    # 7 个调度列 + last_synced_id + online_count 的 TTL 列
+    assert sum("schedule" in sql.lower() for sql in captured) == 7
+    assert any("last_synced_id" in sql for sql in captured)
+    assert any("online_refreshed_at" in sql for sql in captured)
     joined = "\n".join(captured)
     assert "BOOL" in joined or "TINYINT" in joined
     assert "JSON" in joined

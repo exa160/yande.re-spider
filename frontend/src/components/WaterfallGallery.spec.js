@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import api from '@/api'
 import WaterfallGallery from './WaterfallGallery.vue'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
+import { useDownloadState } from '@/composables/useDownloadState'
 
 vi.mock('@/api', () => ({
   default: {
@@ -488,5 +489,94 @@ describe('WaterfallGallery 收藏标识贴右契约', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.info-group-right').exists()).toBe(false)
     expect(wrapper.find('.info-group-left').exists()).toBe(true)
+  })
+})
+
+// =============================================================================
+// 下载态标识：下载中（转圈） vs 已下载（绿点）
+// 数据源是 useDownloadState 单例（Gallery.vue 轮询 /download/tasks/states 后写入），
+// 本组件只读不轮询。覆盖三个触发场景的可见结果。
+// =============================================================================
+describe('WaterfallGallery - 下载态标识（下载中 / 已下载）', () => {
+  const { markQueued, sync, _resetForTest } = useDownloadState()
+
+  const withState = (id, downFlag = false) => ({
+    id,
+    preview_url: `http://example.com/p${id}.jpg`,
+    width: 800, height: 600, rating: 'Safe',
+    down_flag: downFlag, is_favorited: false,
+  })
+
+  beforeEach(() => {
+    _resetForTest()
+  })
+
+  it('单图/批量下载：markQueued 后立刻显示转圈指示器（不再等 DB 落 down_flag）', async () => {
+    const wrapper = factory({ images: [withState(9001), withState(9002)] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.info-downloading').length).toBe(0)
+
+    markQueued([9001, 9002])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.info-downloading').length).toBe(2)
+    // 下载中不应同时显示「已下载」绿点
+    expect(wrapper.findAll('.downloaded-dot').length).toBe(0)
+  })
+
+  it('收藏自动下载：后端队列里出现任务后（前端未触发）也能显示转圈', async () => {
+    api.get.mockResolvedValueOnce({
+      data: { data: { active: [{ image_id: 9003, task_id: 't', status: 'downloading', progress: 0.3 }], finished: [] } },
+    })
+    await sync()
+
+    const wrapper = factory({ images: [withState(9003)] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.info-downloading').length).toBe(1)
+  })
+
+  it('下载完成后转圈 → 绿点（down_flag 快照仍是 false 也正确）', async () => {
+    markQueued([9004])
+    const wrapper = factory({ images: [withState(9004)] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.info-downloading').length).toBe(1)
+
+    api.get.mockResolvedValueOnce({
+      data: { data: { active: [], finished: [{ image_id: 9004, status: 'completed' }] } },
+    })
+    await sync()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.info-downloading').length).toBe(0)
+    expect(wrapper.findAll('.downloaded-dot').length).toBe(1)
+  })
+
+  it('下载失败：转圈消失且不显示绿点（回到未下载）', async () => {
+    markQueued([9005])
+    const wrapper = factory({ images: [withState(9005)] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.info-downloading').length).toBe(1)
+
+    api.get.mockResolvedValueOnce({
+      data: { data: { active: [], finished: [{ image_id: 9005, status: 'failed' }] } },
+    })
+    await sync()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.info-downloading').length).toBe(0)
+    expect(wrapper.findAll('.downloaded-dot').length).toBe(0)
+  })
+
+  it('下载态指示器与已下载 dot 同属 .info-group-left（收藏按钮位置不跳动）', async () => {
+    useFavoritesConfig().enableMyFavorites.value = true
+    markQueued([9006])
+    const wrapper = factory({ showHeart: true, images: [withState(9006)] })
+    await wrapper.vm.$nextTick()
+
+    const left = wrapper.find('.info-group-left')
+    expect(left.find('.info-downloading').exists()).toBe(true)
+    expect(left.find('.heart-overlay').exists()).toBe(false)
+
+    const heart = wrapper.findComponent({ name: 'HeartOverlay' })
+    expect(heart.element.parentElement.className).toContain('info-group-right')
   })
 })

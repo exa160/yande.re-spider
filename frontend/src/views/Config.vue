@@ -260,6 +260,43 @@
               </div>
             </div>
 
+            <!-- 标签缓存定时更新：标签面板「/ yande M」的数据源是 yande_tags.count，
+                 只能手动刷。开启后由后端 APScheduler 按 cron 做增量刷新。 -->
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">标签缓存定时更新</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="tagCacheForm.enableDailyRefresh" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                  <template v-if="tagCacheForm.enableDailyRefresh">
+                    <el-input
+                      v-model="tagCacheForm.refreshCron"
+                      size="small"
+                      class="tag-cache-cron-input"
+                      placeholder="分 时 日 月 周"
+                    />
+                    <el-input-number
+                      v-model="tagCacheForm.batchLimit"
+                      :min="1"
+                      :max="1000"
+                      size="small"
+                      class="tag-cache-limit-input"
+                    /> 条/页
+                  </template>
+                </div>
+              </div>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="savingTagCache"
+                @click="saveTagCache"
+              >
+                保存
+              </el-button>
+            </div>
+
           </div>
         </div>
 
@@ -554,6 +591,44 @@ const refreshingTags = ref(false)
 const refreshingArtists = ref(false)
 const refreshTagsParams = ref({ after_id: 0 })
 const refreshArtistsParams = ref({ page: 1, limit: 100, max_pages: 10 })
+
+// 标签缓存定时更新配置（PUT /config/tag-cache，保存后端立即重挂 APScheduler job）
+const tagCacheForm = reactive({
+  enableDailyRefresh: true,
+  refreshCron: '17 4 * * *',
+  batchLimit: 100,
+})
+const savingTagCache = ref(false)
+
+const loadTagCacheConfig = async () => {
+  try {
+    const res = await api.get('/config/tag-cache')
+    const c = res?.data
+    if (!c || typeof c !== 'object') return
+    if ('enable_daily_refresh' in c) tagCacheForm.enableDailyRefresh = !!c.enable_daily_refresh
+    if (typeof c.refresh_cron === 'string' && c.refresh_cron) tagCacheForm.refreshCron = c.refresh_cron
+    if ('batch_limit' in c) tagCacheForm.batchLimit = Number(c.batch_limit) || 100
+  } catch (e) {
+    console.warn('加载标签缓存配置失败:', e?.message || e)
+  }
+}
+
+const saveTagCache = async () => {
+  savingTagCache.value = true
+  try {
+    await api.put('/config/tag-cache', {
+      enable_daily_refresh: tagCacheForm.enableDailyRefresh,
+      refresh_cron: tagCacheForm.refreshCron.trim(),
+      batch_limit: tagCacheForm.batchLimit,
+    })
+    ElMessage.success('标签缓存定时更新配置已保存')
+  } catch (error) {
+    // cron 非法时后端 Pydantic validator 返回 422，这里把原因透出
+    ElMessage.error('保存失败：' + (error?.message || 'cron 表达式非法'))
+  } finally {
+    savingTagCache.value = false
+  }
+}
 
 // 长按定时器
 const LONG_PRESS_DURATION = 500
@@ -914,6 +989,7 @@ watch(activeMenu, (newVal) => {
   }
   if (newVal === 'advanced') {
     loadCacheStats()
+    loadTagCacheConfig()
   }
 }, { immediate: false })
 
@@ -1123,6 +1199,17 @@ onUnmounted(() => {
 .param-tip {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* 标签缓存定时更新：cron 表达式 + 每页条数 */
+.tag-cache-cron-input {
+  width: 130px;
+  margin-left: 4px;
+}
+
+.tag-cache-limit-input {
+  width: 110px;
+  margin-left: 4px;
 }
 
 /* 收藏夹 section 保存按钮 */
