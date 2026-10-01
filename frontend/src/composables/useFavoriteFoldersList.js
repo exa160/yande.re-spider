@@ -2,21 +2,27 @@
  * 收藏夹文件夹列表 composable
  *
  * 职责：
- *   在收藏夹文件夹视图（favorites-folders）下，把 2 个虚拟磁贴（我的最爱 / 随机浏览）prepend
- *   到真实 folders 列表前面。2 个磁贴的可见性受 useFavoritesConfig 4 个开关控制。
+ *   在收藏夹文件夹视图（favorites-folders）下，把 3 个虚拟磁贴（我的最爱 / 随机浏览 / 最近下载）prepend
+ *   到真实 folders 列表前面。磁贴的可见性分别受 useFavoritesConfig 的 3 个总开关控制。
  *
  * 设计要点：
  * 1. **复用而非重复**：FavoritePanel.vue（Task 16）与 Gallery.vue folders 视图都需要 prepend
  *    同一组虚拟磁贴。把 prepend 逻辑提到本 composable，避免两份实现各自漂移。
- * 2. **分页语义保护**：虚拟磁贴只 prepend 到第一页；后续页（page>1）就是真实 folders 追加，
- *    避免翻页时反复 prepend 同一组磁贴导致用户视觉上看到重复的"我的最爱 / 随机浏览"。
+ * 2. **磁贴常驻置顶**：虚拟磁贴在**每一页**都 prepend 到列表最前。
+ *    背景（2026-10-01 修复）：收藏夹是**真分页**（`loadFolders(page)` 用第 N 页
+ *    结果**整体替换** currentFolders，而非追加），所以「只在第 1 页 prepend、
+ *    避免重复」的旧判断是多余的——替换语义下磁贴本就不会重复出现。
+ *    旧判断导致用户向下翻到第 2 页后，三个虚拟磁贴从列表中**整体消失**。
+ *    现改为无条件 prepend，磁贴始终置顶可见。
  * 3. **可选预览图回填**：当 `fetchPreview=true` 时：
  *    - 「我的最爱」磁贴的 preview_images 通过 GET /my_favorites/preview?limit=N 异步拉取
  *    - 「随机浏览」磁贴的 preview_images 通过 GET /random_browse/preview?limit=N 异步拉取
+ *    - 「最近下载」磁贴的 preview_images 通过 GET /recent_downloads/preview?limit=N 异步拉取
  *    N 取自 useFavoritesConfig.tileSize（adaptive/small/medium/large → 8/4/6/8），
  *    与后端 `_preview_count_for_local_count` 契约保持一致。
  *    `fetchPreview=false`（默认，与 FavoritePanel 行为一致）则不请求预览。
  * 4. **防抖与失败容忍**：API 失败时返回空预览图数组，磁贴仍显示，只是没有缩略图。
+ * 5. **磁贴顺序固定**：我的最爱 → 随机浏览 → 最近下载（最近下载放最后，设计文档 §2.2 用户指定）。
  *
  * @example
  *   // Gallery.vue folders 视图（需要缩略图）
@@ -34,9 +40,15 @@
  *   })
  */
 import { computed, ref, watch } from 'vue'
-import { useFavoritesConfig, fetchMyFavoritesCount, fetchRandomBrowseCount } from './useFavoritesConfig'
+import {
+  useFavoritesConfig,
+  fetchMyFavoritesCount,
+  fetchRandomBrowseCount,
+  fetchRecentDownloadsCount,
+} from './useFavoritesConfig'
 import { myFavoritesApi } from '@/api/myFavorites'
 import { randomBrowseApi } from '@/api/randomBrowse'
+import { recentDownloadsApi } from '@/api/recentDownloads'
 
 // 与后端 src/services/favorites.py:_preview_count_for_local_count 契约对齐
 const PREVIEW_COUNT_FOR_TILE_SIZE = {
@@ -53,7 +65,7 @@ const PREVIEW_COUNT_FOR_TILE_SIZE = {
  * @param {object} options
  * @param {FoldersRef|(() => Array<any>)} options.realFolders - 真实收藏夹列表（来自后端）
  * @param {NumberRef|(() => number)} options.page - 当前分页号（1 = 首页，>1 = 加载更多）
- * @param {boolean} [options.fetchPreview=false] - 是否为「我的最爱」磁贴拉取预览图
+ * @param {boolean} [options.fetchPreview=false] - 是否为「我的最爱 / 随机浏览 / 最近下载」磁贴拉取预览图
  *        Gallery.vue folders 视图 = true（需要缩略图）；FavoritePanel = false（保持原行为）
  * @returns {{
  *   displayFolders: import('vue').ComputedRef<Array<any>>,
@@ -77,8 +89,10 @@ export function useFavoriteFoldersList(options) {
   const {
     enableMyFavorites,
     enableRandomBrowse,
+    enableRecentDownloads,
     myFavoritesCount,
     randomBrowseCount,
+    recentDownloadsCount,
     tileSize,
   } = useFavoritesConfig()
 
@@ -88,6 +102,9 @@ export function useFavoriteFoldersList(options) {
   // 随机浏览预览图（独立 ref，与 myFavoritesPreview 独立加载/缓存）
   const randomBrowsePreview = ref([])
   const randomBrowsePreviewLoading = ref(false)
+  // 最近下载预览图（独立 ref，与上面两个独立加载/缓存）
+  const recentDownloadsPreview = ref([])
+  const recentDownloadsPreviewLoading = ref(false)
   // 记录上次拉取的配置签名，避免相同签名重复请求
   let lastLoadedFor = ''
 
@@ -160,28 +177,63 @@ export function useFavoriteFoldersList(options) {
     }
   }
 
+  // 异步加载最近下载预览图（按 MAX(completed_at) DESC，与随机浏览同模式）
+  const loadRecentDownloadsPreview = async () => {
+    if (!fetchPreview || !enableRecentDownloads.value) {
+      // 不拉取预览 / 开关关闭 → 清空预览图
+      recentDownloadsPreview.value = []
+      return
+    }
+    const limit = previewLimit.value
+    recentDownloadsPreviewLoading.value = true
+    try {
+      const res = await recentDownloadsApi.getPreview(limit)
+      const images = res?.data?.images
+      const arr = Array.isArray(images)
+        ? images
+        : (Array.isArray(res?.data) ? res.data : [])
+      recentDownloadsPreview.value = arr
+    } catch (e) {
+      // 失败时保持空数组（与我的最爱 / 随机浏览预览失败处理一致）
+      if (typeof console !== 'undefined') {
+        console.warn('Load recent downloads preview failed:', e?.message || e)
+      }
+      recentDownloadsPreview.value = []
+    } finally {
+      recentDownloadsPreviewLoading.value = false
+    }
+  }
+
   const reloadPreview = () => {
     lastLoadedFor = ''  // 强制 reload
-    return Promise.all([loadMyFavoritesPreview(), loadRandomBrowsePreview()])
+    return Promise.all([
+      loadMyFavoritesPreview(),
+      loadRandomBrowsePreview(),
+      loadRecentDownloadsPreview(),
+    ])
   }
 
   // 监听开关 + tileSize 变化触发重新加载
   watch(
-    [enableMyFavorites, enableRandomBrowse, tileSize],
+    [enableMyFavorites, enableRandomBrowse, enableRecentDownloads, tileSize],
     () => {
       loadMyFavoritesPreview()
       loadRandomBrowsePreview()
+      loadRecentDownloadsPreview()
       // 角标总数：与 myFavoritesCount 同模式，值为 0 视为未加载（避免 Gallery 与
       // FavoritePanel 两个调用方重复请求）
       if (enableRandomBrowse.value && randomBrowseCount.value === 0) {
         fetchRandomBrowseCount().catch(() => {})
       }
+      if (enableRecentDownloads.value && recentDownloadsCount.value === 0) {
+        fetchRecentDownloadsCount().catch(() => {})
+      }
     },
     { immediate: true }
   )
 
-  // 虚拟磁贴：根据 4 个开关决定哪些出现在列表前
-  // 顺序：「我的最爱 → 随机浏览」与 Task 16 FavoritePanel hardcoded 顺序保持一致
+  // 虚拟磁贴：根据 3 个开关决定哪些出现在列表前
+  // 顺序固定：我的最爱 → 随机浏览 → 最近下载（设计文档 §2.2，最近下载放最后）
   const virtualTiles = computed(() => {
     const tiles = []
     if (enableMyFavorites.value) {
@@ -204,20 +256,33 @@ export function useFavoriteFoldersList(options) {
         preview_images: randomBrowsePreview.value,
       })
     }
+    if (enableRecentDownloads.value) {
+      tiles.push({
+        id: 'recent-downloads',
+        name: '最近下载',
+        isVirtual: true,
+        // 角标 = 已完成下载任务涉及的去重图片数（COUNT(DISTINCT image_id)）
+        local_count: recentDownloadsCount.value,
+        // 最近下载预览图（按最近完成时间倒序）
+        preview_images: recentDownloadsPreview.value,
+      })
+    }
     return tiles
   })
 
-  // 合并显示列表：仅在第 1 页 prepend 虚拟磁贴，避免翻页重复
+  // 合并显示列表：虚拟磁贴**始终**置顶 prepend。
+  //
+  // 收藏夹是「真分页」——Gallery.vue 的 loadFolders(page) 用第 N 页结果**整体替换**
+  // currentFolders（不是追加），因此每页都只有一份 folders 列表，不存在
+  // 「翻页后磁贴重复出现」的问题。旧实现按 page===1 条件 prepend，导致
+  // 翻到第 2 页时三个虚拟磁贴整体消失（2026-10-01 修复）。
   const displayFolders = computed(() => {
     const folders = readRealFolders() || []
-    if (readPage() === 1) {
-      return [...virtualTiles.value, ...folders]
-    }
-    return folders
+    return [...virtualTiles.value, ...folders]
   })
 
   return {
-    /** 给模板直接绑定的合并列表（page=1 含虚拟磁贴 + 真实列表；page>1 仅真实列表） */
+    /** 给模板直接绑定的合并列表（虚拟磁贴置顶 + 当前页真实列表；翻页后磁贴常驻） */
     displayFolders,
     /** 我的最爱预览图数组（用于诊断 / 详情调试） */
     myFavoritesPreview,
@@ -227,6 +292,10 @@ export function useFavoriteFoldersList(options) {
     randomBrowsePreview,
     /** 当前是否正在异步加载随机浏览预览图 */
     randomBrowsePreviewLoading: computed(() => randomBrowsePreviewLoading.value),
+    /** 最近下载预览图数组 */
+    recentDownloadsPreview,
+    /** 当前是否正在异步加载最近下载预览图 */
+    recentDownloadsPreviewLoading: computed(() => recentDownloadsPreviewLoading.value),
     /** 手动强制 reload 预览图（page refresh、keyword 切换时调用） */
     reloadPreview,
   }

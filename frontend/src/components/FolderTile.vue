@@ -43,9 +43,10 @@
       <el-icon
         v-if="folder.isVirtual"
         class="virtual-badge"
-        :title="folder.id === 'my-favorites' ? '我的最爱' : '随机浏览'"
+        :title="VIRTUAL_TILE_TITLES[folder.id] || folder.name"
       >
         <StarFilled v-if="folder.id === 'my-favorites'" />
+        <Clock v-else-if="folder.id === 'recent-downloads'" />
         <ShuffleIcon v-else />
       </el-icon>
       <el-tag size="small">{{ folder.local_count || 0 }}</el-tag>
@@ -55,9 +56,16 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Picture, StarFilled } from '@element-plus/icons-vue'
+import { Clock, Picture, StarFilled } from '@element-plus/icons-vue'
 import ShuffleIcon from './ShuffleIcon.vue'
 import api from '@/api'
+
+// 虚拟磁贴的角标 tooltip 文案（我的最爱 / 随机浏览 / 最近下载）
+const VIRTUAL_TILE_TITLES = {
+  'my-favorites': '我的最爱',
+  random: '随机浏览',
+  'recent-downloads': '最近下载',
+}
 
 const props = defineProps({
   folder: { type: Object, required: true },

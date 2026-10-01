@@ -96,6 +96,7 @@
       :visible="isBackVisible"
       @click="handleBackClick"
     />
+
     <AdvancedQuery
       @search="handleSearch"
       @favorites-filter="handleFavoritesFilter"
@@ -442,15 +443,17 @@ const querySource = ref(initialSource)
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
 
 // 虚拟 favorite chip（搜索栏显示用）—— 基于 querySource 派生：
-//   - 'my-favorites' → 显示 "★ 我的最爱"
-//   - 'random'       → 显示 "★ 随机浏览"
-//   - 其它           → null（不显示 chip）
+//   - 'my-favorites'    → 显示 "★ 我的最爱"
+//   - 'random'          → 显示 "★ 随机浏览"
+//   - 'recent-downloads' → 显示 "★ 最近下载"
+//   - 其它              → null（不显示 chip）
 // 与 selectedFavorite（真实收藏夹 chip）互斥：favorites → 虚拟视图时 handleSourceChange
 // 已 _clearSelectedFavoriteNoSearch 清空 selectedFavorite；favorites folder-detail 时
 // virtualSelectedFavorite 必为 null（querySource='favorites'）。
 const VIRTUAL_FAVORITES = {
   'my-favorites': { id: 'my-favorites', name: '我的最爱' },
   'random': { id: 'random', name: '随机浏览' },
+  'recent-downloads': { id: 'recent-downloads', name: '最近下载' },
 }
 const virtualSelectedFavorite = computed(() => VIRTUAL_FAVORITES[querySource.value] || null)
 
@@ -461,7 +464,14 @@ const virtualSelectedFavorite = computed(() => VIRTUAL_FAVORITES[querySource.val
 // - includeOnline: bool（控制 with-preview 是否返回未下载图片；Config.vue 高级功能开关）
 // - enableMyFavorites: 我的最爱功能总开关（v2）
 // 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
-const { buttonMode, tileSize, previewOrder, includeOnline, folderPageSize, enableMyFavorites } = useFavoritesConfig()
+const {
+  buttonMode,
+  tileSize,
+  previewOrder,
+  includeOnline,
+  folderPageSize,
+  enableMyFavorites,
+} = useFavoritesConfig()
 
 // Task 19 修复：favorites-folders 视图 prepend 虚拟磁贴（我的最爱 / 随机浏览）
 // 仅在第 1 页 prepend — 分页时真实 folder 列表继续 push，虚拟磁贴不重复
@@ -934,9 +944,14 @@ const handleSearch = async (searchData) => {
 
   let params
   if (effectiveMode) {
-    // 模式分支：effectiveMode 是 AdvancedQuery 内部传入的 source 候选值（'local' / 'yande' / 'favorites' / 'random'）
-    // 同 loadImages 防护：'random' 映射到 'local'（随机浏览走本地随机抽样，由 random=true 触发）
-    params = { ...searchData.params, source: effectiveMode === 'random' ? 'local' : effectiveMode }
+    // 模式分支：effectiveMode 是 AdvancedQuery 内部传入的 source 候选值
+    // （'local' / 'yande' / 'favorites' / 'random' / 'recent-downloads'）
+    // 同 loadImages 防护：'random' / 'recent-downloads' 映射到 'local'
+    // （随机浏览走本地随机抽样由 random=true 触发；最近下载由 sort_by=downloaded_at 触发）
+    params = {
+      ...searchData.params,
+      source: (effectiveMode === 'random' || effectiveMode === 'recent-downloads') ? 'local' : effectiveMode,
+    }
     // source='favorites' 时注入 favorite_id（后端用其定位 folder → 取其 tags）
     if (effectiveMode === 'favorites' && injectedFavoriteId !== undefined) {
       params.favorite_id = injectedFavoriteId
@@ -944,8 +959,10 @@ const handleSearch = async (searchData) => {
   } else {
     // 仅当 source 解析为 favorites 且 favorite_id 合法时才注入，避免切 querySource 时
     // 残留的 favorite/搜索组合把脏 favorite_id 写进 queryParams（后续 loadImages 会带出去 → 422）
-    // 'random' 同 loadImages 映射到 'local'
-    const resolvedSource = querySource.value === 'random' ? 'local' : querySource.value
+    // 'random' / 'recent-downloads' 同 loadImages 映射到 'local'
+    const resolvedSource = (querySource.value === 'random' || querySource.value === 'recent-downloads')
+      ? 'local'
+      : querySource.value
     const shouldInjectFavorite = resolvedSource === 'favorites' && injectedFavoriteId !== undefined
     params = { ...searchData, source: resolvedSource }
     if (shouldInjectFavorite) {
@@ -1045,16 +1062,20 @@ const handleFavoritesFilter = (value) => {
 // 绕过 vue-router 对同 url push 不发 navigation 事件的限制（修复问题 5：弹窗内
 // 「我的收藏」重复点击失效，必须先点别的虚拟磁贴切走再点回来才能 reload）。
 const handleVirtualTileNavigate = (source) => {
-  if (source === 'my-favorites' || source === 'random') {
+  if (source === 'my-favorites' || source === 'random' || source === 'recent-downloads') {
     handleSourceChange(source)
   }
 }
 
-// BackButton 可见性：favorites folder-detail（真实收藏夹二级）+ 虚拟视图（我的最爱 / 随机浏览）
+// BackButton 可见性：favorites folder-detail（真实收藏夹二级）+ 虚拟视图（我的最爱 / 随机浏览 / 最近下载）
 // 虚拟视图的 chip 显示 🔒 锁定，返回只能通过 BackButton（与 favorites folder-detail 一致）
 const isBackVisible = computed(() => {
   if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') return true
-  if (querySource.value === 'my-favorites' || querySource.value === 'random') return true
+  if (
+    querySource.value === 'my-favorites' ||
+    querySource.value === 'random' ||
+    querySource.value === 'recent-downloads'
+  ) return true
   return false
 })
 
@@ -1069,21 +1090,22 @@ const handleBackClick = () => {
   }
 }
 
-// toolbar "收藏夹" 按钮高亮条件：扩展到虚拟视图（my-favorites / random 也属于收藏夹上下文）
+// toolbar "收藏夹" 按钮高亮条件：扩展到虚拟视图（my-favorites / random / recent-downloads 也属于收藏夹上下文）
 // 修复问题 8：进入虚拟视图后 toolbar 收藏夹 tab 焦点消失
 const isFavoritesActive = computed(() => {
   return (
     querySource.value === 'favorites' ||
     querySource.value === 'my-favorites' ||
-    querySource.value === 'random'
+    querySource.value === 'random' ||
+    querySource.value === 'recent-downloads'
   )
 })
 
 const handleFolderClick = (folder) => {
-  // 虚拟磁贴（我的最爱 / 随机浏览）：直接 handleSourceChange 切换 querySource，
+  // 虚拟磁贴（我的最爱 / 随机浏览 / 最近下载）：直接 handleSourceChange 切换 querySource，
   // 让 loadImages 走对应端点（my-favorites → /my_favorites/images；
-  //   random → /gallery/load?random=true），避免误入 favorites folder-detail 触发
-  // 防御性拦截清空 images（修复问题 4）。
+  //   random → /gallery/load?random=true；recent-downloads → /gallery/load?sort_by=downloaded_at），
+  //   避免误入 favorites folder-detail 触发防御性拦截清空 images（修复问题 4）。
   //
   // 不 router.push：之前写 ?querySource=my-favorites 到 URL 后，用户切回 favorites
   // 再点我的收藏 → URL 仍带旧 querySource → vue-router 同 url 不发事件 → 失效。
@@ -1094,6 +1116,8 @@ const handleFolderClick = (folder) => {
       handleSourceChange('my-favorites')
     } else if (folder.id === 'random') {
       handleSourceChange('random')
+    } else if (folder.id === 'recent-downloads') {
+      handleSourceChange('recent-downloads')
     }
     return
   }
@@ -1214,13 +1238,19 @@ const loadImages = async (page) => {
       return
     }
 
-    // v2 我的最爱 / 随机浏览（其余模式）：根据当前 querySource 注入额外参数
+    // v2 我的最爱 / 随机浏览 / 最近下载（其余模式）：根据当前 querySource 注入额外参数
     //   - random=true: 仅在 querySource === 'random' 时追加（后端走 ORDER BY RANDOM() + DISTINCT image_id）
+    //   - sort_by=downloaded_at + sort_order=desc: 仅在 querySource === 'recent-downloads' 时追加
+    //     （后端走 download_task JOIN 子查询按 MAX(completed_at) 倒序）
     //   - include_favorite_status=true: 仅在 showHeart && enableMyFavorites 时追加（双判断见 spec §6.6），
     //     后端仍会再判断一次 config.favorites.enable_my_favorites，关闭时强制不连表
     const extraParams = {}
     if (querySource.value === 'random') {
       extraParams.random = true
+    }
+    if (querySource.value === 'recent-downloads') {
+      extraParams.sort_by = 'downloaded_at'
+      extraParams.sort_order = 'desc'
     }
     if (enableMyFavorites.value) {
       extraParams.include_favorite_status = true
@@ -1230,13 +1260,16 @@ const loadImages = async (page) => {
     // 当前 querySource。避免 FavoritePanel 虚拟磁贴点击 → router.push({query:{querySource:'random'|'my-favorites'}})
     // 触发 loadImages 时把字符串 favorite_id / 旧 source 发给后端导致 422。
     //
-    // querySource='random' 不直接映射到后端 source='random'（后端只识别 local/yande/favorites，
-    // 未知 source 会落到 query_yande_api 在线分支）。随机浏览走本地随机抽样：
-    //   source='local' + random=true 触发后端 query_local_database(..., random=True) → ORDER BY RANDOM()
+    // querySource='random' / 'recent-downloads' 不直接映射到后端 source（同名字符串）
+    // （后端只识别 local/yande/favorites，未知 source 会落到 query_yande_api 在线分支）。
+    //   random          → source='local' + random=true → query_local_database(..., random=True) → ORDER BY RANDOM()
+    //   recent-downloads → source='local' + sort_by=downloaded_at → download_task JOIN 子查询排序
     const safeBase = { ...queryParams.value }
     if (querySource.value !== 'favorites') {
       delete safeBase.favorite_id
-      safeBase.source = querySource.value === 'random' ? 'local' : querySource.value
+      safeBase.source = (querySource.value === 'random' || querySource.value === 'recent-downloads')
+        ? 'local'
+        : querySource.value
     }
     const response = await api.post('/gallery/load', {
       ...safeBase,

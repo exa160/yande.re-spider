@@ -72,9 +72,36 @@ vi.mock('@/api/myFavorites', () => ({
   myFavoritesApi: myFavoritesApiMock,
 }))
 
+// 最近下载：角标 / 预览图 / 清除记录都走独立封装模块（必须 mock，否则走真实 axios）
+const { recentDownloadsApiMock } = vi.hoisted(() => ({
+  recentDownloadsApiMock: {
+    getCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+    getPreview: vi.fn().mockResolvedValue({ data: { images: [] } }),
+    clear: vi.fn().mockResolvedValue({ data: { deleted: 0 } }),
+  },
+}))
+vi.mock('@/api/recentDownloads', () => ({
+  recentDownloadsApi: recentDownloadsApiMock,
+}))
+
+// ElMessageBox：最近下载「清除记录」按钮组的二次确认弹窗。
+// 用 importOriginal 保留 ElImageViewer / ElMessage 等真实导出，只替换 confirm。
+const { elMessageBoxConfirmMock } = vi.hoisted(() => ({
+  elMessageBoxConfirmMock: vi.fn(),
+}))
+vi.mock('element-plus', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    ElMessageBox: { ...actual.ElMessageBox, confirm: elMessageBoxConfirmMock },
+  }
+})
+
 // 下载态单例（useDownloadState）：Gallery 与 WaterfallGallery 共用，
 // 测试里直接 markQueued / sync 模拟「点下载」与「后端队列变化」
 import { useDownloadState } from '@/composables/useDownloadState'
+// 收藏夹配置 singleton：最近下载开关是模块级 ref，需在 beforeEach 复位避免跨测试污染
+import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 
 // useFavoritesConfig 是 module-level singleton：每次 factory() 都注册新的 Vue watch。
 // 不做任何清理 → 前面测试的 watch 仍存活，previewOrder 变化时 N 个 watch 触发 N 次 reload
@@ -95,6 +122,16 @@ beforeEach(async () => {
   mountedWrappers.length = 0
   getFoldersWithPreviewMock.mockClear()
   Object.values(myFavoritesApiMock).forEach((m) => m.mockClear && m.mockClear())
+  Object.values(recentDownloadsApiMock).forEach((m) => m.mockReset && m.mockReset())
+  recentDownloadsApiMock.getCount.mockResolvedValue({ data: { count: 0 } })
+  recentDownloadsApiMock.getPreview.mockResolvedValue({ data: { images: [] } })
+  recentDownloadsApiMock.clear.mockResolvedValue({ data: { deleted: 0 } })
+  elMessageBoxConfirmMock.mockReset()
+  elMessageBoxConfirmMock.mockResolvedValue(undefined)
+  // 复位最近下载总开关（模块级 singleton ref，跨用例会残留）
+  const favCfg = useFavoritesConfig()
+  favCfg.enableRecentDownloads.value = false
+  favCfg.recentDownloadsCount.value = 0
   setLocalCountMock.mockClear()
   updateLocalCountMock.mockClear()
   apiMock.post.mockClear()
@@ -172,6 +209,9 @@ const factory = () => {
         'el-image': { template: '<img></div>' },
         'el-radio-group': { template: '<div class="radio-group-stub"><slot/></div>' },
         'el-radio-button': { template: '<button class="radio-button-stub"><slot/></button>' },
+        // 最近下载清除按钮组的天数下拉（断言渲染出的 7/30/90 三个选项）
+        'el-select': { props: ['modelValue'], template: '<div class="el-select-stub"><slot/></div>' },
+        'el-option': { props: ['label', 'value'], template: '<div class="el-option-stub" :data-value="value">{{ label }}</div>' },
         // icon 桩
         Connection: { template: '<i></i>' },
         MagicStick: { template: '<i></i>' },
@@ -2204,5 +2244,166 @@ describe('Gallery.vue BackButton 可见性 + 收藏夹 tab 焦点（修复问题
     const backBtn = wrapper.findComponent({ name: 'BackButton' })
     expect(backBtn.exists()).toBe(true)
     expect(backBtn.props('visible')).toBe(true)
+  })
+})
+
+// =============================================================================
+// 最近下载（querySource = 'recent-downloads'）— 设计文档 §4.5 / §2.4
+// =============================================================================
+describe('Gallery.vue 最近下载视图（querySource=recent-downloads）', () => {
+  // 抽取最后一次 /gallery/load 的 payload（loadImages 走 api.post）
+  const lastLoadPayload = () => {
+    const calls = apiMock.post.mock.calls.filter((c) => c[0] === '/gallery/load')
+    return calls[calls.length - 1]?.[1] || null
+  }
+
+  it('loadImages 注入 sort_by=downloaded_at + sort_order=desc 且 source=local', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    apiMock.post.mockClear()
+
+    wrapper.vm.handleSourceChange('recent-downloads')
+    await flushPromises()
+
+    const payload = lastLoadPayload()
+    expect(payload).toBeTruthy()
+    expect(payload.source).toBe('local')
+    expect(payload.sort_by).toBe('downloaded_at')
+    expect(payload.sort_order).toBe('desc')
+    // 最近下载不走随机浏览分支
+    expect('random' in payload).toBe(false)
+    // 不走我的最爱专用端点
+    expect(myFavoritesApiMock.images).not.toHaveBeenCalled()
+  })
+
+  it('recent-downloads 不带 random / favorite_id（与 random 模式对称的防御性清理）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    // 先在 favorites folder-detail 制造 favorite_id 残留
+    wrapper.vm.querySource = 'favorites'
+    await flushPromises()
+    wrapper.vm.queryParams = { favorite_id: 3, source: 'favorites' }
+    apiMock.post.mockClear()
+
+    wrapper.vm.querySource = 'recent-downloads'
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    const payload = lastLoadPayload()
+    expect(payload.favorite_id).toBeUndefined()
+    expect(payload.source).toBe('local')
+    expect(payload.sort_by).toBe('downloaded_at')
+  })
+
+  it('querySource=recent-downloads → virtualSelectedFavorite={id, name="最近下载"}', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    wrapper.vm.querySource = 'recent-downloads'
+    await flushPromises()
+
+    expect(wrapper.vm.virtualSelectedFavorite).toEqual({
+      id: 'recent-downloads',
+      name: '最近下载',
+    })
+  })
+
+  it('BackButton 可见 + 收藏夹 tab 高亮（与 my-favorites / random 对称）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    wrapper.vm.querySource = 'recent-downloads'
+    await flushPromises()
+
+    expect(wrapper.vm.isBackVisible).toBe(true)
+    expect(wrapper.vm.isFavoritesActive).toBe(true)
+    const backBtn = wrapper.findComponent({ name: 'BackButton' })
+    expect(backBtn.props('visible')).toBe(true)
+  })
+
+  it('handleVirtualTileNavigate("recent-downloads") → handleSourceChange 强制刷新', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('local')
+
+    wrapper.vm.handleVirtualTileNavigate('recent-downloads')
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('recent-downloads')
+    const payload = lastLoadPayload()
+    expect(payload.sort_by).toBe('downloaded_at')
+    expect(payload.source).toBe('local')
+  })
+
+  it('点击收藏夹视图的「最近下载」虚拟磁贴 → 切 querySource 而非进 folder-detail', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    wrapper.vm.handleFolderClick({ id: 'recent-downloads', name: '最近下载', isVirtual: true })
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('recent-downloads')
+    expect(wrapper.vm.favoritesView).toBeNull()
+  })
+
+  it('handleSearch 解析 mode=recent-downloads 时把 source 映射为 local', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    // AdvancedQuery 的 mode 来自 props.sourceMode = querySource，因此先切到最近下载视图
+    wrapper.vm.querySource = 'recent-downloads'
+    await flushPromises()
+    apiMock.post.mockClear()
+
+    await wrapper.vm.handleSearch({ mode: 'recent-downloads', params: { tags: 'x' } })
+    await flushPromises()
+
+    const payload = lastLoadPayload()
+    expect(payload.source).toBe('local')
+    expect(payload.tags).toBe('x')
+    // 排序注入统一在 loadImages 的 extraParams 里（与 random=true 同一处）
+    expect(payload.sort_by).toBe('downloaded_at')
+    expect(payload.sort_order).toBe('desc')
+  })
+
+  it('querySource=local 时即使 mode 传入 recent-downloads 也不注入 downloaded_at 排序', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    apiMock.post.mockClear()
+
+    await wrapper.vm.handleSearch({ mode: 'recent-downloads', params: {} })
+    await flushPromises()
+
+    const payload = lastLoadPayload()
+    expect(payload.source).toBe('local')
+    expect(payload.sort_by).toBeUndefined()
+  })
+
+  it('route.query.querySource=recent-downloads → 首屏即按下载时间倒序加载', async () => {
+    mockRoute.value.query = { querySource: 'recent-downloads' }
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.vm.querySource).toBe('recent-downloads')
+    const payload = lastLoadPayload()
+    expect(payload.source).toBe('local')
+    expect(payload.sort_by).toBe('downloaded_at')
+    expect(payload.sort_order).toBe('desc')
+  })
+
+  // ---------------------------------------------------------------------------
+  // 记录清理已迁移到下载页（Download.vue，2026-10-01）
+  // 「最近下载」二级页只负责浏览，不再承担清理入口。
+  // ---------------------------------------------------------------------------
+  it('recent-downloads 视图不渲染清除按钮组（清理入口已移至下载页）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    wrapper.vm.querySource = 'recent-downloads'
+    await flushPromises()
+
+    expect(wrapper.find('.recent-downloads-toolbar').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('清空全部记录')
   })
 })

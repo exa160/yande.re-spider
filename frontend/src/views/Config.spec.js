@@ -43,6 +43,15 @@ vi.mock('@/api/tagCache', () => ({
   },
 }))
 
+// 最近下载：开启「最近下载」后 saveFavoritesConfig 会拉角标（独立封装模块，必须 mock）
+vi.mock('@/api/recentDownloads', () => ({
+  recentDownloadsApi: {
+    getCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+    getPreview: vi.fn().mockResolvedValue({ data: { images: [] } }),
+    clear: vi.fn().mockResolvedValue({ data: { deleted: 0 } }),
+  },
+}))
+
 const factory = () =>
   mount(Config, {
     global: {
@@ -238,6 +247,44 @@ describe('Config.vue 收藏夹分页（3 个新开关 + saveFavoritesConfig）',
     // 冗余字段 enable_favorite_folder 不再随保存发送
     const sent = api.put.mock.calls.find((c) => c[0] === '/config/favorites')?.[1]
     expect(sent).not.toHaveProperty('enable_favorite_folder')
+  })
+
+  it('收藏夹分页渲染「最近下载」开关，且位于「随机浏览」之后（设计文档 §4.6）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await clickMenuItem(wrapper, '收藏夹配置')
+
+    const favSection = wrapper.find('.favorites-section')
+    const text = favSection.text()
+    expect(text).toContain('随机浏览')
+    expect(text).toContain('最近下载')
+    // 最近下载是独立功能（数据源是 download_task），不随「我的最爱」联动禁用
+    const groups = favSection.findAll('.radio-group-stub')
+    // radio-group 顺序：主页显示收藏夹(0) / 我的最爱(1) / 自动下载(2) / 随机浏览(3) / 最近下载(4)
+    expect(groups[4].attributes('data-disabled')).toBe('false')
+  })
+
+  it('保存收藏夹配置 → PUT 带 enable_recent_downloads，并同步回 composable', async () => {
+    const { default: api } = await import('@/api')
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+    recentDownloadsApi.getCount.mockResolvedValue({ data: { count: 42 } })
+
+    const wrapper = factory()
+    await flushPromises()
+    await clickMenuItem(wrapper, '收藏夹配置')
+
+    wrapper.vm.favoritesForm.enableRecentDownloads = true
+    await flushPromises()
+
+    const saveBtn = wrapper.findAll('button').find((b) => b.text().includes('保存收藏夹配置'))
+    saveBtn.trigger('click')
+    await flushPromises()
+
+    expect(api.put).toHaveBeenCalledWith('/config/favorites', expect.objectContaining({
+      enable_recent_downloads: true,
+    }))
+    // 刚开启 → 立即拉角标
+    expect(recentDownloadsApi.getCount).toHaveBeenCalled()
   })
 })
 

@@ -1,7 +1,7 @@
 <template>
   <div class="favorite-panel">
     <template v-if="mode === 'list'">
-      <!-- 虚拟磁贴区：我的最爱 / 随机浏览（前端 prepend，受 useFavoritesConfig 开关控制） -->
+      <!-- 虚拟磁贴区：我的最爱 / 随机浏览 / 最近下载（前端 prepend，受 useFavoritesConfig 开关控制） -->
       <div v-if="virtualTiles.length > 0" class="virtual-tiles-row">
         <div
           v-for="tile in virtualTiles"
@@ -313,6 +313,8 @@ function handleVirtualTileClick(tile) {
     emit('virtual-tile-navigate', 'my-favorites')
   } else if (tile.id === 'random') {
     emit('virtual-tile-navigate', 'random')
+  } else if (tile.id === 'recent-downloads') {
+    emit('virtual-tile-navigate', 'recent-downloads')
   }
 }
 
@@ -648,7 +650,7 @@ defineExpose({ openCreate, openEdit, cancelForm })
   padding: 4px 0;
 }
 
-/* 虚拟磁贴（我的最爱 / 随机浏览）横排，紧贴列表上方 */
+/* 虚拟磁贴（我的最爱 / 随机浏览 / 最近下载）横排，紧贴列表上方 */
 .virtual-tiles-row {
   display: flex;
   flex-wrap: wrap;

@@ -8,6 +8,7 @@
  * 4. enableRandomBrowse=false 时不 prepend
  * 5. 点击「我的最爱」虚拟磁贴 → router.push 包含 querySource=my-favorites
  * 6. 既有真实收藏夹 prop 仍可接收（folders / realFolders 兼容）
+ * 7. 最近下载：第三个虚拟磁贴（顺序固定在末尾）+ 点击 emit 分支（设计文档 §2.2 / §4.4）
  *
  * 设计要点：
  * - useFavoritesConfig 是模块级 singleton（state 在 module scope 共享），
@@ -73,7 +74,9 @@ beforeEach(() => {
   const cfg = useFavoritesConfig()
   cfg.enableMyFavorites.value = false
   cfg.enableRandomBrowse.value = false
+  cfg.enableRecentDownloads.value = false
   cfg.myFavoritesCount.value = 0
+  cfg.recentDownloadsCount.value = 0
   // 注意：FavoritePanel 不再 router.push（URL 污染修复），故此处不验证 router.push 调用
 })
 
@@ -201,5 +204,70 @@ describe('FavoritePanel.vue 虚拟磁贴 prepend', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('真实收藏夹')
+  })
+})
+
+// =============================================================================
+// 最近下载磁贴（第三个虚拟磁贴）— 设计文档 §2.2 顺序 / §4.4 点击分支
+// =============================================================================
+describe('FavoritePanel.vue 最近下载虚拟磁贴', () => {
+  it('enableRecentDownloads=true 时 prepend「最近下载」虚拟磁贴并显示角标', async () => {
+    const cfg = useFavoritesConfig()
+    cfg.enableRecentDownloads.value = true
+    cfg.recentDownloadsCount.value = 66
+
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('最近下载')
+    const tile = wrapper.find('.virtual-tile.virtual-recent-downloads')
+    expect(tile.exists()).toBe(true)
+    expect(tile.text()).toContain('66')
+  })
+
+  it('enableRecentDownloads=false 时不 prepend「最近下载」', async () => {
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.find('.virtual-tile.virtual-recent-downloads').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('最近下载')
+  })
+
+  it('点击「最近下载」虚拟磁贴 → emit virtual-tile-click + emit virtual-tile-navigate', async () => {
+    const cfg = useFavoritesConfig()
+    cfg.enableRecentDownloads.value = true
+
+    const wrapper = factory()
+    await flushPromises()
+
+    const tile = wrapper.find('.virtual-tile.virtual-recent-downloads')
+    expect(tile.exists()).toBe(true)
+    await tile.trigger('click')
+
+    expect(wrapper.emitted('virtual-tile-click')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-click').length).toBe(1)
+    expect(wrapper.emitted('virtual-tile-click')[0][0].id).toBe('recent-downloads')
+
+    expect(wrapper.emitted('virtual-tile-navigate')).toBeTruthy()
+    expect(wrapper.emitted('virtual-tile-navigate').length).toBe(1)
+    expect(wrapper.emitted('virtual-tile-navigate')[0][0]).toBe('recent-downloads')
+  })
+
+  it('三个开关全开时按「我的最爱 → 随机浏览 → 最近下载」顺序渲染（最近下载在末尾）', async () => {
+    const cfg = useFavoritesConfig()
+    cfg.enableMyFavorites.value = true
+    cfg.myFavoritesCount.value = 7
+    cfg.enableRandomBrowse.value = true
+    cfg.enableRecentDownloads.value = true
+    cfg.recentDownloadsCount.value = 3
+
+    const wrapper = factory()
+    await flushPromises()
+
+    const allVirtualTiles = wrapper.findAll('.virtual-tile')
+    expect(allVirtualTiles.length).toBe(3)
+    expect(allVirtualTiles[0].classes()).toContain('virtual-my-favorites')
+    expect(allVirtualTiles[1].classes()).toContain('virtual-random')
+    expect(allVirtualTiles[2].classes()).toContain('virtual-recent-downloads')
   })
 })
