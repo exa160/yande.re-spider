@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, delete, func, select, update
 
 from src.common.constant import TaskStatus
 from src.dao.database import BaseDAO
@@ -251,6 +251,119 @@ class DownloadTaskDao(BaseDAO):
         records = self.session.execute(stmt).scalars().all()
 
         return [self._to_dict(r) for r in records], total
+
+    # ============================================================
+    # 「最近下载」功能（设计文档 2026-09-21-recent-downloads-design.md §3.1）
+    #
+    # 数据源说明：yande_data 表没有「本地下载时间」列（created_at/updated_at 是
+    # yande.re 图源的上传/更新时间，与本地下载无关），因此复用 download_task 的
+    # completed_at 作为「最近下载」的唯一时间依据，且本期不改表结构。
+    #
+    # 下面 4 个方法共用一组**缺一不可**的筛选条件：
+    #   1. status == COMPLETED —— 排除 pending/downloading/paused/failed/cancelled，
+    #      避免未完成的队列在「最近下载」里露头，也保证清除操作绝不误删在途任务。
+    #   2. completed_at IS NOT NULL —— download_queue 在「文件已存在、跳过下载」分支
+    #      不会写 completed_at，这类记录 completed_at 为 NULL，时间未知，必须排除
+    #      （否则按 MAX(completed_at) 排序会沉底甚至让 total 口径虚高）。
+    #   3. GROUP BY image_id + MAX(completed_at) —— 同一张图重复下载会产生多条
+    #      completed 记录，去重后每张图只出现一次，取最新完成时间作为排序键，
+    #      同时让 COUNT(DISTINCT image_id) 与列表口径严格一致。
+    # ============================================================
+
+    def list_completed_image_ids(
+        self, page: int = 1, page_size: int = 20
+    ) -> List[Tuple[int, datetime]]:
+        """分页返回已完成任务的 image_id + MAX(completed_at)，按 MAX(completed_at) DESC。
+
+        筛选条件（缺一不可，理由见上方区块注释）：
+        status == COMPLETED AND completed_at IS NOT NULL，
+        并以 GROUP BY image_id 去重（重复下载只保留一条，取最新完成时间）。
+
+        Args:
+            page: 页码，从 1 开始
+            page_size: 每页数量
+
+        Returns:
+            [(image_id, latest_completed_at), ...]，按最新完成时间倒序。
+            无匹配返回空列表。
+        """
+        stmt = (
+            select(
+                DownloadTask.image_id,
+                func.max(DownloadTask.completed_at).label("latest_completed_at"),
+            )
+            .where(
+                DownloadTask.status == TaskStatus.COMPLETED,
+                DownloadTask.completed_at.isnot(None),
+            )
+            .group_by(DownloadTask.image_id)
+            # 第二排序键 image_id：纯时间序在同秒完成的任务之间没有确定顺序，
+            # 翻页时同一批数据可能给出不同的分页切分（重复/漏项）。加确定性 tiebreaker
+            # 消除这一点。翻页期间有新任务完成导致的 offset 位移是 offset 分页的
+            # 固有性质，彻底解决需改游标分页，本期不做。
+            .order_by(
+                func.max(DownloadTask.completed_at).desc(),
+                DownloadTask.image_id.desc(),
+            )
+            .offset((max(page, 1) - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = self.session.execute(stmt).all()
+        return [(row[0], row[1]) for row in rows]
+
+    def count_completed_distinct_images(self) -> int:
+        """COUNT(DISTINCT image_id)，口径与 list_completed_image_ids 对齐。
+
+        用 COUNT(DISTINCT image_id) 而非 COUNT(*)：重复下载会让 COUNT(*) 虚高，
+        角标数字与实际图片数对不上。筛选条件同样必须带上
+        status == COMPLETED AND completed_at IS NOT NULL。
+        """
+        stmt = select(func.count(func.distinct(DownloadTask.image_id))).where(
+            DownloadTask.status == TaskStatus.COMPLETED,
+            DownloadTask.completed_at.isnot(None),
+        )
+        return self.session.execute(stmt).scalar() or 0
+
+    def delete_completed_before(self, cutoff: datetime) -> int:
+        """删除 completed_at < cutoff 且 status=COMPLETED 的记录。返回删除条数。
+
+        安全红线：只删 status == COMPLETED 的记录。pending/downloading/paused/
+        failed/cancelled 一律保留（下载管理页仍能看到历史与在途任务）。
+        completed_at IS NOT NULL 显式带上，与列表口径对齐。
+
+        Args:
+            cutoff: 时间下界（只删严格早于它的记录），由 service 层按 days 换算
+        """
+        stmt = delete(DownloadTask).where(
+            DownloadTask.status == TaskStatus.COMPLETED,
+            DownloadTask.completed_at.isnot(None),
+            DownloadTask.completed_at < cutoff,
+        )
+        result = self.session.execute(stmt)
+        count = result.rowcount or 0
+        if count:
+            logger.info(f"DownloadTaskDao: 清除 {count} 条 {cutoff} 前的 completed 记录")
+        return count
+
+    def delete_all_completed(self) -> int:
+        """删除全部 status=COMPLETED 且 completed_at 非空的记录。返回删除条数。
+
+        安全红线（同 delete_completed_before）：绝不删除 pending/downloading/
+        paused/failed/cancelled 记录 —— 用户误点「清空」时队列中的任务必须存活。
+
+        已知取舍：与下载管理页的「已完成」历史共用同一批数据，清空后该页历史
+        也会一并消失（设计文档 §2.1 已确认接受）；本方法只删任务日志，
+        **不删**磁盘上的图片文件，也不改 yande_data.down_flag。
+        """
+        stmt = delete(DownloadTask).where(
+            DownloadTask.status == TaskStatus.COMPLETED,
+            DownloadTask.completed_at.isnot(None),
+        )
+        result = self.session.execute(stmt)
+        count = result.rowcount or 0
+        if count:
+            logger.info(f"DownloadTaskDao: 清空 {count} 条 completed 下载记录")
+        return count
 
     @staticmethod
     def _to_dict(record: DownloadTask) -> dict:
