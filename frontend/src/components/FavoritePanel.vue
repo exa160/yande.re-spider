@@ -10,8 +10,14 @@
           @click="handleVirtualTileClick(tile)"
         >
           <!-- compact-mode：panel 弹窗场景下虚拟磁贴无预览图时不渲染 grid 容器
-               （消除 virtual-tile-wrapper 内的空白占位） -->
-          <FolderTile :folder="tile" :compact-mode="true" />
+               （消除 virtual-tile-wrapper 内的空白占位）
+               超过 2 个磁贴时单行等分宽度不足，隐藏名称文字，只留图标 + 数量角标
+               （图标自带 title tooltip，悬停可见完整名称） -->
+          <FolderTile
+            :folder="tile"
+            :compact-mode="true"
+            :hide-name="virtualTiles.length > 2"
+          />
         </div>
       </div>
       <div class="folder-list">
@@ -650,17 +656,19 @@ defineExpose({ openCreate, openEdit, cancelForm })
   padding: 4px 0;
 }
 
-/* 虚拟磁贴（我的最爱 / 随机浏览 / 最近下载）横排，紧贴列表上方 */
+/* 虚拟磁贴（我的最爱 / 随机浏览 / 最近下载）横排，紧贴列表上方
+   自适应单行：最多 3 个磁贴等分整行宽度，不换行、不留半行。
+   FolderTile 内部有 ResizeObserver 按实测宽度调预览图数量，收窄安全。 */
 .virtual-tiles-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color, #ebeef5);
 }
 .virtual-tile-wrapper {
-  flex: 0 1 calc(50% - 4px);
-  min-width: 140px;
+  flex: 1 1 0;
+  min-width: 0; /* 允许在窄面板下收缩，避免撑破容器 */
   cursor: pointer;
 }
 

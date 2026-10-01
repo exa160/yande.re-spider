@@ -103,9 +103,11 @@
                   <el-icon
                     class="tag-star"
                     :class="{ starred: isTagFavorited(tag.name) }"
+                    :style="{ '--star-color': getTagColor(tag.type) }"
                     @click.stop="favoriteTag(tag)"
                   >
-                    <Star />
+                    <StarFilled v-if="isTagFavorited(tag.name)" />
+                    <Star v-else />
                   </el-icon>
                   <span class="tag-name" :style="{ color: getTagColor(tag.type) }">#{{ tag.name }}</span>
                   <span class="tag-check" v-if="selectedTags.includes(tag.name)">
@@ -370,7 +372,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Search, Setting, Minus, Folder, Close, Star, Check } from '@element-plus/icons-vue'
+import { Search, Setting, Minus, Folder, Close, Star, StarFilled, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAllFolders, createFolder, updateFolder, deleteFolder, resetFolderSync } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
@@ -2002,19 +2004,22 @@ html.dark-mode .panel-header {
   font-size: 14px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.2s, transform 0.2s;
   flex-shrink: 0;
   opacity: 0.4; /* 未收藏时不显眼 */
 }
 
 .tag-star:hover {
   opacity: 0.8;
-  color: #E6A23C;
+  color: var(--star-color, #E6A23C);
 }
 
 .tag-star.starred {
   opacity: 1;
-  color: #E6A23C;
+  /* 与 tag-type-tabs 的 type-dot、tag-name 同色（按标签类型取色） */
+  color: var(--star-color, #E6A23C);
+  font-size: 15px; /* 实心星略大，更醒目 */
+  transform: scale(1.05);
 }
 
 .tag-name {

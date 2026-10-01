@@ -317,7 +317,11 @@
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">作者</span>
-                  <span class="detail-value">{{ currentImage.author }}</span>
+                  <span class="detail-value">{{ detailAuthor || '-' }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">上传用户</span>
+                  <span class="detail-value">{{ currentImage.author || '-' }}</span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">MD5</span>
@@ -326,6 +330,20 @@
                 <div class="detail-item">
                   <span class="detail-label">时间</span>
                   <span class="detail-value">{{ currentImage.created_at }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">来源</span>
+                  <span class="detail-value">
+                    <a
+                      v-if="detailSource"
+                      class="detail-source-link"
+                      :href="detailSource"
+                      :title="detailSource"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{{ detailSourceLabel }}</a>
+                    <span v-else>-</span>
+                  </span>
                 </div>
               </div>
               
@@ -1358,10 +1376,16 @@ const handleImageClick = async (image) => {
   calculatePreviewSize()
   
   // 获取 tag 类型信息
+  //
+  // 请求竞态防护：by-names 是异步的，连续快速点开两张图时，先发的响应可能后到，
+  // 把后一张图的 tagTypesMap 覆盖成前一张的（tag 配色会串色，新加的「作者」也会
+  // 认错人）。用点击瞬间的 image.id 做后到校验，丢弃已过期图片的响应。
+  const requestImageId = image.id
+  tagTypesMap.value = {}
   if (image.tags && image.tags.length > 0) {
     try {
       const response = await tagCacheApi.getTagsByNames(image.tags)
-      tagTypesMap.value = {}
+      if (currentImage.value?.id !== requestImageId) return
       // 重构后 BaseResponse.data 是 {tag_name: type} 格式的字典
       if (response?.data && typeof response.data === 'object') {
         Object.assign(tagTypesMap.value, response.data)
@@ -1506,6 +1530,63 @@ const getTagStyle = (tagName) => {
   }
   return {}
 }
+
+// ---------------------------------------------------------------------------
+// 大图详情面板：作者 / 上传用户 / 来源
+// ---------------------------------------------------------------------------
+
+// 标签类型常量：1 = 艺术家（artist），见 TAG_TYPE_COLORS 的注释
+const TAG_TYPE_ARTIST = 1
+
+/**
+ * 「作者」= 当前图片中类型为 artist(1) 的标签名。
+ *
+ * 数据来自打开大图时已发起的 /tag_cache/tags/by-names 请求
+ * （见 handleImageClick → tagTypesMap），响应形如 { tag_name: type }。
+ * 该图没有 artist 标签（或标签尚未进缓存）时返回空串，模板回退显示 '-'。
+ */
+const detailAuthor = computed(() => {
+  const tags = currentImage.value?.tags || []
+  // Number() 兜底：后端 type 来自 Integer 列，但若某天改成字符串 "1" 也能命中
+  return tags.find(tag => Number(tagTypesMap.value[tag]) === TAG_TYPE_ARTIST) || ''
+})
+
+/** 「来源」= 原始 source URL，无值时为空串（模板显示 '-'） */
+const detailSource = computed(() => (currentImage.value?.source || '').trim())
+
+/**
+ * 从 source URL 摘取「一级域名去掉后缀」的部分作为超链接的显示标记：
+ *   https://www.pixiv.net/artworks/1  → www.pixiv.net     → pixiv.net → pixiv
+ *   http://danbooru.donmai.us/posts/1 → danbooru.donmai.us → donmai.us → donmai
+ *   https://twitter.com/u/status/1    → twitter.com       → twitter.com → twitter
+ *
+ * 规则：去掉 www. 前缀 → 切分 → 取最后两段（一级域名）→ 再丢掉其中的后缀，
+ * 最终得到「次级域名」。两步都不可省：
+ * - 只取一级域名 → 保留后缀（pixiv.net）
+ * - 只丢掉后缀 → danbooru.donmai.us 会退化成 danbooru.donmai（错，主站是 donmai）
+ *
+ * URL 解析失败时返回空串，由 detailSourceLabel 回退成原始 URL 文本。
+ */
+const extractSourceLabel = (url) => {
+  if (!url) return ''
+  let hostname = ''
+  try {
+    hostname = new URL(url).hostname
+  } catch {
+    return ''
+  }
+  const segments = hostname.replace(/^www\./i, '').split('.').filter(Boolean)
+  if (segments.length === 0) return ''
+  // 单段（如 localhost）既无子域也无后缀，整段即标记
+  if (segments.length === 1) return segments[0]
+  // slice(-2, -1)：取一级域名的两段，再切掉末段后缀 → 只剩次级域名
+  return segments.slice(-2, -1).join('.')
+}
+
+/** 超链接显示文本：优先次级域名，解析不出时退回完整 URL */
+const detailSourceLabel = computed(
+  () => extractSourceLabel(detailSource.value) || detailSource.value
+)
 
 const formatFileSize = (bytes) => {
   if (!bytes) return '0 B'
@@ -2114,6 +2195,18 @@ html.dark-mode .selection-count {
 .detail-value.md5 {
   font-size: 11px;
   font-family: monospace;
+}
+
+/* 「来源」超链接：与 detail-value 同色系但可点击，避免抢过 MD5 等关键信息 */
+.detail-source-link {
+  color: var(--el-color-primary, #409EFF);
+  text-decoration: none;
+  word-break: break-all;
+  transition: color 0.15s;
+}
+.detail-source-link:hover {
+  color: var(--el-color-primary-light-3, #79bbff);
+  text-decoration: underline;
 }
 
 .detail-tags-area {

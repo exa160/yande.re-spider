@@ -38,7 +38,7 @@
         </div>
       </div>
     </div>
-    <div class="folder-info">
+    <div class="folder-info" :class="{ 'hide-name': hideName }">
       <span class="folder-name">{{ folder.name }}</span>
       <el-icon
         v-if="folder.isVirtual"
@@ -76,6 +76,10 @@ const props = defineProps({
   // - compactMode=false（默认）：虚拟磁贴无预览图时仍渲染 grid 容器（保留瀑布流视觉节奏）
   // FavoritePanel 弹窗场景传 true，Gallery 收藏夹瀑布流场景不传（默认 false）
   compactMode: { type: Boolean, default: false },
+  // 隐藏磁贴名称文字，仅保留图标 + 数量角标。
+  // 用于磁贴较多、横向单行空间不足的场景（FavoritePanel 中 3 个虚拟磁贴等分时）。
+  // 图标自带 title tooltip（VIRTUAL_TILE_TITLES），悬停仍可看到完整名称。
+  hideName: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['click', 'long-press'])
@@ -345,6 +349,16 @@ watch(() => props.saveDataMode, async (newMode) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 隐藏名称（磁贴过多、横向空间不足时）：只留图标 + 数量角标并居中 */
+.folder-info.hide-name {
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+}
+.folder-info.hide-name .folder-name {
+  display: none;
 }
 
 html.dark-mode .folder-tile {
