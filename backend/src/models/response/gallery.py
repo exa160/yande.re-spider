@@ -31,7 +31,11 @@ class ImageDetail(BaseModel):
     preview_url: str = Field(description="预览图URL，仅返回本地路径")
     file_size: int = Field(description="文件大小，单位字节")
     file_ext: str = Field(description="文件扩展名，如 jpg/png")
-    author: str = Field(description="上传者")
+    author: str = Field(description="上传者（yande.re 账号名，非画师）")
+    source: Optional[str] = Field(
+        default=None,
+        description="图片来源 URL（原作出处），可能为空",
+    )
     created_at: datetime = Field(description="创建时间")
     md5: str = Field(description="MD5 哈希值")
     score: Optional[int] = Field(description="评分")
