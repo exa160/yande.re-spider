@@ -13,7 +13,19 @@ import pytest
 
 @pytest.fixture
 def reload_constant():
-    """重新加载 constant 模块，让模块级 path_constant 单例用当前 env 重建。"""
+    """重新加载 constant 模块，让模块级 path_constant 单例用当前 env 重建。
+
+    ⚠️ 必须在 teardown 时把模块 **reload 回原始状态**。
+    ``importlib.reload(constant_mod)`` 会就地重建该模块里的所有类对象
+    （含 ``ErrMsg`` / ``Rating`` / ``TaskStatus`` 等枚举）。其他测试模块若已
+    ``from src.common.constant import ErrMsg`` 并持有**旧类对象**引用，
+    reload 之后新旧枚举身份不一致 → 后续 ``ErrorResponse.model_dump(mode="json")``
+    校验失败，报 "Object of type ErrMsg is not JSON serializable"。
+
+    该污染与本用例无关，但会让**同一进程内后续的 API 路由测试**随机失败
+    （表现为全量 pytest 失败、单跑该文件却通过）。这里做二次 reload 复位，
+    使 reload 对进程内其他模块透明。
+    """
     import src.common.constant as constant_mod
 
     def _reload():
@@ -21,6 +33,10 @@ def reload_constant():
         return constant_mod
 
     yield _reload
+
+    # 复位：把模块恢复到「本夹具介入前」的状态——此时环境变量已还原，
+    # 再 reload 一次即可让单例按当前（干净的）env 重建。
+    importlib.reload(constant_mod)
 
 
 def test_resolve_user_config_dir_env_override_posix():
