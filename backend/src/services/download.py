@@ -7,11 +7,14 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 from loguru import logger
+from sqlalchemy import select
 
 from src.common.constant import TaskStatus
 from src.common.settings import config
 from src.dao.yande_data_dao import YandeDataRepository
 from src.infrastructure.download_queue import TaskStore, task_store, download_queue
+from src.models.database.yande import YandeData
+from src.models.response.my_favorites import MyFavoritePreviewImage
 
 
 class DownloadService:
@@ -155,11 +158,11 @@ class DownloadService:
             }
             status 取值：pending / downloading / paused / completed / failed / cancelled
         """
-        from src.dao.download_task_dao import download_task_dao
+        from src.dao.download_task_dao import DownloadTaskDao
 
         since = datetime.now() - timedelta(seconds=max(0, finished_window))
 
-        with download_task_dao as dao:
+        with DownloadTaskDao() as dao:
             active_records = dao.active_states_by_image()
             finished_map = dao.finished_states_by_image(since)
 
@@ -228,9 +231,9 @@ class DownloadService:
             TaskStatus.FAILED,
             TaskStatus.CANCELLED,
         ):
-            from src.dao.download_task_dao import download_task_dao
+            from src.dao.download_task_dao import DownloadTaskDao
             from src.dao.yande_data_dao import YandeDataRepository
-            with download_task_dao as dao:
+            with DownloadTaskDao() as dao:
                 rec = dao.get_by_id(task_id)
             if not rec:
                 return False, "任务记录不存在"
@@ -356,3 +359,123 @@ class DownloadService:
             "queue_size": download_queue.get_queue_size(),
             "max_concurrent": config.downloader.max_concurrent_tasks,
         }
+
+    # ============================================================
+    # 「最近下载」功能（设计文档 2026-09-21-recent-downloads-design.md §3.1 / §3.2）
+    #
+    # 数据源统一为 download_task 表的 completed_at：yande_data 没有本地下载时间列，
+    # 本期不改表结构（见设计文档 §2.1）。以下 3 个方法都只读/只删 status=COMPLETED
+    # 且 completed_at 非空的任务记录，语义与 DAO 的 4 个方法严格一致。
+    # ============================================================
+
+    @staticmethod
+    def list_completed_image_ids(
+        page: int = 1, page_size: int = 20
+    ) -> List[Tuple[int, datetime]]:
+        """分页返回最近完成的下载任务对应的 (image_id, 最新完成时间)，时间倒序。
+
+        Returns:
+            [(image_id, latest_completed_at), ...]；重复下载同一张图只出现一次。
+        """
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        with DownloadTaskDao() as dao:
+            return dao.list_completed_image_ids(page=page, page_size=page_size)
+
+    @staticmethod
+    def count_completed_images() -> int:
+        """最近下载的**去重图片数**（COUNT(DISTINCT image_id)），用作磁贴角标。
+
+        与 ``count_downloaded()``（随机浏览角标 = down_flag=True 总数）口径不同：
+        重复下载同一张图只计一次，避免角标虚高。
+        """
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        with DownloadTaskDao() as dao:
+            return dao.count_completed_distinct_images()
+
+    @staticmethod
+    def get_recent_preview(limit: int = 8) -> List[MyFavoritePreviewImage]:
+        """最近下载的预览图元数据（按完成时间倒序），与角标口径一致。
+
+        实现：先用 download_task 取出最近 limit 个去重 image_id（携带完成时间，
+        天然倒序），再回表 yande_data 补齐 tags / rating 元数据，最后按任务侧
+        的顺序重排（SQL IN 查询不保证顺序）。
+
+        有意**不**按 ``down_flag=True`` 过滤：角标统计的是 download_task 的
+        completed 记录，若预览再叠加一层 down_flag 过滤，会出现「角标 5 张但
+        磁贴只显示 3 张」的自相矛盾。两者必须同源。
+
+        已知取舍：用户手动删掉下载任务记录后该图会从预览中消失，但磁盘文件
+        仍在（设计文档 §2.1）。
+        """
+        rows = DownloadService.list_completed_image_ids(page=1, page_size=limit)
+        if not rows:
+            return []
+
+        ordered_ids = [image_id for image_id, _ in rows]
+        with YandeDataRepository() as repo:
+            records = {
+                rec.id: rec
+                for rec in repo.session.execute(
+                    select(YandeData).where(YandeData.id.in_(ordered_ids))
+                )
+                .scalars()
+                .all()
+            }
+            # 必须在 with 块**内**把需要的字段物化成普通值。
+            # 直接把 ORM 实例存进 records 带出块外，__exit__ 里的 session.close()
+            # 会把它们变成 detached instance；此后任何属性访问都要求重新加载，
+            # 而 session 已关 → sqlalchemy.orm.exc.DetachedInstanceError。
+            #
+            # 注意与 expire_on_commit 无关：生产 _get_session_factory() 用的是
+            # expire_on_commit=False（dao/database.py:125），属性并不会因为 commit
+            # 而过期。真正的触发条件是「session 已关闭后访问未加载的属性」。
+            # 即便这里所有列都是已加载的（deferred 未开启），把实例带出块外仍是
+            # 危险写法——一旦有人给该列加 deferred(...)，或换成 lazy 关系，就会炸。
+            meta = {
+                rec.id: (
+                    rec.tags or "",
+                    rec.rating.display if rec.rating is not None else "",
+                )
+                for rec in records.values()
+            }
+
+        items: List[MyFavoritePreviewImage] = []
+        for image_id in ordered_ids:
+            row = meta.get(image_id)
+            if row is None:
+                # 任务表有记录但 yande_data 无对应元数据（历史脏数据），跳过而非报错
+                continue
+            tags, rating_display = row
+            items.append(
+                MyFavoritePreviewImage(
+                    id=image_id,
+                    preview_url=None,  # 前端 FolderTile 按 id 拼 /api/v1/gallery/cache/preview/{id}
+                    tags=tags,
+                    rating=rating_display,
+                )
+            )
+        return items
+
+    @staticmethod
+    def delete_completed_records(days: Optional[int] = None) -> int:
+        """清除「最近下载」已完成记录（只删任务日志，**不删**图片文件）。
+
+        Args:
+            days: None → 清空全部 completed 记录；
+                  N（≥1）→ 只清除 ``completed_at < now - N days`` 的记录。
+
+        Returns:
+            删除的记录条数（0 表示无匹配）。
+
+        安全红线：DAO 内部固定带 ``status == COMPLETED AND completed_at IS NOT NULL``，
+        pending/downloading/paused/failed/cancelled 绝不会被删除。
+        """
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        with DownloadTaskDao() as dao:
+            if days is None:
+                return dao.delete_all_completed()
+            cutoff = datetime.now() - timedelta(days=days)
+            return dao.delete_completed_before(cutoff)

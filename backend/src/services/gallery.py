@@ -14,16 +14,17 @@ from sqlalchemy import func, select
 from src.common.constant import CleanupMode
 from src.common.constant import ErrMsg
 from src.common.constant import Rating
+from src.common.constant import TaskStatus
 from src.common.constant import path_constant
 from src.common.settings import config
 from src.common.utils import get_error_type_from_exception
-from src.dao.yande_data_dao import YandeDataRepository
+from src.dao.yande_data_dao import SortBy, YandeDataRepository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
 from src.middleware.session import RequestSessionMiddleware
 from src.models.database.my_favorite import MyFavorite
-from src.models.database.yande import YandeData
+from src.models.database.yande import DownloadTask, YandeData
 from src.models.request.gallery import GalleryLoadRequest
 from src.models.request.yande import YandeSearchTags
 from src.models.response.gallery import ImageDetail
@@ -85,6 +86,11 @@ class GalleryService:
                                           AND config.favorites.enable_my_favorites)
             只有两者都为 True 才会 LEFT JOIN my_favorite；其它情况保持原行为。
 
+        第三条分流：``sort_by == SortBy.DOWNLOADED_AT``（最近下载）也必须走
+        ``_query_local_with_options``，因为该排序依赖 download_task 子查询 + JOIN，
+        ``YandeDataRepository.query()`` 里的 ``getattr(YandeData, sort_by)`` 拿不到该列
+        （yande_data 没有 downloaded_at 列），会静默退化成按 id 排序。
+
         Args:
             params: GalleryLoadRequest（含 include_favorite_status / random 字段）
             include_favorite_status: 覆盖 request.include_favorite_status（None=沿用 request）
@@ -103,8 +109,9 @@ class GalleryService:
         effective_include_favorite = bool(
             req_include and getattr(config.favorites, "enable_my_favorites", False)
         )
+        sort_by_downloaded_at = params.sort_by == SortBy.DOWNLOADED_AT
 
-        if not effective_include_favorite and not req_random:
+        if not effective_include_favorite and not req_random and not sort_by_downloaded_at:
             with YandeDataRepository() as repo:
                 repo.YandeDataQueryParams.model_validate(params)
                 images, total = repo.query(
@@ -124,6 +131,34 @@ class GalleryService:
         return images, total
 
     @staticmethod
+    def _build_latest_download_subquery():
+        """「最近下载」子查询：每张图最近一次**完成**下载的时间。
+
+        ``SELECT image_id, MAX(completed_at) AS latest_at FROM download_tasks
+          WHERE status='completed' AND completed_at IS NOT NULL
+          GROUP BY image_id``
+
+        两个 WHERE 条件缺一不可（与 download_task_dao 的 4 个「最近下载」方法同口径）：
+        - ``status='completed'`` 排除 pending/downloading/paused/failed/cancelled
+        - ``completed_at IS NOT NULL`` 排除「文件已存在、跳过下载」分支产生的 NULL
+          （否则 MAX() 会把 NULL 组的时间整体拖成 NULL，排序失去意义）
+
+        GROUP BY image_id 顺带完成「同一张图重复下载只出现一次」的去重。
+        """
+        return (
+            select(
+                DownloadTask.image_id.label("image_id"),
+                func.max(DownloadTask.completed_at).label("latest_at"),
+            )
+            .where(
+                DownloadTask.status == TaskStatus.COMPLETED,
+                DownloadTask.completed_at.isnot(None),
+            )
+            .group_by(DownloadTask.image_id)
+            .subquery()
+        )
+
+    @staticmethod
     def _query_local_with_options(
         repo: YandeDataRepository,
         params: GalleryLoadRequest,
@@ -134,6 +169,12 @@ class GalleryService:
 
         与 YandeDataRepository.query() 共用同一套 filter_funcs，保证 tags / rating /
         file_types / size / author 等过滤条件一致。
+
+        三条分支互不干扰、可自由组合：
+        1. ``effective_include_favorite`` → LEFT JOIN my_favorite 带出 is_favorited
+        2. ``random`` → ORDER BY RANDOM() + DISTINCT（优先级高于排序键）
+        3. ``sort_by == SortBy.DOWNLOADED_AT`` → INNER JOIN download_task 子查询，
+           按 MAX(completed_at) 排序（yande_data 无该列，只能走 JOIN，见 §3.4）
         """
         session = repo.session
         qp = repo.YandeDataQueryParams.model_validate(params)
@@ -179,19 +220,42 @@ class GalleryService:
 
         offset = (qp.page - 1) * qp.page_size
 
+        # 「最近下载」排序：必须 JOIN 子查询取 MAX(completed_at)，
+        # 不可用 getattr(YandeData, "downloaded_at")（该列不存在）
+        sort_by_downloaded_at = qp.sort_by == SortBy.DOWNLOADED_AT
+        latest_subq = (
+            GalleryService._build_latest_download_subquery()
+            if sort_by_downloaded_at
+            else None
+        )
+
         if effective_include_favorite:
             stmt = (
                 select(YandeData, MyFavorite.id)
                 .outerjoin(MyFavorite, MyFavorite.image_id == YandeData.id)
-                .filter(*filter_funcs)
             )
         else:
-            stmt = select(YandeData).filter(*filter_funcs)
+            stmt = select(YandeData)
+
+        if latest_subq is not None:
+            # join_from 显式指定左表，避免与上面的 outerjoin 抢隐式左连接对象
+            stmt = stmt.join_from(
+                YandeData, latest_subq, latest_subq.c.image_id == YandeData.id
+            )
+
+        stmt = stmt.filter(*filter_funcs)
 
         if random:
             # 用 .distinct() 而非 .distinct(YandeData.id)：后者编译为 PostgreSQL 专属
             # DISTINCT ON (col)，在 SQLite/MariaDB 上会被静默忽略。
             stmt = stmt.order_by(func.random()).distinct()
+        elif latest_subq is not None:
+            sort_column = latest_subq.c.latest_at
+            # 第二排序键 YandeData.id：同秒完成时给出确定性顺序，避免翻页抖动
+            if qp.sort_order == "asc":
+                stmt = stmt.order_by(sort_column.asc(), YandeData.id.asc())
+            else:
+                stmt = stmt.order_by(sort_column.desc(), YandeData.id.desc())
         else:
             sort_column = getattr(YandeData, qp.sort_by, YandeData.id)
             if qp.sort_order == "desc":
@@ -214,6 +278,11 @@ class GalleryService:
             images = [row[0] for row in rows]
 
         count_stmt = select(func.count()).select_from(YandeData).filter(*filter_funcs)
+        if latest_subq is not None:
+            # count 必须走同一条 JOIN，否则 total 会把「无 completed 任务的图片」也算进去
+            count_stmt = count_stmt.join_from(
+                YandeData, latest_subq, latest_subq.c.image_id == YandeData.id
+            )
         total = session.execute(count_stmt).scalar() or 0
         return images, total
 

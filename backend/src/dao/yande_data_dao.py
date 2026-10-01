@@ -42,6 +42,11 @@ class SortBy(str, Enum):
     FILE_SIZE = "file_size"
     WIDTH = "width"
     HEIGHT = "height"
+    # 「最近下载」排序：yande_data **没有** downloaded_at 列，
+    # 取值来自 download_task.completed_at，只能由 GalleryService._query_local_with_options
+    # 的子查询 + JOIN 分支实现（见设计文档 2026-09-21-recent-downloads-design.md §3.4）。
+    # 直接走 YandeDataRepository.query() 的 getattr(YandeData, sort_by) 会退化为按 id 排序。
+    DOWNLOADED_AT = "downloaded_at"
 
 
 class SortOrder(str, Enum):

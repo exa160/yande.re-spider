@@ -20,7 +20,21 @@ class APIException(HTTPException, Generic[T]):
         self.http_status = HTTPStatus.OK
         # 获取调用栈信息，用于日志追踪
         self._source_location = self._get_source_location()
-        if isinstance(err_msg, ErrMsg):
+        # 判定 ErrMsg 不能用 isinstance(err_msg, ErrMsg)：
+        # 模块级名 `ErrMsg` 在 import 时被绑定，而 `importlib.reload(const_mod)`
+        # 会**就地重建**该类；其他模块 `from ... import ErrMsg` 仍持有旧类对象，
+        # 导致 isinstance 失配 → 静默走 else 分支，把 http_status 留在 HTTPStatus.OK、
+        # err_code 退化成 '0000'，即**错误响应被降级成 200**。
+        # （测试中 tests/test_path_constant.py 的 reload 夹具会触发此路径。）
+        # 改为按「枚举的值特征」判定，与类身份解耦：任何携带 code/msg/http_status
+        # 三属性的 ErrMsg 实例都能被正确识别，reload 后依然成立。
+        is_err_msg_enum = (
+            not isinstance(err_msg, str)
+            and hasattr(err_msg, "code")
+            and hasattr(err_msg, "msg")
+            and hasattr(err_msg, "http_status")
+        )
+        if is_err_msg_enum:
             # 优先使用传入的 err_code，否则使用 ErrMsg 中的 code
             self.err_code = err_code if err_code else err_msg.code
             self.err_msg = err_msg.msg

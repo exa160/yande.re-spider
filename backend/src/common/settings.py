@@ -121,6 +121,10 @@ class FavoritesConfig(ConfigModel):
         default=False,
         description="随机浏览功能总开关",
     )
+    enable_recent_downloads: bool = Field(
+        default=False,
+        description="最近下载功能总开关",
+    )
     enable_favorite_folder: bool = Field(
         default=True,
         description="收藏夹展示总开关",

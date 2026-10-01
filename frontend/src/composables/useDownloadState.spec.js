@@ -19,7 +19,7 @@ vi.mock('@/api', () => ({ default: apiMock }))
 
 import { useDownloadState } from './useDownloadState'
 
-const { sync, markQueued, reset, downStateOf, activeCount, start, stop, _resetForTest } = useDownloadState()
+const { sync, markQueued, reset, wake, downStateOf, activeCount, start, stop, _resetForTest } = useDownloadState()
 
 /** 构造后端 /download/tasks/states 的响应体（axios 拦截器已剥出 response.data） */
 const statesResponse = ({ active = [], finished = [] }) => ({
@@ -349,32 +349,87 @@ describe('useDownloadState — 轮询生命周期', () => {
     stop()
   })
 
-  it('空闲时轮询节奏放慢到 5s', async () => {
+  it('空闲时**完全停止**轮询（无活跃任务 → 0 请求）', async () => {
     start()
+    // start 立即对账一次
     expect(apiMock.get).toHaveBeenCalledTimes(1)
+    // 那次对账返回空 active/finished → scheduleNext 不再排定时器
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+    stop()
+  })
+
+  it('空闲后 markQueued 能重新拉起轮询', async () => {
+    start()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+
+    markQueued([700])
     await vi.advanceTimersByTimeAsync(2000)
-    expect(apiMock.get).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(3000)
     expect(apiMock.get).toHaveBeenCalledTimes(2)
     stop()
   })
 
+  it('wake() 在无活跃态时也强制拉起轮询（下载页恢复任务的场景）', async () => {
+    start()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+
+    // 模拟下载页点「恢复」：此时本地没有活跃态，靠 wake 打开探测窗口
+    wake()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(apiMock.get).toHaveBeenCalledTimes(2)
+    stop()
+  })
+
+  it('wake() 探测窗口内拿到 active 任务 → 转入常规 2s 轮询', async () => {
+    start()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+
+    apiMock.get.mockResolvedValueOnce({
+      data: { data: { active: [{ image_id: 800, status: 'pending' }], finished: [] } },
+    })
+    wake()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(downStateOf({ id: 800 })).toBe('downloading')
+    // active 已建立 → 继续轮询
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(apiMock.get.mock.calls.length).toBeGreaterThan(2)
+    stop()
+  })
+
+  it('网络抖动失败不会断掉轮询链（scheduleNext 在 finally 里）', async () => {
+    markQueued([900])
+    start()
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+
+    apiMock.get.mockRejectedValueOnce(new Error('network down'))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(apiMock.get).toHaveBeenCalledTimes(2)
+    // 失败后仍在轮询（本地 states 未变，markQueued 的 queued 还在）
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(apiMock.get).toHaveBeenCalledTimes(3)
+    stop()
+  })
+
   it('引用计数：多个组件 start 只建一个定时器，全部 stop 后才清理', async () => {
+    markQueued([1000])
     start()
     start()
     await vi.advanceTimersByTimeAsync(5000)
-    // 两次 start 只触发一次立即对账 + 一个定时器
-    expect(apiMock.get).toHaveBeenCalledTimes(2)
+    // 两次 start 只触发一次立即对账 + 一个定时器（2s 节奏 → 约 3 次）
+    expect(apiMock.get).toHaveBeenCalledTimes(3)
 
     // 引用计数仍为 1（另一个消费者未卸载）→ 继续轮询
     stop()
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(apiMock.get).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(apiMock.get).toHaveBeenCalledTimes(4)
 
     // 归零 → 定时器清理，之后不再请求
     stop()
     await vi.advanceTimersByTimeAsync(10000)
-    expect(apiMock.get).toHaveBeenCalledTimes(3)
+    expect(apiMock.get).toHaveBeenCalledTimes(4)
   })
 
   it('reset 清掉本地标记（回到未下载）', () => {

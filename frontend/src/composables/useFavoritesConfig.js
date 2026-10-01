@@ -5,12 +5,15 @@
  * - 每次调用都从 localStorage legacy key 重读 5 个 UI 偏好（保证刷新即拿到上次的设置）
  * - 首次调用额外异步拉取后端 GET /config/favorites（成功则覆盖 LS 兜底；字段缺失则保留 LS 值）
  * - 5 个 UI 偏好的写回：ref → watch → localStorage（向后兼容；不依赖后端 100% 可达）
- * - 4 个开关 + myFavoritesCount：saveFavoritesConfig() 走 PUT /config/favorites 后端持久化
- *   fetchMyFavoritesCount() 在 enable_my_favorites=true 时拉取总数
+ * - 5 个开关 + 角标：saveFavoritesConfig() 走 PUT /config/favorites 后端持久化
+ *   fetchMyFavoritesCount() 在 enable_my_favorites=true 时拉取总数；
+ *   fetchRandomBrowseCount() 在 enable_random_browse=true 时拉取候选池总数；
+ *   fetchRecentDownloadsCount() 在 enable_recent_downloads=true 时拉取去重图片数
  *
  * 后端字段（snake_case）：
  *   button_mode | tile_size | preview_order | include_online | folder_page_size
  *   enable_my_favorites | enable_random_browse | enable_favorite_folder | enable_favorite_autodownload
+ *   enable_recent_downloads
  *
  * localStorage keys（向后兼容 legacy UI 偏好）：
  *   gallery_favorites_button_mode    : 'hidden' | 'shown' | 'default'
@@ -23,6 +26,7 @@ import { ref, watch } from 'vue'
 import api from '@/api'
 import { myFavoritesApi } from '@/api/myFavorites'
 import { randomBrowseApi } from '@/api/randomBrowse'
+import { recentDownloadsApi } from '@/api/recentDownloads'
 
 /**
  * @typedef {import('vue').Ref} Ref
@@ -47,10 +51,14 @@ const state = {
   enableRandomBrowse: ref(false),
   enableFavoriteFolder: ref(true),
   enableFavoriteAutodownload: ref(true),
+  // 最近下载总开关（第三个虚拟磁贴）
+  enableRecentDownloads: ref(false),
   // 我的最爱总数（用于 FavoritePanel 角标 / 摘要）
   myFavoritesCount: ref(0),
   // 随机浏览候选池总数（down_flag=True 的本地图片数，用于随机浏览磁贴角标）
   randomBrowseCount: ref(0),
+  // 最近下载去重图片数（COUNT(DISTINCT image_id)，用于最近下载磁贴角标）
+  recentDownloadsCount: ref(0),
   // 首次加载完成标记（避免重复 GET）
   loaded: ref(false),
 }
@@ -191,11 +199,54 @@ export async function fetchRandomBrowseCount() {
 }
 
 /**
+ * 拉取最近下载去重图片数写入 state.recentDownloadsCount（失败仅警告，不抛）
+ * 仅在调用方已经判断 enable_recent_downloads=true 时调用
+ *
+ * 口径说明：COUNT(DISTINCT image_id)（同一图片重复下载只算一次），
+ * 与 randomBrowseCount（down_flag=True 的本地图片总数）口径不同。
+ */
+export async function fetchRecentDownloadsCount() {
+  try {
+    const res = await recentDownloadsApi.getCount()
+    const count = res?.data?.count
+    if (typeof count === 'number') {
+      state.recentDownloadsCount.value = count
+    } else if (count && typeof count === 'object' && typeof count.count === 'number') {
+      // 兼容 res.data 直接是 { count } 的 mock 场景
+      state.recentDownloadsCount.value = count.count
+    } else {
+      state.recentDownloadsCount.value = 0
+    }
+  } catch (e) {
+    // 静默 — 角标无数据不影响主功能
+    if (typeof console !== 'undefined') {
+      console.warn('Fetch recent downloads count failed:', e?.message || e)
+    }
+  }
+}
+
+/**
+ * 清除已完成下载记录（二级页「清除 N 天前记录」/「清空全部记录」按钮调用）
+ *
+ * @param {{mode: 'before_days'|'all', days?: number}} payload -
+ *        { mode: 'before_days', days: 30 } 或 { mode: 'all' }
+ * @returns {Promise<{deleted: number}>} 后端返回删除条数
+ * @throws  {Error} 清除失败原样抛出（由调用方弹错误提示）
+ */
+export async function clearRecentDownloads(payload) {
+  const res = await recentDownloadsApi.clear(payload)
+  // 清除成功后重刷角标（磁贴角标与二级页顶部记录数共用 recentDownloadsCount）
+  await fetchRecentDownloadsCount()
+  return res
+}
+
+/**
  * 把部分配置变更同步写回后端，并同步本地 state。
  *
  * @param {Record<string, any>} updates - snake_case 键值对（与后端契约一致）
  *        合法键：button_mode / tile_size / preview_order / include_online / folder_page_size
  *               enable_my_favorites / enable_random_browse / enable_favorite_folder / enable_favorite_autodownload
+ *               enable_recent_downloads
  * @returns {Promise<void>}
  */
 export async function saveFavoritesConfig(updates) {
@@ -217,10 +268,14 @@ export async function saveFavoritesConfig(updates) {
   if ('enable_random_browse' in updates && updates.enable_random_browse) {
     await fetchRandomBrowseCount()
   }
+  // 同理：刚开启「最近下载」时拉取去重图片数（最近下载磁贴角标）
+  if ('enable_recent_downloads' in updates && updates.enable_recent_downloads) {
+    await fetchRecentDownloadsCount()
+  }
 }
 
 /**
- * 获取收藏夹 UI 配置 + 4 个新开关的响应式引用
+ * 获取收藏夹 UI 配置 + 5 个新开关的响应式引用
  *
  * 首次调用：同步读 localStorage → fire-and-forget GET /config/favorites → 注册 watch
  * 后续调用：直接返回已初始化的 refs（singleton）
@@ -235,7 +290,9 @@ export async function saveFavoritesConfig(updates) {
  *   enableRandomBrowse: Ref<boolean>,
  *   enableFavoriteFolder: Ref<boolean>,
  *   enableFavoriteAutodownload: Ref<boolean>,
+ *   enableRecentDownloads: Ref<boolean>,
  *   myFavoritesCount: Ref<number>,
+ *   recentDownloadsCount: Ref<number>,
  *   loaded: Ref<boolean>
  * }}
  */
@@ -280,10 +337,17 @@ export function useFavoritesConfig() {
       if ('enable_favorite_autodownload' in c) {
         state.enableFavoriteAutodownload.value = !!c.enable_favorite_autodownload
       }
+      if ('enable_recent_downloads' in c) {
+        state.enableRecentDownloads.value = !!c.enable_recent_downloads
+      }
 
       // 我的最爱开启 → 加载总数；关闭 → 不主动清零，保留最后一次已知值（避免角标闪烁）
       if (state.enableMyFavorites.value) {
         fetchMyFavoritesCount()
+      }
+      // 最近下载开启 → 加载去重图片数（同上，关闭时保留最后一次已知值）
+      if (state.enableRecentDownloads.value) {
+        fetchRecentDownloadsCount()
       }
     }).catch((err) => {
       // 后端不可达不致命 — ref 保持 localStorage 兜底或 default

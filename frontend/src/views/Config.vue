@@ -307,7 +307,7 @@
       <div v-show="activeMenu === 'favorites'" class="config-section favorites-section">
         <div class="favorites-inner-section">
           <div class="advanced-title">收藏夹</div>
-          <div class="advanced-desc">配置收藏夹按钮显示、我的最爱 / 随机浏览总开关，以及每文件夹预览图数量</div>
+          <div class="advanced-desc">配置收藏夹按钮显示、我的最爱 / 随机浏览 / 最近下载总开关，以及每文件夹预览图数量</div>
 
           <div class="refresh-controls">
             <!-- 主页显示收藏夹（入口显隐，收藏夹模块总开关） -->
@@ -358,6 +358,20 @@
                 <div class="refresh-name">随机浏览</div>
                 <div class="refresh-params">
                   <el-radio-group v-model="favoritesForm.enableRandomBrowse" size="small">
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </div>
+
+            <!-- 最近下载总开关：独立功能（数据源是 download_task 的已完成记录），
+                 与「我的最爱」无父子依赖，因此不启用随父开关禁用 -->
+            <div class="refresh-item">
+              <div class="refresh-info">
+                <div class="refresh-name">最近下载</div>
+                <div class="refresh-params">
+                  <el-radio-group v-model="favoritesForm.enableRecentDownloads" size="small">
                     <el-radio-button :label="false">关闭</el-radio-button>
                     <el-radio-button :label="true">开启</el-radio-button>
                   </el-radio-group>
@@ -497,6 +511,7 @@ const {
   enableMyFavorites,
   enableRandomBrowse,
   enableFavoriteAutodownload,
+  enableRecentDownloads,
 } = useFavoritesConfig()
 // 本地表单：用 composable 初值初始化，watch 同步回 composable
 // （不直接 v-model 到 composable，避免 Gallery 端外部修改造成循环）
@@ -509,6 +524,7 @@ const favoritesForm = reactive({
   enableMyFavorites: enableMyFavorites.value,
   enableRandomBrowse: enableRandomBrowse.value,
   enableFavoriteAutodownload: enableFavoriteAutodownload.value,
+  enableRecentDownloads: enableRecentDownloads.value,
 })
 watch(favoritesForm, (val) => {
   if (buttonMode.value !== val.buttonMode) {
@@ -535,8 +551,11 @@ watch(favoritesForm, (val) => {
   if (enableFavoriteAutodownload.value !== val.enableFavoriteAutodownload) {
     enableFavoriteAutodownload.value = val.enableFavoriteAutodownload
   }
+  if (enableRecentDownloads.value !== val.enableRecentDownloads) {
+    enableRecentDownloads.value = val.enableRecentDownloads
+  }
 })
-// 保存收藏夹配置（4 个新开关 + 5 个迁移偏好 → PUT /config/favorites）
+// 保存收藏夹配置（5 个新开关 + 5 个迁移偏好 → PUT /config/favorites）
 const savingFavorites = ref(false)
 async function saveFavorites() {
   savingFavorites.value = true
@@ -544,6 +563,7 @@ async function saveFavorites() {
     await saveFavoritesConfig({
       enable_my_favorites: favoritesForm.enableMyFavorites,
       enable_random_browse: favoritesForm.enableRandomBrowse,
+      enable_recent_downloads: favoritesForm.enableRecentDownloads,
       enable_favorite_autodownload: favoritesForm.enableFavoriteAutodownload,
       button_mode: favoritesForm.buttonMode,
       tile_size: favoritesForm.tileSize,

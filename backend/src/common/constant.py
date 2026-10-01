@@ -118,6 +118,8 @@ class RouterMap(Enum):
     query = ["查询"]
     tag_cache = ["标签缓存"]
     my_favorites = ["我的最爱"]
+    random_browse = ["随机浏览"]
+    recent_downloads = ["最近下载"]
 
     @classmethod
     def get_tags(cls, name: str):

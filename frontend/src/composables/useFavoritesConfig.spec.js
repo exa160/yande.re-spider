@@ -12,6 +12,9 @@ beforeEach(async () => {
   vi.mocked(mockedApi.put).mockClear()
   const { myFavoritesApi } = await import('@/api/myFavorites')
   vi.mocked(myFavoritesApi.count).mockClear()
+  const { recentDownloadsApi } = await import('@/api/recentDownloads')
+  vi.mocked(recentDownloadsApi.getCount).mockClear()
+  vi.mocked(recentDownloadsApi.clear).mockClear()
 })
 
 vi.mock('@/api', () => ({
@@ -26,6 +29,14 @@ vi.mock('@/api', () => ({
 vi.mock('@/api/myFavorites', () => ({
   myFavoritesApi: {
     count: vi.fn().mockRejectedValue(new Error('default mock — override per test')),
+  },
+}))
+
+// recentDownloadsApi 同理：最近下载角标 / 清除记录都走独立封装模块
+vi.mock('@/api/recentDownloads', () => ({
+  recentDownloadsApi: {
+    getCount: vi.fn().mockRejectedValue(new Error('default mock — override per test')),
+    clear: vi.fn().mockRejectedValue(new Error('default mock — override per test')),
   },
 }))
 
@@ -140,10 +151,133 @@ describe('useFavoritesConfig — saveFavoritesConfig（brief Step 2 test 3）', 
 })
 
 // =============================================================================
+// 最近下载开关 / 角标（设计文档 §4.1）
+// =============================================================================
+describe('useFavoritesConfig — enable_recent_downloads / recentDownloadsCount', () => {
+  it('loads enable_recent_downloads from /config/favorites and fetches count when true', async () => {
+    const api = (await import('@/api')).default
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { enable_recent_downloads: true },
+    })
+    vi.mocked(recentDownloadsApi.getCount).mockResolvedValueOnce({ data: { count: 55 } })
+
+    const { useFavoritesConfig } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(s.enableRecentDownloads.value).toBe(true)
+    expect(s.recentDownloadsCount.value).toBe(55)
+    expect(recentDownloadsApi.getCount).toHaveBeenCalled()
+  })
+
+  it('does not fetch recentDownloadsCount when enable_recent_downloads is false', async () => {
+    const api = (await import('@/api')).default
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { enable_recent_downloads: false },
+    })
+
+    const { useFavoritesConfig } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(s.enableRecentDownloads.value).toBe(false)
+    expect(s.recentDownloadsCount.value).toBe(0)
+    expect(recentDownloadsApi.getCount).not.toHaveBeenCalled()
+  })
+
+  it('saveFavoritesConfig syncs enable_recent_downloads and fetches the badge', async () => {
+    const api = (await import('@/api')).default
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+    vi.mocked(api.get).mockRejectedValue(new Error('no need to call'))
+    vi.mocked(api.put).mockResolvedValue({ data: {} })
+    vi.mocked(recentDownloadsApi.getCount).mockResolvedValue({ data: { count: 9 } })
+
+    const { useFavoritesConfig, saveFavoritesConfig } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+    expect(s.recentDownloadsCount.value).toBe(0)
+
+    await saveFavoritesConfig({ enable_recent_downloads: true })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(api.put).toHaveBeenCalledWith('/config/favorites', { enable_recent_downloads: true })
+    expect(s.enableRecentDownloads.value).toBe(true)
+    expect(s.recentDownloadsCount.value).toBe(9)
+  })
+
+  it('saveFavoritesConfig does NOT fetch the badge when disabling', async () => {
+    const api = (await import('@/api')).default
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+    vi.mocked(api.put).mockResolvedValue({ data: {} })
+
+    const { useFavoritesConfig, saveFavoritesConfig } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+
+    await saveFavoritesConfig({ enable_recent_downloads: false })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(s.enableRecentDownloads.value).toBe(false)
+    expect(recentDownloadsApi.getCount).not.toHaveBeenCalled()
+  })
+
+  it('fetchRecentDownloadsCount updates state and swallows network errors', async () => {
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+
+    const { useFavoritesConfig, fetchRecentDownloadsCount } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+
+    vi.mocked(recentDownloadsApi.getCount).mockResolvedValue({ data: { count: 123 } })
+    await fetchRecentDownloadsCount()
+    expect(s.recentDownloadsCount.value).toBe(123)
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(recentDownloadsApi.getCount).mockRejectedValue(new Error('network down'))
+    await expect(fetchRecentDownloadsCount()).resolves.toBeUndefined()
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('clearRecentDownloads posts the payload then refreshes the badge to 0', async () => {
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+
+    const { useFavoritesConfig, clearRecentDownloads, fetchRecentDownloadsCount } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+
+    // 先模拟「有历史记录」：角标 30
+    vi.mocked(recentDownloadsApi.getCount).mockResolvedValue({ data: { count: 30 } })
+    await fetchRecentDownloadsCount()
+    expect(s.recentDownloadsCount.value).toBe(30)
+
+    // 清除成功：后端返回删除条数，随后角标刷新为 0
+    vi.mocked(recentDownloadsApi.clear).mockResolvedValue({ data: { deleted: 12 } })
+    vi.mocked(recentDownloadsApi.getCount).mockResolvedValue({ data: { count: 0 } })
+
+    const res = await clearRecentDownloads({ mode: 'before_days', days: 30 })
+
+    expect(recentDownloadsApi.clear).toHaveBeenCalledWith({ mode: 'before_days', days: 30 })
+    expect(res?.data?.deleted).toBe(12)
+    expect(recentDownloadsApi.getCount).toHaveBeenCalled()
+    expect(s.recentDownloadsCount.value).toBe(0)
+  })
+
+  it('clearRecentDownloads propagates API failure (caller shows the error)', async () => {
+    const { recentDownloadsApi } = await import('@/api/recentDownloads')
+    vi.mocked(recentDownloadsApi.clear).mockRejectedValue(new Error('boom'))
+
+    const { clearRecentDownloads } = await import('./useFavoritesConfig')
+
+    await expect(clearRecentDownloads({ mode: 'all' })).rejects.toThrow('boom')
+    // 失败时不该刷新角标
+    expect(recentDownloadsApi.getCount).not.toHaveBeenCalled()
+  })
+})
+
+// =============================================================================
 // 向后兼容：保留 5 个原有 ref（Config.spec.js / Gallery.spec.js 依赖）
 // =============================================================================
 describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => {
-  it('exposes 5 legacy refs + 4 new refs + myFavoritesCount + loaded', async () => {
+  it('exposes 5 legacy refs + 5 new refs + myFavoritesCount + recentDownloadsCount + loaded', async () => {
     const { useFavoritesConfig } = await import('./useFavoritesConfig')
     const s = useFavoritesConfig()
 
@@ -156,7 +290,9 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
     expect(s).toHaveProperty('enableRandomBrowse')
     expect(s).toHaveProperty('enableFavoriteFolder')
     expect(s).toHaveProperty('enableFavoriteAutodownload')
+    expect(s).toHaveProperty('enableRecentDownloads')
     expect(s).toHaveProperty('myFavoritesCount')
+    expect(s).toHaveProperty('recentDownloadsCount')
     expect(s).toHaveProperty('loaded')
   })
 

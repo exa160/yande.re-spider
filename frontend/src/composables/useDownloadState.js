@@ -34,11 +34,31 @@
  * | `downloaded`  | 下载完成（DB down_flag 也已为 true）   | 已下载（绿点/tag）    |
  * | `failed`      | 下载失败/取消，已复位为未下载          | 未下载（回到下载按钮）|
  *
- * ## 轮询节奏
+ * ## 轮询节奏：**按需启停，空闲零请求**
  *
- * - 有进行中任务（含本地 queued）：2s
- * - 空闲：5s（只为发现「收藏自动下载」这类外部触发的任务）
- * - `document.hidden` 时不请求，页面重新可见立即补一次
+ * - 有进行中任务（含本地 queued）：每 2s
+ * - **空闲（无任何 queued/pending/downloading）：完全停掉定时器，0 请求**
+ * - 重新拉起的入口只有三个（全部是显式事件，不靠空转轮询）：
+ *   1. `markQueued()` —— 单图 / 批量 / 收藏自动下载（后端响应带 `download_started`）
+ *   2. `wake()` —— 下载页「启动 / 恢复」任务后（此时前端没打过 markQueued）
+ *   3. `visibilitychange` 回前台 —— 补一次对账，替代被删掉的空闲轮询
+ * - `document.hidden` 时不请求
+ *
+ * ### 为什么删掉了 5s 空闲轮询
+ *
+ * 空闲时后端返回的 payload **每次一字不差**（实测 0 个任务时 active/finished
+ * 均为空，两条查询合计 0.1ms），12 次/分纯属浪费。原设计是为了兜住
+ * 「后端触发的任务」这类前端无感知的场景，但它们已各自有了显式通道：
+ *
+ * | 触发源                              | 发现方式                                   |
+ * |-------------------------------------|--------------------------------------------|
+ * | 单图 / 批量下载                     | `markQueued()`                              |
+ * | 收藏自动下载 `MyFavoritesService.add`| 响应直接返回 `download_started=true`        |
+ * | 下载页启动 / 恢复任务                | `wake()`                                    |
+ * | 收藏夹**定时任务**（cron）           | 打开下载页时的那一次 `loadTasks()` 即可看到 |
+ *
+ * 唯一真正丢失的是「cron 任务在你不看下载页时跑完，图库不提示」——已与用户
+ * 确认可接受（定时任务通常凌晨执行）。
  *
  * 采用模块级单例（与 `useFavoritesConfig` 一致）：Gallery 详情页与
  * WaterfallGallery 瀑布流共享同一份状态，任意一处触发、处处可见。
@@ -58,15 +78,19 @@ let pollTimer = null
 let polling = false
 let refCount = 0
 let started = false
+// 「强制探测窗口」截止时间戳：wake() 拉起后，即使本地还没有活跃态也继续轮询，
+// 用来覆盖「后端刚 resume、DB 还没被下一次 sync 看到」的竞态窗口。
+let wakeUntil = 0
 
 const ACTIVE_INTERVAL = 2000
-const IDLE_INTERVAL = 5000
 // 终态回看窗口（秒）：要大于「两次轮询的间隔 + 页面可能的最长隐藏时间」，
 // 否则任务刚结束就滑出窗口，前端会错过 completed 事件
 const FINISHED_WINDOW = 300
 // 兜底回收阈值（ms）：本地记着「下载中」但后端连续这么久没再上报，就认为任务
 // 已经不在队列里，解除标记，避免「下载中」永久卡死
 const STALE_MS = 120000
+// wake() 强制轮询的持续时长（ms）——5 次 2s 间隔，足够后端把 resume 落库
+const WAKE_TTL = 10000
 
 /** image_id → 最近一次「本地标记 / 后端确认在队列中」的时间戳 */
 const lastSeenAt = {}
@@ -229,22 +253,49 @@ const sync = async () => {
       })
     }
 
-    scheduleNext()
     return true
   } catch (e) {
     // 网络抖动 / 后端未就绪：保持现状，下一轮重试
     return false
   } finally {
     polling = false
+    // 无论成功失败都要重排定时器，否则一次网络抖动就会永久断掉轮询链
+    // （旧实现只在 try 成功分支里调 scheduleNext，catch 直接返回，
+    //   注释写着「下一轮重试」实际却没有任何下一轮；此前靠空闲轮询兜底，
+    //   空闲轮询删除后必须在此补上）。
+    scheduleNext()
   }
 }
 
-/** 按当前活跃度重排轮询定时器（活跃 2s / 空闲 5s） */
+/**
+ * 按当前活跃度重排轮询定时器。
+ *
+ * **空闲即停**：没有任何 queued/pending/downloading 时不排定时器，0 请求。
+ * 仅当「有活跃态」或「处于 wake() 强制探测窗口内」才继续。
+ */
 const scheduleNext = () => {
   if (!started) return
-  if (pollTimer !== null) clearTimeout(pollTimer)
-  const delay = hasActiveStates() ? ACTIVE_INTERVAL : IDLE_INTERVAL
-  pollTimer = setTimeout(runOnce, delay)
+  if (pollTimer !== null) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+  if (!hasActiveStates() && Date.now() >= wakeUntil) return
+  pollTimer = setTimeout(runOnce, ACTIVE_INTERVAL)
+}
+
+/**
+ * 强制拉起轮询，用于前端**没有**打过 markQueued 的动作。
+ *
+ * 典型场景：下载页点「启动 / 恢复」任务。此时本地 states 里该任务是 paused
+ * （paused 不算活跃态），若直接等下一次 markQueued 就永远不会重启轮询。
+ * wake() 打开一个 WAKE_TTL 的探测窗口，期间无条件每 2s 轮询，
+ * 让后端把 pending / downloading 状态同步回来；若届时仍无活跃态则自然停掉。
+ *
+ * @param {number} [ttlMs=WAKE_TTL] 强制探测窗口时长
+ */
+const wake = (ttlMs = WAKE_TTL) => {
+  wakeUntil = Math.max(wakeUntil, Date.now() + ttlMs)
+  scheduleNext()
 }
 
 const runOnce = async () => {
@@ -256,11 +307,26 @@ const runOnce = async () => {
   await sync()
 }
 
+/**
+ * 回到前台时立即补一次对账。
+ *
+ * 这替代了被删除的空闲轮询的「追平」职责：页面隐藏期间不发请求，隐藏前
+ * 若有正在下载的任务，回到前台必须立刻对账一次，否则进度条会一直停在旧值。
+ */
+const handleVisibilityChange = () => {
+  if (typeof document === 'undefined' || document.hidden) return
+  if (!started) return
+  sync()
+}
+
 /** 启动轮询（引用计数，多组件共享单例定时器） */
 const start = () => {
   refCount += 1
   if (started) return
   started = true
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+  }
   sync() // 立即对账一次：刷新页面时正在下载的图片立刻能显示「下载中」
   scheduleNext()
 }
@@ -270,6 +336,10 @@ const stop = () => {
   refCount = Math.max(0, refCount - 1)
   if (refCount > 0 || !started) return
   started = false
+  wakeUntil = 0
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
   if (pollTimer !== null) {
     clearTimeout(pollTimer)
     pollTimer = null
@@ -283,6 +353,7 @@ const _resetForTest = () => {
   refCount = 0
   started = false
   polling = false
+  wakeUntil = 0
   Object.keys(states).forEach((k) => delete states[k])
   Object.keys(lastSeenAt).forEach((k) => delete lastSeenAt[k])
   completedListeners.clear()
@@ -296,6 +367,7 @@ export const useDownloadState = () => ({
   isDownloaded,
   markQueued,
   reset,
+  wake,
   sync,
   start,
   stop,
