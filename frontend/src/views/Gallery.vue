@@ -101,6 +101,7 @@
       @search="handleSearch"
       @favorites-filter="handleFavoritesFilter"
       @virtual-tile-navigate="handleVirtualTileNavigate"
+      @favorite-enter-folder-detail="handleEnterFavoriteFolderDetail"
       ref="queryRef"
       :source-mode="querySource"
       :mode="modeProp"
@@ -1140,10 +1141,35 @@ const handleFolderClick = (folder) => {
     return
   }
   // 真实收藏夹：进入 folder-detail 视图（原有逻辑）
-  selectedFavoriteFolder.value = folder
-  favoritesView.value = 'folder-detail'
+  enterFavoriteFolderDetail(folder)
   // 复用 AdvancedQuery 的 selectFavorite 设置搜索栏状态
   queryRef.value?.selectFavorite(folder)
+}
+
+/**
+ * 进入真实收藏夹二级页的视图切换。
+ *
+ * 两个入口共用，保证行为完全一致：
+ *   1. 文件夹列表（WaterfallGallery）→ handleFolderClick
+ *   2. favorite-dropdown（AdvancedQuery.selectFavorite）→ emit
+ *      'favorite-enter-folder-detail' → handleEnterFavoriteFolderDetail
+ *
+ * 入口 2 此前缺失，导致从下拉选收藏夹时停在列表页、chip 带 X 可直接关、
+ * BackButton 不出现——与入口 1 不一致（本次修复点）。
+ */
+const enterFavoriteFolderDetail = (folder) => {
+  selectedFavoriteFolder.value = folder
+  favoritesView.value = 'folder-detail'
+}
+
+/**
+ * favorite-dropdown 入口的处理：AdvancedQuery 仅在 mode='favorites-folders'
+ * （收藏夹 tab 的一级页）时 emit，列表入口不会重复触发。
+ * 虚拟磁贴走 handleVirtualTileClick → handleSourceChange，不经过本函数。
+ */
+const handleEnterFavoriteFolderDetail = (folder) => {
+  if (!folder || folder.isVirtual) return
+  enterFavoriteFolderDetail(folder)
 }
 
 const handleBackToFolders = () => {

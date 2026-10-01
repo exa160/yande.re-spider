@@ -411,7 +411,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['search', 'favorites-filter'])
+const emit = defineEmits(['search', 'favorites-filter', 'favorite-enter-folder-detail'])
 
 // 收藏夹相关
 const showFavoritePanel = ref(false)
@@ -797,7 +797,21 @@ const buildCurrentTagsString = () => {
 // 旧版本曾用 emit 'virtual-favorite-remove' 通过 chip X 返回，已废弃。
 //
 // 选择收藏夹
+//
+// mode 三态下语义不同：
+//   - 'favorites-folders'（收藏夹 tab 的一级页）：从 favorite-dropdown 选收藏夹
+//     等价于「从文件夹列表点进去」——必须 emit 'favorite-enter-folder-detail'
+//     让 Gallery 切 favoritesView='folder-detail'，Gallery 才会传 lockFavoriteChip=true
+//     把 chip 锁成 🔒 且让 BackButton 出现。此前缺这一步，导致下拉入口停在列表页、
+//     chip 带 X 可直接关、无返回按钮，与列表入口行为不一致。
+//   - 'favorites-folder-detail' / 'gallery'：文件夹列表入口由 Gallery.handleFolderClick
+//     先切好视图再回调本函数（此时 props.mode 已是 detail），无需重复 emit；
+//     gallery 模式则是普通筛选，chip 保持可关闭。
 const selectFavorite = (folder) => {
+  // 必须在 emit 之前取：emit 同步触发父组件改 favoritesView → modeProp 随之变化，
+  // 之后再读 props.mode 会被改成 'favorites-folder-detail' 而漏判。
+  const isFoldersListView = props.mode === 'favorites-folders'
+
   selectedFavorite.value = folder
   // 解析收藏夹的特殊参数（rating, score 等）
   if (folder.tags) {
@@ -821,6 +835,11 @@ const selectFavorite = (folder) => {
     queryParams.maxDate = favParams.max_date || ''
   }
   showFavoritePanel.value = false
+  // 先切视图再搜索：handleSearch 同步 emit('search') → Gallery.handleSearch 会读
+  // favoritesView 决定渲染分支，必须保证此刻已是 folder-detail（瀑布流）而非列表页。
+  if (isFoldersListView) {
+    emit('favorite-enter-folder-detail', folder)
+  }
   handleSearch()
 }
 
