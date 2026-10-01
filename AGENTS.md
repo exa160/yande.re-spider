@@ -31,13 +31,9 @@
 
 ## 🔀 合并方式规范（Squash 策略）
 
-> **背景（v1.2.0 事故复盘）**：v1.2.0 曾用 squash 把 next_dev 合入 next，squash commit 不在 next_dev 历史中，
-> 两分支历史分叉；下次 dev→release 合并时同一内容在两侧"各自变更"，冲突无法机械解决。
-> 2026-09-30 已用 `git rebase --onto origin/next <last-aligned-commit> next_dev` 将 next_dev 重新对齐到 next 之下修复。
-
 | 合并方向 | squash | 正确方式 |
 |---------|--------|---------|
-| `feature-*` → `next_dev`（dev 合入） | ✅ **可接受** | `gh pr merge --squash`，保持 dev 历史整洁 |
+| `feature-*` → `next_dev`（dev 合入） | ✅ **可接受** | `gh pr merge --squash`，保持 dev 历史整洁，commit区分清晰则也可不用squash 合入 |
 | `next_dev` → `next`（release 合入） | ❌ **禁止** | **fast-forward**（`git merge --ff-only`），合入后两分支 tip 完全一致，见 [docs/release.md](docs/release.md) §2.5 |
 | `next` → `next_dev`（回流对齐） | ❌ 禁止 squash | 正常 merge，或按上述 `rebase --onto` 对齐 |
 
