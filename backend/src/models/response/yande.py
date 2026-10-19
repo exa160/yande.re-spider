@@ -31,18 +31,18 @@ class YandePostData(RootModel):
         md5: str
         file_size: int
         file_ext: str
-        file_url: str
+        file_url: Optional[str] = None      # status="deleted"（dupe/已删除）的条目不返回该字段
         is_shown_in_index: bool
         preview_url: str
         preview_width: int
         preview_height: int
         actual_preview_width: int
         actual_preview_height: int
-        sample_url: str
+        sample_url: Optional[str] = None    # 同上：status="deleted" 的条目不返回该字段
         sample_width: int
         sample_height: int
         sample_file_size: int
-        jpeg_url: str
+        jpeg_url: Optional[str] = None      # 同上：status="deleted" 的条目不返回该字段
         jpeg_width: int
         jpeg_height: int
         jpeg_file_size: int

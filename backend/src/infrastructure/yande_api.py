@@ -14,6 +14,17 @@ from src.common.utils import configure_proxy_session
 from src.models.request.yande import YandeSearchTags
 from src.models.response.yande import YandePostData
 
+# yande.re 的 order meta-tag 后缀规则**按字段不一致**，不能字符串拼接：
+#   id 升序是「无后缀」形式（order:id），降序才加 _desc；
+#   而 score / mpixels 恰恰相反，升序要写 _asc、降序才是「无后缀」。
+# 详见 docs/superpowers/specs/2026-10-19-favorite-scheduler-simplify-design.md §5.3.1
+# （含 2026-10-19 对真实 yande.re 的实测记录）。
+ORDER_TOKENS: dict[str, dict[str, str]] = {
+    "id":      {"asc": "order:id",         "desc": "order:id_desc"},
+    "score":   {"asc": "order:score_asc",   "desc": "order:score"},
+    "mpixels": {"asc": "order:mpixels_asc", "desc": "order:mpixels"},
+}
+
 
 def _with_retry(method):
     """重试装饰器 - 参考 image_cache.py 的实现"""
@@ -149,11 +160,15 @@ class YandeApi:
 
         if search_tags.sort_by:
             sort_by = search_tags.sort_by
-            if search_tags.sort_order in ("asc", "desc"):
-                order = search_tags.sort_order
+            order = search_tags.sort_order if search_tags.sort_order in ("asc", "desc") else "desc"
+            token = ORDER_TOKENS.get(sort_by, {}).get(order)
+            if token:
+                parts.append(token)
             else:
-                order = "desc"
-            parts.append(f"order:{sort_by}_{order}")
+                # 未显式登记的排序字段（如 landscape / portrait / vote）：yande.re
+                # 没有对应的 asc/desc 变体，沿用历史拼接行为以保证行为不变。
+                logger.debug(f"search_trans: sort_by='{sort_by}' 未登记 order 映射，回退到 order:{sort_by}_{order}")
+                parts.append(f"order:{sort_by}_{order}")
 
         if search_tags.parent_none:
             parts.append("parent:none")

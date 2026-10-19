@@ -41,8 +41,12 @@
             <div class="folder-tags">{{ folder.tags || '无标签' }}</div>
           </div>
           <div class="folder-meta">
+            <!-- 游标徽章与 schedule_enabled 解绑（理由见编辑面板「同步游标」行的注释）。
+                 与右侧「上次调度时间」徽章相邻并排：两者同属一个 folder 对象、来自
+                 同一个接口，所以永远同时刷新 —— 前者在调度**结束**时写入，后者
+                 在调度**开始**时就写入，但都要等下次 loadFavoriteFolders() 才上屏。 -->
             <el-tag
-              v-if="folder.schedule_enabled && folder.last_synced_id != null"
+              v-if="folder.last_synced_id != null"
               type="info"
               size="small"
               effect="plain"
@@ -199,23 +203,11 @@
               <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
             </div>
           </el-form-item>
-          <el-form-item label="模式">
-            <el-radio-group v-model="form.schedule_mode" size="small">
-              <el-radio value="last_id">增量</el-radio>
-              <el-radio value="max">最大</el-radio>
-            </el-radio-group>
-          </el-form-item>
-<el-form-item label="单次上限">
-            <el-input-number
-              v-model="form.schedule_max_images"
-              :min="1"
-              :max="10000"
-              placeholder="留空用全局默认"
-              size="small"
-              style="width: 100%"
-            />
-          </el-form-item>
-          <el-form-item v-if="currentEditingFolder && currentEditingFolder.schedule_enabled" label="同步游标" class="sync-cursor-form-item">
+          <!-- 游标展示与 schedule_enabled 解绑：本次调度简化后游标语义是「同步进度」
+               （NULL=无起点，下次从最早全量重扫），已与定时任务开关无关 —— 关掉定时
+               任务后游标仍在推进且仍被「立即执行」使用，不该在这里被藏起来。
+               「重置游标」按钮的操作也只对游标生效，与定时任务无关。 -->
+          <el-form-item v-if="currentEditingFolder" label="同步游标" class="sync-cursor-form-item">
             <div class="sync-cursor-row">
               <span class="sync-cursor-value">
                 <template v-if="currentEditingFolder.last_synced_id != null">
@@ -226,8 +218,8 @@
                 </template>
               </span>
               <el-popconfirm
-                title="重置同步游标？下次调度将从头开始（增量模式回退到当前已下载位置，全量模式直接全量）。"
-                confirm-button-text="重置"
+                title="清除同步游标？下次调度将从最早的图片开始重扫全历史，用于补齐历史遗漏（如后来才补上本收藏夹标签的图片）。若只是想重新对齐，可先停用再启用调度。"
+                confirm-button-text="清除游标"
                 cancel-button-text="取消"
                 @confirm="handleResetSync"
               >
@@ -348,8 +340,6 @@ const form = reactive({
   schedule_weekdays: [1, 2, 3, 4, 5],
   schedule_day: 1,
   schedule_cron: '',
-  schedule_mode: 'last_id',
-  schedule_max_images: null,
 })
 
 // 搜索状态
@@ -562,8 +552,6 @@ const resetForm = () => {
   form.schedule_weekdays = [1, 2, 3, 4, 5]
   form.schedule_day = 1
   form.schedule_cron = ''
-  form.schedule_mode = 'last_id'
-  form.schedule_max_images = null
 }
 
 const openCreate = (payload = {}) => {
@@ -582,8 +570,6 @@ const openEdit = (folder) => {
   form.tags = folder.tags || ''
   form.color = folder.color
   form.schedule_enabled = folder.schedule_enabled || false
-  form.schedule_mode = folder.schedule_mode || 'last_id'
-  form.schedule_max_images = folder.schedule_max_images
   const parsed = parseCron(folder.schedule_cron || '')
   form.schedule_freq = parsed.freq
   form.schedule_time = parsed.time
@@ -628,8 +614,6 @@ const handleSubmit = () => {
     color: form.color,
     schedule_enabled: form.schedule_enabled,
     schedule_cron: cronExpr,
-    schedule_mode: form.schedule_mode,
-    schedule_max_images: form.schedule_max_images,
   }
   if (mode.value === 'create') {
     emit('create', payload)

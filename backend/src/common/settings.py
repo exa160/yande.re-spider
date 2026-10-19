@@ -61,9 +61,13 @@ class DownloaderConfig(ConfigModel):
 
 
 class SchedulerConfig(ConfigModel):
-    max_concurrent_schedules: int = Field(2, ge=1, le=10, description="同时抓取的收藏夹数")
-    max_images_per_run_default: int = Field(800, ge=1, description="单收藏夹单次拉取上限兜底")
-    per_page_limit: int = Field(100, ge=1, le=1000, description="单收藏夹单次抓取每页条数（yande.re API 上限 1000）")
+    max_pages_per_run: int = Field(
+        10, ge=1, le=200,
+        description="单收藏夹单次最多翻页数。每页固定 PER_PAGE_LIMIT=100 条，"
+                    "故单轮最多扫描 max_pages_per_run * 100 张。"
+                    "本期不提供 UI 入口，需调整时直接改 config.yaml 的 scheduler 段；"
+                    "新建大 tag 收藏夹追平存量时可临时调大（如 200）。",
+    )
 
 
 class DatabaseConfig(ConfigModel):

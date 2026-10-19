@@ -30,12 +30,22 @@ class FavoriteFolder(FavoriteFolderBase):
     updated_at: datetime
     schedule_enabled: bool = False
     schedule_cron: str = ""
-    schedule_mode: str = "last_id"
-    schedule_max_images: Optional[int] = None
+    schedule_mode: str = Field(
+        default="last_id", description="[deprecated] 已下线，代码不再读取"
+    )
+    schedule_max_images: Optional[int] = Field(
+        default=None, description="[deprecated] 已下线，代码不再读取"
+    )
     last_scheduled_at: Optional[datetime] = None
     last_schedule_status: Optional[str] = None
     last_schedule_stats: Optional[dict] = None
-    last_synced_id: Optional[int] = Field(default=None, description="上次调度实际同步到的最大图片ID，NULL=未初始化")
+    last_synced_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "上次调度实际同步到的最大图片 ID；NULL = 无起点，下次调度从最早开始全量重扫。"
+            "与 down_flag 解耦，避免被其他接口干扰。"
+        ),
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -173,12 +183,22 @@ class FolderScheduleStatusData(BaseModel):
     """收藏夹调度状态的 data 模型（8 字段，省去前端重复解构）"""
     schedule_enabled: bool
     schedule_cron: str
-    schedule_mode: str
-    schedule_max_images: Optional[int]
+    schedule_mode: str = Field(
+        default="last_id", description="[deprecated] 已下线，代码不再读取"
+    )
+    schedule_max_images: Optional[int] = Field(
+        default=None, description="[deprecated] 已下线，代码不再读取"
+    )
     last_scheduled_at: Optional[datetime]
     last_schedule_status: Optional[str]
     last_schedule_stats: Optional[dict]
-    last_synced_id: Optional[int] = Field(default=None, description="上次调度实际同步到的最大图片ID")
+    last_synced_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "上次调度实际同步到的最大图片 ID；NULL = 无起点，下次调度从最早开始全量重扫。"
+            "与 down_flag 解耦，避免被其他接口干扰。"
+        ),
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

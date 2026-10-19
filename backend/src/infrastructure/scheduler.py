@@ -37,13 +37,15 @@ class ScheduleManager:
         self,
         folder_id: int,
         cron: str,
-        mode: str = "last_id",
-        max_images: Optional[int] = None,
     ) -> None:
+        """注册单个收藏夹的定时调度。
+
+        ``mode`` / ``max_images`` 旋钮已下线（见设计文档 §4）：
+        调度模式统一为「有游标则增量、无游标则全量」，单轮抓取上界统一由
+        ``config.scheduler.max_pages_per_run`` 控制。
+        """
         if not cron or not cron.strip():
             raise ValueError("cron expression cannot be empty")
-        if mode not in ("last_id", "max"):
-            raise ValueError(f"mode must be 'last_id' or 'max', got: {mode}")
 
         job_id = f"folder_{folder_id}"
         scheduler = self._get_scheduler()
@@ -64,7 +66,7 @@ class ScheduleManager:
             misfire_grace_time=300,
         )
         self._job_folder_map[job_id] = folder_id
-        logger.info(f"Schedule registered: folder={folder_id} cron='{cron}' mode={mode} max_images={max_images}")
+        logger.info(f"Schedule registered: folder={folder_id} cron='{cron}'")
 
     def unregister_folder(self, folder_id: int) -> bool:
         job_id = f"folder_{folder_id}"
@@ -96,8 +98,6 @@ class ScheduleManager:
                 self.register_folder(
                     folder_id=f["id"],
                     cron=f["schedule_cron"],
-                    mode=f.get("schedule_mode", "last_id"),
-                    max_images=f.get("schedule_max_images"),
                 )
             except ValueError as e:
                 logger.warning(f"Skip schedule registration for folder {f['id']}: {e}")

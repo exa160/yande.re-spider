@@ -19,9 +19,35 @@ import pytest
 
 from src.api.v1.favorites import trigger_folder_schedule
 from src.common.constant import ErrMsg
+from src.dao.database import _get_session_factory
 from src.dao.favorite_dao import FavoriteDao
 from src.infrastructure.scheduler import _on_folder_trigger, schedule_manager
 from src.middleware.errors import APIException
+from src.middleware.session import _request_session
+
+
+# ⚠️ 以下 fixture 修的是**与本次「收藏夹调度简化」改造无关的既有失败**，
+#    不是本次改造引入的，也不是本次改造要求的：
+#    本文件的两条 TestTriggerScheduleDisabled 直接 `asyncio.run(trigger_folder_schedule(...))`
+#    调用 route 函数，**绕过了 ASGI**，RequestSessionMiddleware 从未进入；
+#    而 route 内部走单例 `favorite_dao`（BaseDAO.session 的单例分支会调
+#    `RequestSessionMiddleware.get_session()`），该方法自 commit 33a2616
+#    （2026-06-10 "Pure ASGI + DAO session refetch"）起改为**严格模式**，
+#    ContextVar 为 None 直接抛 RuntimeError 而不再静默 new session。
+#    时间线证据：33a2616(06-10) 早于本文件最后一次改动 1814504(07-19)，
+#    即该失败先于本次改造存在（根 unit_test/ 长期未被执行才一直没暴露）。
+#    修复方式仅为把真实 session 塞进请求 ContextVar，不改 route 逻辑、
+#    不改 middleware/session.py、不改任何生产代码，也不削弱任何断言。
+@pytest.fixture(autouse=True)
+def _active_request_session():
+    """模拟一次真实 HTTP 请求的 session 上下文（等价于中间件已跑过一次）。"""
+    session = _get_session_factory()()
+    token = _request_session.set(session)
+    try:
+        yield session
+    finally:
+        _request_session.reset(token)
+        session.close()
 
 
 @pytest.fixture(autouse=True)
@@ -55,8 +81,8 @@ def _create_test_folder(name: str, schedule_enabled: bool = False, tags: str = "
             sort_order=999,
             schedule_enabled=schedule_enabled,
             schedule_cron="",
-            schedule_mode="last_id",
-            schedule_max_images=None,
+            # schedule_mode / schedule_max_images 已下线（设计文档 §4.2）：
+            # DAO.create() 不再暴露对应形参，DB 列保留但代码不读。
         )
         return folder.id
 
@@ -120,8 +146,6 @@ class TestOnFolderTriggerDefense:
             schedule_manager.register_folder(
                 folder_id=folder_id,
                 cron="0 3 * * *",
-                mode="last_id",
-                max_images=None,
             )
             assert folder_id in schedule_manager._job_folder_map.values()
 
@@ -145,8 +169,6 @@ class TestOnFolderTriggerDefense:
         schedule_manager.register_folder(
             folder_id=nonexistent_id,
             cron="0 3 * * *",
-            mode="last_id",
-            max_images=None,
         )
         assert nonexistent_id in schedule_manager._job_folder_map.values()
 
