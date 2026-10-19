@@ -18,9 +18,13 @@ class FavoriteDao(BaseDAO):
         sort_order: int = 0,
         schedule_enabled: bool = False,
         schedule_cron: str = "",
-        schedule_mode: str = "last_id",
-        schedule_max_images: Optional[int] = None,
     ) -> FavoriteFolder:
+        """新建收藏夹。
+
+        注意：``schedule_mode`` / ``schedule_max_images`` 两个旋钮已下线
+        （见设计文档 §4），DB 列保留但代码不再读取，因此这里不再暴露对应形参，
+        新记录一律用 DB 列默认值。
+        """
         folder = FavoriteFolder(
             name=name,
             tags=tags,
@@ -29,8 +33,6 @@ class FavoriteDao(BaseDAO):
             sort_order=sort_order,
             schedule_enabled=schedule_enabled,
             schedule_cron=schedule_cron,
-            schedule_mode=schedule_mode,
-            schedule_max_images=schedule_max_images,
         )
         self.session.add(folder)
         self.session.flush()

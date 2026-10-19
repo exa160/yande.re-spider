@@ -54,8 +54,6 @@ class SchedulerLifecycle:
                     {
                         "id": f.id,
                         "schedule_cron": f.schedule_cron,
-                        "schedule_mode": f.schedule_mode,
-                        "schedule_max_images": f.schedule_max_images,
                     }
                     for f in folders
                 ]

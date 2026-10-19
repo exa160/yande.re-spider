@@ -45,8 +45,6 @@ class FavoritesService:
                 schedule_manager.register_folder(
                     folder_id=folder.id,
                     cron=folder.schedule_cron,
-                    mode=folder.schedule_mode or "last_id",
-                    max_images=folder.schedule_max_images,
                 )
             except ValueError as e:
                 if strict:
@@ -152,8 +150,6 @@ class FavoritesService:
             sort_order=folder.sort_order if folder.sort_order else count,
             schedule_enabled=folder.schedule_enabled,
             schedule_cron=folder.schedule_cron,
-            schedule_mode=folder.schedule_mode,
-            schedule_max_images=folder.schedule_max_images,
         )
 
         new_folder = FavoritesService._refresh_local_count(new_folder.id)
@@ -174,6 +170,17 @@ class FavoritesService:
     ) -> Optional[FavoriteFolder]:
         """更新收藏夹"""
         update_data = folder.model_dump(exclude_unset=True)
+
+        # schedule_mode / schedule_max_images 两个旋钮已下线（设计文档 §4）：
+        # 请求模型保留字段仅为存量前端兼容（继续传不 422），DAO 侧忽略不落库。
+        # 必须 pop —— 否则 FavoriteDao.update 的 setattr 会把旧值写回 DB 列。
+        update_data.pop("schedule_mode", None)
+        update_data.pop("schedule_max_images", None)
+
+        # tags 变更 → 游标置 NULL：换了一批候选图，旧游标必然失效
+        if "tags" in update_data:
+            update_data["last_synced_id"] = None
+
         updated = favorite_dao.update(folder_id, **update_data)
         if not updated:
             return None
@@ -183,7 +190,7 @@ class FavoritesService:
 
         updated = favorite_dao.get_by_id(folder_id)
         schedule_fields_changed = bool(
-            set(update_data) & {"schedule_enabled", "schedule_cron", "schedule_mode", "schedule_max_images"}
+            set(update_data) & {"schedule_enabled", "schedule_cron"}
         )
         FavoritesService._sync_schedule(updated, strict=schedule_fields_changed)
         return FavoriteFolder.model_validate(updated)

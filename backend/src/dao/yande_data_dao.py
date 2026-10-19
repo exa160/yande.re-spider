@@ -201,17 +201,6 @@ class YandeDataRepository(BaseDAO):
         stmt = select(YandeData).filter_by(id=image_id)
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def get_max_id_for_tags(self, tags: str) -> Optional[int]:
-        """返回匹配 tags 且已下载的最大图片 ID。仅作为增量模式首次运行的兜底起点。"""
-        if not tags or not tags.strip():
-            return None
-        filter_funcs = [
-            self._tag_filter(tags),
-            YandeData.down_flag.is_(True),
-        ]
-        stmt = select(func.max(YandeData.id)).filter(*filter_funcs)
-        return self.session.execute(stmt).scalar_one_or_none()
-
     def query_random_for_tags(
         self,
         tags: str,

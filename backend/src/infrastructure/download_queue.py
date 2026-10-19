@@ -387,6 +387,16 @@ async def run_download_async(task_id: str):
             return
 
         file_url = yande_data.file_url
+        # None 保护：status="deleted"（dupe）条目无 file_url，在线浏览 upsert 后该列为
+        # NULL。若不拦截，FileInfo(url=None) 会抛 pydantic ValidationError，报错信息难读。
+        if not file_url:
+            logger.warning(f"No file_url for task {task_id} (image may be deleted/dupe)")
+            task_store.update_task(
+                task_id,
+                {"status": TaskStatus.FAILED, "error_message": "Missing file_url (deleted/dupe post)"},
+            )
+            return
+
         file_ext = yande_data.file_ext or "jpg"
         image_id = yande_data.id
         expected_md5 = yande_data.md5

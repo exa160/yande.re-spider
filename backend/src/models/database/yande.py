@@ -124,14 +124,23 @@ class FavoriteFolder(Base):
     )
     schedule_enabled = Column(Boolean, default=False, nullable=False, comment="是否启用调度")
     schedule_cron = Column(String(64), default="", nullable=False, comment="cron 表达式")
-    schedule_mode = Column(String(16), default="last_id", nullable=False, comment="last_id | max")
-    schedule_max_images = Column(Integer, nullable=True, comment="单次最大下载数（None 用全局默认）")
+    schedule_mode = Column(
+        String(16), default="last_id", nullable=False,
+        comment="[deprecated] 已下线，代码不再读取（保留列，不做物理删除）",
+    )
+    schedule_max_images = Column(
+        Integer, nullable=True,
+        comment="[deprecated] 已下线，代码不再读取（保留列，不做物理删除）",
+    )
     last_scheduled_at = Column(DateTime, nullable=True, comment="上次调度时间")
     last_schedule_status = Column(String(16), nullable=True, comment="running | success | failed")
     last_schedule_stats = Column(JSON, nullable=True, comment="上次调度统计 JSON")
     last_synced_id = Column(
         Integer, nullable=True, default=None,
-        comment="上次调度实际同步到的最大图片ID；NULL=未初始化，与 down_flag 解耦避免被其他接口干扰",
+        comment=(
+            "上次调度实际同步到的最大图片 ID；NULL = 无起点，下次调度从最早开始全量重扫。"
+            "与 down_flag 解耦，避免被其他接口干扰。"
+        ),
     )
 
 

@@ -27,7 +27,10 @@ class ImageDetail(BaseModel):
         default=None,
         description="图片评级（s=Safe, q=Questionable, e=Explicit）",
     )
-    file_url: str = Field(description="图片文件URL，仅返回本地路径")
+    # 可选：yande.re 的 status="deleted"（dupe）条目不返回 file_url，在线浏览
+    # upsert 后该列为 NULL。序列化时本字段会被 field_serializer 完全覆盖为本地
+    # 路径（见下），因此远端 URL 的原值是否为空不影响输出。
+    file_url: Optional[str] = Field(default=None, description="图片文件URL，仅返回本地路径")
     preview_url: str = Field(description="预览图URL，仅返回本地路径")
     file_size: int = Field(description="文件大小，单位字节")
     file_ext: str = Field(description="文件扩展名，如 jpg/png")

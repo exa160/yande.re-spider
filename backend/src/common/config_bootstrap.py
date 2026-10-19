@@ -36,9 +36,7 @@ downloader:
   split_size: 52428800
   retry_times: 3
 scheduler:
-  max_concurrent_schedules: 2
-  max_images_per_run_default: 800
-  per_page_limit: 100
+  max_pages_per_run: 10
 app:
   debug: false
 """
