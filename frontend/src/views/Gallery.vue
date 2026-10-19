@@ -536,14 +536,32 @@ const modeProp = computed(() => {
   return 'gallery'
 })
 
+// 「后端 source 已被映射为 local」的 querySource 集合：
+//   random          —— loadImages 把 source 映射为 'local' + random=true
+//   recent-downloads —— loadImages 把 source 映射为 'local' + sort_by=downloaded_at
+// 两者都是 downloaded_only=True 的纯本地图列表，列表内每张图都有本地原图。
+const LOCAL_BACKED_SOURCES = new Set(['random', 'recent-downloads'])
+
 // WaterfallGallery 实际加载策略 sourceMode
 //   - favorites-folder-detail → 'local'
 //     复用本地瀑布流的 L1 静态缓存 / L2 本地生成路径；
 //     远端下载由 WaterfallGallery.runFallbackChain（步骤 2 /cache/preview/fetch/）
 //     在本地两步都失败时兜底，无需按 includeOnline 分流。
+//   - random / recent-downloads → 'local'（同上一条理由）
+//     这两个虚拟视图的数据源本就是本地已下载图，此前被原样透传，
+//     导致 getPreviewUrl 直接落 /cache/preview/fetch/{id}（在线下载），
+//     跳过 /cache/preview/{id} 的 L1 探测与 /cache/preview/local/{id} 的
+//     原图生成；preview 缓存一冷就必然联网重下图（originals/ 里明明有），
+//     断网时还要先失败一轮才 fallback 回来。
 //   - 其他场景 → 透传 querySource
+//     注意 'my-favorites' 不在此列：/my_favorites/images 无 down_flag 过滤，
+//     确实可能混入未下载图，保持 /fetch/ 直连（统一链本身也能兼容混合场景，
+//     属后续优化项，不在本 PR 范围内）。
 const waterfallSourceMode = computed(() => {
   if (querySource.value === 'favorites' && favoritesView.value === 'folder-detail') {
+    return 'local'
+  }
+  if (LOCAL_BACKED_SOURCES.has(querySource.value)) {
     return 'local'
   }
   return querySource.value
