@@ -814,6 +814,47 @@ describe('Gallery.vue waterfallSourceMode (favorites 内浏览加载策略)', ()
   })
 })
 
+// 回归契约：random / recent-downloads 的数据源就是本地已下载图
+// （loadImages 已把 source 映射为 'local'，downloaded_only=True），
+// sourceMode 必须是 'local'，否则 getPreviewUrl 直接落 /cache/preview/fetch/{id}，
+// 跳过 /cache/preview/{id}（L1 探测）与 /cache/preview/local/{id}（原图生成）。
+describe('Gallery.vue waterfallSourceMode（本地化虚拟视图走统一缩略图链）', () => {
+  it('querySource="recent-downloads" → waterfallSourceMode="local"', async () => {
+    const wrapper = factory()
+    await wrapper.vm.handleSourceChange('recent-downloads')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('recent-downloads')
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+
+  it('querySource="random" → waterfallSourceMode="local"', async () => {
+    const wrapper = factory()
+    await wrapper.vm.handleSourceChange('random')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('random')
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+  })
+
+  it('my-favorites 保持透传（/my_favorites/images 无 down_flag 过滤，可能含未下载图）', async () => {
+    const wrapper = factory()
+    await wrapper.vm.handleSourceChange('my-favorites')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('my-favorites')
+    expect(wrapper.vm.waterfallSourceMode).toBe('my-favorites')
+  })
+
+  it('从 recent-downloads 切走 → sourceMode 跟着 querySource 走（不粘滞）', async () => {
+    const wrapper = factory()
+    await wrapper.vm.handleSourceChange('recent-downloads')
+    await flushPromises()
+    expect(wrapper.vm.waterfallSourceMode).toBe('local')
+    await wrapper.vm.handleSourceChange('yande')
+    await flushPromises()
+    expect(wrapper.vm.querySource).toBe('yande')
+    expect(wrapper.vm.waterfallSourceMode).toBe('yande')
+  })
+})
+
 // =============================================================================
 // 收藏夹一级浏览（B1/B2 bug 回归契约）
 // =============================================================================
