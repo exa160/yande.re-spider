@@ -198,7 +198,7 @@
           class="image-preview-overlay"
           @click.self="previewVisible = false"
         >
-<div class="float-image-wrapper" :style="previewContainerStyle">
+<div class="float-image-wrapper" :style="wrapperStyle">
             <!-- 左侧导航按钮 -->
             <el-button
               v-if="images.length > 1"
@@ -210,12 +210,17 @@
               <el-icon><ArrowLeft /></el-icon>
             </el-button>
 
+            <!-- @load 的 e.target 就是正在显示的那张 <img>（已解码、同源）。
+                 浮层遮罩直接由它求解：零额外请求，且换 src 时旧请求被 abort，
+                 旧 load 事件不会再触发 —— 天然不会写错图。详见 useOverlayScrim.js。 -->
             <el-image
               :src="getDetailUrl(currentImage)"
               fit="contain"
               class="float-main-image"
               :preview-teleported="true"
               @click.stop="viewerVisible = true"
+              @load="onDetailImageLoad"
+              @error="resetOverlayScrim"
             />
 
             <!-- 右侧导航按钮 -->
@@ -229,7 +234,7 @@
               <el-icon><ArrowRight /></el-icon>
             </el-button>
 
-            <div class="float-header" :class="`overlay-${overlayColorScheme}`">
+            <div class="float-header">
               <div class="float-header-left">
                 <span class="float-id">ID: {{ currentImage.id }}</span>
                 <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
@@ -242,7 +247,7 @@
               </el-button>
             </div>
 
-          <div class="float-footer" :class="`overlay-${overlayColorScheme}`">
+          <div class="float-footer">
             <div class="float-footer-left">
               <!-- 三态：下载中（后端队列里有任务）/ 已下载（down_flag 或本次会话下载完成）/ 未下载。
                    任务下发即打上 queued 态（useDownloadState），因此「点下载 → 看到下载中」
@@ -310,7 +315,7 @@
           </div>
 
           <transition name="detail-slide-up">
-            <div v-if="infoPanelExpanded" class="float-detail-panel" :class="`overlay-${overlayColorScheme}`">
+            <div v-if="infoPanelExpanded" class="float-detail-panel">
               <div class="detail-grid">
                 <div class="detail-item">
                   <span class="detail-label">大小</span>
@@ -421,6 +426,7 @@ import { setLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/
 import { useFavoritesConfig, whenFavoritesConfigReady } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import { useDownloadState } from '@/composables/useDownloadState'
+import { useOverlayScrim } from '@/composables/useOverlayScrim'
 
 const images = ref([])
 const loading = ref(false)
@@ -566,7 +572,10 @@ const downloadTooltipText = computed(() => {
 })
 // 下载完成订阅的退订句柄（onMounted 注册 / onUnmounted 注销）
 let unsubscribeDownloadCompleted = null
-const overlayColorScheme = ref('dark') // 'dark' or 'light'
+// 大图三块浮层的背景遮罩求解（取代旧的 analyzeImageColor + overlayColorScheme）。
+// scrims 初始为 null —— 此时 wrapperStyle 不写 --overlay-scrim-*，CSS 的
+// var() 兜底 rgba(0,0,0,0.62) 直接生效（对比度 4.53:1）。
+const { scrims: overlayScrims, analyzeFromImageEl, reset: resetOverlayScrim } = useOverlayScrim()
 const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
 const viewerVisible = ref(false)
 const mobileMenuExpanded = ref(false)
@@ -682,66 +691,20 @@ const onFavoriteChanged = (payload) => {
   }
 }
 
-// 分析图片主色调，决定浮层文字颜色
-const analyzeImageColor = (imgUrl) => {
-  if (!imgUrl) {
-    overlayColorScheme.value = 'dark'
-    return
-  }
-  
-  const img = new Image()
-  img.crossOrigin = 'Anonymous'
-  img.onload = () => {
-    try {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const sampleSize = 50 // 采样大小，越小越快
-      
-      canvas.width = sampleSize
-      canvas.height = sampleSize
-      ctx.drawImage(img, 0, 0, sampleSize, sampleSize)
-      
-      const imageData = ctx.getImageData(0, 0, sampleSize, sampleSize)
-      const data = imageData.data
-      
-      let totalBrightness = 0
-      let pixelCount = 0
-      
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]
-        const g = data[i + 1]
-        const b = data[i + 2]
-        // 计算亮度 (公式: 0.299*R + 0.587*G + 0.114*B)
-        const brightness = 0.299 * r + 0.587 * g + 0.114 * b
-        totalBrightness += brightness
-        pixelCount++
-      }
-      
-      const avgBrightness = totalBrightness / pixelCount
-      // 如果平均亮度大于 180，认为是浅色图片，使用深色文字
-      overlayColorScheme.value = avgBrightness > 180 ? 'light' : 'dark'
-    } catch (e) {
-      // 跨域或其他错误，使用默认深色
-      overlayColorScheme.value = 'dark'
-    }
-  }
-  img.onerror = () => {
-    overlayColorScheme.value = 'dark'
-  }
-  img.src = imgUrl
+// 浮层遮罩：直接由 el-image 的 @load 求解，e.target 就是屏幕上那张已解码的 <img>。
+//
+// 旧实现（analyzeImageColor）另起 new Image() 请求 150×150 预览缩略图，且入口
+// 依赖 img.preview_url 非空 —— 而该字段是 /gallery/load 响应序列化那一刻
+// check_local_file() 的结果，瀑布流懒加载时现场生成的预览图不会回写它，
+// 于是新会话首次浏览时恒为 null → 静默降级为 dark（6% 白纱罩，浅色图上白字
+// 1.9:1）。现在：零额外请求、同源不 taint、换 src 时旧 load 不会再来。
+const onDetailImageLoad = (e) => {
+  analyzeFromImageEl(e && e.target)
 }
 
-// 监听 currentImage 变化，分析图片颜色
-watch(currentImage, (img) => {
-  if (previewVisible.value && img) {
-    // 使用本地预览图进行分析，无本地路径时不尝试加载远程图片（避免CORS）
-    // preview_url 不以 http 开头则是本地路径
-    const isLocalPreview = img.preview_url && !img.preview_url.startsWith('http')
-    const imgUrl = isLocalPreview
-      ? `/api/v1/gallery/cache/preview/${img.id}`
-      : ''
-    analyzeImageColor(imgUrl)
-  }
+// 切图时先复位，避免上一张图的遮罩残留到新图上（直到 @load 覆盖它）
+watch(currentImage, () => {
+  resetOverlayScrim()
 })
 
 // 计算图片预览容器尺寸，保持图片原始比例，80vh 高度
@@ -782,6 +745,23 @@ watch(currentImage, (img) => {
     calculatePreviewSize()
   }
 })
+
+// 包装层的行内 style：尺寸 + 浮层遮罩 CSS 变量。
+// 三块浮层（.float-header / .float-footer / .float-detail-panel）都是
+// .float-image-wrapper 的子元素，自定义属性会继承，所以只写在这里。
+//
+// **scrims 为 null 时刻意不写这两个 key** —— var() 拿不到定义就回落到
+// CSS 里写死的 rgba(0,0,0,0.62)（L1 保底，纯白上 tertiary 4.53:1）。
+// 「JS 少写一个键」就是一层降级，不需要在 JS 里重复实现保底逻辑。
+const wrapperStyle = computed(() => {
+  const style = { ...previewContainerStyle.value }
+  if (overlayScrims.value) {
+    style['--overlay-scrim'] = overlayScrims.value.bar
+    style['--overlay-scrim-panel'] = overlayScrims.value.panel
+  }
+  return style
+})
+
 const tagsExpanded = ref(false)
 const infoPanelExpanded = ref(false)
 
@@ -2056,7 +2036,17 @@ html.dark-mode .selection-count {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.06);
+  /* L1 保底：rgba(0,0,0,0.62) 叠在纯白上 = #616161，白字 tertiary@0.78
+     恰好 4.53:1（WCAG AA 线 4.5）。这是 L1 层，纯 CSS，不会失效。
+     JS 求解成功时 useOverlayScrim 会写入更小的 --overlay-scrim（只往下调，
+     永远不会比这个更轻）；求解失败 / 图 404 / canvas 不可用时 var() 拿不到
+     定义，直接落到这里。fallback 字面量必须与 useOverlayScrim.js 的
+     SCRIM_FLOOR_ALPHA 一致（单测 T9 断言）。 */
+  background: var(--overlay-scrim, rgba(0, 0, 0, 0.62));
+  /* blur 保持原样的 4px：只做轻微柔化，不把浮层变成毛玻璃。
+     （曾试过 blur(10px) saturate(1.15)，但 saturate 是纯美化而非可读性修复，
+     且 10px 模糊会让「半透明薄纱」变成 iOS 毛玻璃 —— 对一个看图的站是降级。
+     blur 从不影响可测量的对比度，那次改动是纯粹的观感投机，已回退。） */
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
@@ -2074,18 +2064,22 @@ html.dark-mode .selection-count {
 }
 
 .float-size {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 13px;
 }
 
+/* 关闭/重下载按钮的 chip：一律「暗 chip + 白图标」。
+   旧实现分两档（dark 档 rgba(255,255,255,0.1) / light 档 rgba(0,0,0,0.3)）。
+   统一后两端都安全：叠在 L1 保底(97,97,97)上 → chip=63 → 白图标 10.52:1；
+   叠在纯黑图上（求解出 alpha=0）→ chip=0 → 白图标 21:1。 */
 .float-close-btn {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
 .float-close-btn:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(0, 0, 0, 0.5) !important;
 }
 
 /* 底部操作栏 */
@@ -2099,7 +2093,8 @@ html.dark-mode .selection-count {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.06);
+  /* 与 .float-header 共用 --overlay-scrim（两处 fallback 必须同值，见 T9） */
+  background: var(--overlay-scrim, rgba(0, 0, 0, 0.62));
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
@@ -2117,6 +2112,16 @@ html.dark-mode .selection-count {
   color: rgba(255, 255, 255, 0.85);
 }
 
+/* 已收藏星标改浅红 #ffa39e（对比度 3.24:1，图标按 WCAG 1.4.11 的 ≥3:1 达标）。
+   旧值 #F56C6C 在最坏面板上只有 2.14:1 —— 浅色图上等于看不见。
+   为什么不改 HeartOverlay 组件：它是共享组件，WaterfallGallery / FolderTile
+   都用在浅色卡片上，那里 #F56C6C 反而是对的。本选择器特异性
+   （0,4,0）高于子组件 scoped 的 .heart-overlay.active[data-v-x]（0,3,0），
+   与样式注入顺序无关，确定性生效。 */
+.float-footer .float-heart.active {
+  color: #ffa39e;
+}
+
 .float-footer-right {
   display: flex;
   align-items: center;
@@ -2128,16 +2133,16 @@ html.dark-mode .selection-count {
 }
 
 .float-footer-right:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .float-expand-text {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .float-expand-icon {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .float-download-btn {
@@ -2162,8 +2167,8 @@ html.dark-mode .selection-count {
 }
 
 .float-redownload-btn {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
   color: rgba(255, 255, 255, 0.9) !important;
   width: 32px;
   height: 32px;
@@ -2171,6 +2176,10 @@ html.dark-mode .selection-count {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.float-redownload-btn:hover {
+  background: rgba(0, 0, 0, 0.5) !important;
 }
 
 .float-downloaded-tag {
@@ -2187,7 +2196,9 @@ html.dark-mode .selection-count {
   right: 0;
   z-index: 9;
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.06);
+  /* 独立变量：面板最多占 35vh，若并进 --overlay-scrim，「上暗下亮」的常见
+     人像图 header 会被下半张的亮部无谓压黑。 */
+  background: var(--overlay-scrim-panel, rgba(0, 0, 0, 0.62));
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   max-height: 35vh;
@@ -2207,14 +2218,17 @@ html.dark-mode .selection-count {
   gap: 2px;
 }
 
+/* tertiary 档：从 0.5 提到 0.78。它是 11px 的字段名（大小/作者/上传用户/
+   MD5/时间/来源），本来就是信息而非装饰，值得 AA 对比度。
+   求解目标就定在这一档（TARGET_TEXT_ALPHA = 0.78），保证三档同时达标。 */
 .detail-label {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .detail-value {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
   word-break: break-all;
 }
 
@@ -2223,16 +2237,25 @@ html.dark-mode .selection-count {
   font-family: monospace;
 }
 
-/* 「来源」超链接：与 detail-value 同色系但可点击，避免抢过 MD5 等关键信息 */
+/* 「来源」超链接：白字 + 常驻下划线，而不是 Element Plus 的蓝色。
+   旧值 var(--el-color-primary)=#409EFF 在最坏面板(#616161)上只有 2.23:1，
+   浅色图上等于隐形；而且旧实现根本没写 .overlay-light 规则（连浅色档都
+   没有覆盖它，实测纯白图上 1.21:1）。
+   为什么不能靠「把面板压得更黑」来救蓝色：要让 #409EFF 达到 4.5:1，面板得
+   压到 ≤ #292929，对应纯白背景需要 alpha 0.84 的遮罩 —— 太重，且违背本元素
+   原本的设计意图（避免抢过 MD5 等关键信息）。白字+下划线既达标又更克制，
+   是暗色工具栏的通行做法。 */
 .detail-source-link {
-  color: var(--el-color-primary, #409EFF);
-  text-decoration: none;
+  color: rgba(255, 255, 255, 0.95);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.45);
+  text-underline-offset: 2px;
   word-break: break-all;
-  transition: color 0.15s;
+  transition: color 0.15s, text-decoration-color 0.15s;
 }
 .detail-source-link:hover {
-  color: var(--el-color-primary-light-3, #79bbff);
-  text-decoration: underline;
+  color: #ffffff;
+  text-decoration-color: #ffffff;
 }
 
 .detail-tags-area {
@@ -2242,7 +2265,7 @@ html.dark-mode .selection-count {
 .detail-tags-label {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.82);
   margin-bottom: 8px;
 }
 
@@ -2289,68 +2312,62 @@ html.dark-mode .selection-count {
 }
 
 /* 深色模式适配 */
-html.dark-mode .float-header,
-html.dark-mode .float-footer,
-html.dark-mode .float-detail-panel {
-  /* 保持一致的极透明效果 */
-}
-
 html.dark-mode .image-preview-overlay {
   background: rgba(0, 0, 0, 0.86);
 }
 
-/* 图片自适应浅色/深色文字 */
-.float-header.overlay-light,
-.float-footer.overlay-light,
-.float-detail-panel.overlay-light {
-  background: rgba(0, 0, 0, 0.45);
+/* ---------------------------------------------------------------------------
+ * 残差兜底：文字描边阴影
+ *
+ * **先说清楚它几乎没有可见效果，别被标题误导。**
+ * 遮罩的职责就是把背景压暗，所以白字下面的底色本身就是暗的 —— 暗色阴影叠在
+ * 暗色背景上是看不见的。它唯一会显形的地方是 §9.5 记录的那条残差：p90 分位
+ * 意味着条带里最亮的 10% 像素比面板亮，万一某个笔画正好压在那块亮区上，
+ * 这层阴影能稍微把笔画边缘拽回来。
+ *
+ * 它 **不提供可计算的对比度**，不承担任何「保证」职责。**删掉它方案依然
+ * 4.5:1 达标** —— 保留纯粹是因为它是零成本的残差保险。
+ *
+ * （曾在这里写过「L3 补强：blur 10px + saturate 1.15」来压高频纹理。已回退：
+ *  blur 从不影响可测量的对比度，而 10px 模糊 + saturate 会把原本的半透明薄纱
+ *  变成 iOS 毛玻璃，对一个看图的站是观感降级。saturate 更是纯色彩美化，
+ *  与可读性无关，不该夹带。见 §9.6。）
+ *
+ * （为什么不用 mix-blend-mode: difference 做自动反色：按 CSS Compositing
+ *  规范，混合的 backdrop 被限制在最近的 stacking context 内。.float-header
+ *  自身带 backdrop-filter（创建 stacking context）+ background，图片根本不在
+ *  混合范围内，difference 只会与自己的遮罩混合 = 什么都没发生。要让文字
+ *  直接与图片混合就得同时删掉 background 和 backdrop-filter，代价是失去
+ *  blur、彩色 chrome 被反相（绿 tag→品红、蓝链接→橙、红星→青）、Windows
+ *  关闭次像素抗锯齿、详情面板 overflow-y 的层叠问题，且 forced-colors 模式
+ *  直接忽略。不采用。）
+ * ------------------------------------------------------------------------ */
+.float-id,
+.float-size,
+.float-expand-text,
+.float-expand-icon,
+.detail-label,
+.detail-value,
+.detail-tags-label,
+.detail-source-link {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
-.float-header.overlay-light .float-id,
-.float-footer.overlay-light .float-id {
-  color: rgba(255, 255, 255, 0.95);
-}
+/* ---------------------------------------------------------------------------
+ * 无障碍：尊重系统「增加对比度」偏好
+ *
+ * 刻意 **不读 CSS 变量**（直接给字面量），因此能同时压过上面 var() 的 0.62
+ * 兜底以及 JS 写入的 --overlay-scrim-*。
+ * ------------------------------------------------------------------------ */
+@media (prefers-contrast: more) {
+  .float-header,
+  .float-footer {
+    background: rgba(0, 0, 0, 0.80);
+  }
 
-.float-header.overlay-light .float-size,
-.float-footer.overlay-light .float-size,
-.float-footer.overlay-light .float-expand-text,
-.float-footer.overlay-light .float-expand-icon {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.float-header.overlay-light .float-close-btn,
-.float-footer.overlay-light .float-redownload-btn {
-  background: rgba(0, 0, 0, 0.3) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
-  color: rgba(255, 255, 255, 0.9) !important;
-}
-
-.float-header.overlay-light .float-close-btn:hover,
-.float-footer.overlay-light .float-redownload-btn:hover {
-  background: rgba(0, 0, 0, 0.5) !important;
-}
-
-.float-footer.overlay-light .float-footer-right:hover {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-/* 详情面板浅色文字 */
-.float-detail-panel.overlay-light .detail-label {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.float-detail-panel.overlay-light .detail-value {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.float-detail-panel.overlay-light .detail-tags-label {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.float-detail-panel.overlay-light .detail-tags-list :deep(.el-tag) {
-  background: rgba(0, 0, 0, 0.4);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
+  .float-detail-panel {
+    background: rgba(0, 0, 0, 0.80);
+  }
 }
 
 /* 中心对话框样式 */

@@ -2407,3 +2407,290 @@ describe('Gallery.vue 最近下载视图（querySource=recent-downloads）', () 
     expect(wrapper.text()).not.toContain('清空全部记录')
   })
 })
+
+// =============================================================================
+// 浮层遮罩（useOverlayScrim）接线测试
+// =============================================================================
+// 背景：旧实现 analyzeImageColor + overlayColorScheme 两档 class 有四个缺陷，
+//       最致命的是入口要求 img.preview_url 非空 —— 该字段是 /gallery/load
+//       响应序列化那一刻 check_local_file() 的结果，瀑布流懒加载时现场生成的
+//       预览图不会回写它，于是新会话首次浏览时恒为 null → 静默降级为 dark
+//       （6% 白纱罩，浅色图上白字 1.9:1）。
+//       现在改为 el-image @load 直接由屏幕上那张已解码的 <img> 求解。
+//
+// 方案 C（保底 + 连续求解）的结构不变量：
+//   - scrims 为 null 时 wrapperStyle **不写** --overlay-scrim-*，
+//     CSS 的 var() 兜底 rgba(0,0,0,0.62) 接管（纯白上 tertiary 4.53:1）；
+//   - 求解结果永远 <= 0.62，只往下调不往上加。
+// 本组用例锁死「接线」，求解数学见 useOverlayScrim.spec.js。
+//
+// 实施要点：
+//   1. 详情页走 <teleport to="body">，wrapper.find() 看不见，必须用
+//      document.body.querySelector 定位。
+//   2. factory() 把 el-image 桩成 { template: '<img></div>' }，未声明 emits，
+//      所以 @load/@error 作为 attrs 落到那个 <img> 上 —— 可以直接 dispatchEvent。
+//   3. happy-dom 的 canvas.getContext('2d') 返回 null（已实测），必须打桩
+//      才能走到「求解成功」分支；这里打桩返回可控制颜色的假 ImageData。
+// =============================================================================
+describe('Gallery.vue 浮层遮罩接线（useOverlayScrim）', () => {
+  /** 打桩 canvas.getContext，让 getImageData 返回指定纯色 */
+  const stubCanvas = (color) => {
+    const proto = window.HTMLCanvasElement.prototype
+    const orig = proto.getContext
+    proto.getContext = function getContext() {
+      return {
+        clearRect() {},
+        drawImage() {},
+        getImageData(x, y, w, h) {
+          const data = new Uint8ClampedArray(w * h * 4)
+          for (let i = 0; i < w * h; i++) {
+            data[i * 4] = color[0]
+            data[i * 4 + 1] = color[1]
+            data[i * 4 + 2] = color[2]
+            data[i * 4 + 3] = 255
+          }
+          return { data, width: w, height: h }
+        },
+      }
+    }
+    return () => { proto.getContext = orig }
+  }
+
+  /** 打开大图详情（teleport 出去的 DOM 落在 document.body 上） */
+  const openDetail = async (wrapper, image = {}) => {
+    const merged = {
+      id: 100,
+      file_url: 'pictures/100.jpg',
+      preview_url: null,      // ← 关键：P0-1 的触发条件就是它为 null
+      width: 1920,
+      height: 1080,
+      rating: 'Safe',
+      down_flag: true,
+      tags: [],
+      ...image,
+    }
+    wrapper.vm.currentImage = merged
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+    return merged
+  }
+
+  const wrapperEl = () => document.body.querySelector('.float-image-wrapper')
+
+  /** 找到 el-image 桩渲染出的 <img>，赋予 naturalWidth/Height 后触发 load */
+  const fireImageLoad = async (nw = 1920, nh = 1080) => {
+    const img = wrapperEl().querySelector('img')
+    Object.defineProperty(img, 'naturalWidth', { value: nw, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: nh, configurable: true })
+    img.dispatchEvent(new Event('load'))
+    await flushPromises()
+    return img
+  }
+
+  it('T17 回归：preview_url=null 也能算出遮罩（旧实现在此静默降级为 dark）', async () => {
+    const restore = stubCanvas([255, 255, 255])   // 纯白图 → 满额 0.62
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper, { preview_url: null })
+      await fireImageLoad()
+
+      const style = wrapperEl().getAttribute('style') || ''
+      expect(style).toContain('--overlay-scrim')
+      expect(style).toContain('rgba(0, 0, 0, 0.62)')
+    } finally {
+      restore()
+    }
+  })
+
+  it('T18 @load 的 target 必须是那个 <img>（否则 naturalWidth=0 → 直接 reset）', async () => {
+    const restore = stubCanvas([0, 0, 0])        // 纯黑图 → 解出 0
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await fireImageLoad()
+
+      // 求解成功 ⇒ e.target 确实是被分析的那张 <img>；也顺带证明
+      // 采样源是「屏幕上那张图」而不是另起 new Image() 的预览缩略图。
+      const style = wrapperEl().getAttribute('style') || ''
+      expect(style).toContain('--overlay-scrim')
+      expect(style).toContain('rgba(0, 0, 0, 0)')
+    } finally {
+      restore()
+    }
+  })
+
+  it('T20 尚未 load 时 wrapperStyle 不写 --overlay-scrim-*（走 CSS 的 L1 兜底）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await openDetail(wrapper)
+
+    const style = wrapperEl().getAttribute('style') || ''
+    expect(style).not.toContain('--overlay-scrim')
+    // 但尺寸样式仍然要有（wrapperStyle 合并了 previewContainerStyle）
+    expect(style).toContain('width')
+  })
+
+  it('T21 L1 兜底不依赖 JS：三处 var() 的 fallback 字面量都是 0.62', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const path = await import('node:path')
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), 'Gallery.vue')
+    const src = readFileSync(file, 'utf-8')
+
+    const fallbacks = [...src.matchAll(/var\(--overlay-scrim(?:-panel)?,\s*rgba\(0,\s*0,\s*0,\s*([\d.]+)\)\)/g)]
+      .map((m) => Number(m[1]))
+    expect(fallbacks.length).toBe(3)                 // header / footer / panel
+    for (const f of fallbacks) expect(f).toBe(0.62)
+  })
+
+  it('T22 触发 error → 回到 null → 回落 CSS 兜底（绝不写入比保底更轻的值）', async () => {
+    const restore = stubCanvas([255, 255, 255])
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await fireImageLoad()
+      expect(wrapperEl().getAttribute('style')).toContain('--overlay-scrim')
+
+      const img = wrapperEl().querySelector('img')
+      img.dispatchEvent(new Event('error'))
+      await flushPromises()
+
+      const style = wrapperEl().getAttribute('style') || ''
+      expect(style).not.toContain('--overlay-scrim')
+    } finally {
+      restore()
+    }
+  })
+
+  it('T22b 切换 currentImage → reset()，上一张图的遮罩不残留', async () => {
+    const restore = stubCanvas([255, 255, 255])
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper, { id: 100 })
+      await fireImageLoad()
+      expect(wrapperEl().getAttribute('style')).toContain('--overlay-scrim')
+
+      wrapper.vm.currentImage = { id: 200, width: 800, height: 1200, tags: [] }
+      await flushPromises()
+
+      const style = wrapperEl().getAttribute('style') || ''
+      expect(style).not.toContain('--overlay-scrim')
+    } finally {
+      restore()
+    }
+  })
+
+  it('T22c canvas 不可用时（getContext 返回 null）也不抛错，静默回落', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await openDetail(wrapper)
+
+    const img = wrapperEl().querySelector('img')
+    Object.defineProperty(img, 'naturalWidth', { value: 1920, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 1080, configurable: true })
+    // 不打桩 canvas —— happy-dom 的 getContext 本来就返回 null
+    expect(() => img.dispatchEvent(new Event('load'))).not.toThrow()
+    await flushPromises()
+
+    expect(wrapperEl().getAttribute('style') || '').not.toContain('--overlay-scrim')
+  })
+
+  it('T23 三块浮层都不再有 overlay-light / overlay-dark class', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await openDetail(wrapper)
+    wrapper.vm.infoPanelExpanded = true
+    await flushPromises()
+
+    for (const sel of ['.float-header', '.float-footer', '.float-detail-panel']) {
+      const el = document.body.querySelector(sel)
+      expect(el, sel).not.toBeNull()
+      expect(el.className).not.toContain('overlay-')
+    }
+  })
+
+  it('T24 求解成功后 wrapper 同时带 --overlay-scrim 与 --overlay-scrim-panel', async () => {
+    const restore = stubCanvas([255, 255, 255])
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await fireImageLoad()
+
+      const style = wrapperEl().getAttribute('style') || ''
+      expect(style).toContain('--overlay-scrim')
+      expect(style).toContain('--overlay-scrim-panel')
+      // 两者都受 0.62 上界约束
+      const alphas = [...style.matchAll(/rgba\(0, 0, 0, ([\d.]+)\)/g)].map((m) => Number(m[1]))
+      expect(alphas.length).toBe(2)
+      for (const a of alphas) expect(a).toBeLessThanOrEqual(0.62)
+    } finally {
+      restore()
+    }
+  })
+
+  it('T24b 详情面板可以单独更重：panel 条带含 footer + 35vh，bar 只看顶/底 5%', async () => {
+    // 上半黑、下半白：bar 取顶/底中较亮的「底」→ 满额；panel 覆盖更下方 → 也满额
+    const proto = window.HTMLCanvasElement.prototype
+    const orig = proto.getContext
+    let drawCount = 0
+    proto.getContext = function getContext() {
+      let lastSrcTop = 0
+      return {
+        clearRect() {},
+        drawImage(_img, sx, sy) { lastSrcTop = sy; drawCount++ },
+        getImageData(x, y, w, h) {
+          const data = new Uint8ClampedArray(w * h * 4)
+          for (let i = 0; i < w * h; i++) {
+            // 顶条带（源 y=0）取黑，底条带（源 y>0）取白
+            const isTop = lastSrcTop === 0
+            const v = isTop ? 0 : 255
+            data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255
+          }
+          return { data, width: w, height: h }
+        },
+      }
+    }
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await fireImageLoad(1920, 1080)
+
+      // 两次 drawImage：顶条带 + 底条带（底条带同时供 panel 用）
+      expect(drawCount).toBe(2)
+      const style = wrapperEl().getAttribute('style') || ''
+      expect(style).toContain('--overlay-scrim')
+    } finally {
+      proto.getContext = orig
+    }
+  })
+
+  it('T25 详情面板展开/收起不影响遮罩（面板有独立变量，v-if 切换不重算）', async () => {
+    const restore = stubCanvas([255, 255, 255])
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await fireImageLoad()
+
+      const before = wrapperEl().getAttribute('style')
+      wrapper.vm.infoPanelExpanded = true
+      await flushPromises()
+      const afterOpen = wrapperEl().getAttribute('style')
+      wrapper.vm.infoPanelExpanded = false
+      await flushPromises()
+      const afterClose = wrapperEl().getAttribute('style')
+
+      expect(afterOpen).toContain('--overlay-scrim-panel')
+      expect(afterOpen).toBe(before)
+      expect(afterClose).toBe(before)
+    } finally {
+      restore()
+    }
+  })
+})
