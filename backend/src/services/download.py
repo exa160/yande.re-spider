@@ -98,15 +98,17 @@ class DownloadService:
         Returns:
             (任务列表, 总数)
         """
-        from src.dao.download_task_dao import download_task_dao
-        tasks, total = download_task_dao.query_tasks(
-            status_list=status_list,
-            sort_by=sort_by,
-            order=order,
-            page=page,
-            page_size=page_size,
-            download_first=download_first,
-        )
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        with DownloadTaskDao() as dao:
+            tasks, total = dao.query_tasks(
+                status_list=status_list,
+                sort_by=sort_by,
+                order=order,
+                page=page,
+                page_size=page_size,
+                download_first=download_first,
+            )
 
         # 仅当查询涉及活跃状态时，用内存中实时进度覆盖 DB 快照
         ACTIVE_STATUSES = {TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.PAUSED}
@@ -134,8 +136,10 @@ class DownloadService:
     @staticmethod
     def get_status_counts() -> dict:
         """获取各状态任务数量（DB GROUP BY）"""
-        from src.dao.download_task_dao import download_task_dao
-        return download_task_dao.count_by_status()
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        with DownloadTaskDao() as dao:
+            return dao.count_by_status()
 
     @staticmethod
     def get_image_states(finished_window: int = 30) -> dict:
@@ -318,9 +322,15 @@ class DownloadService:
         if task.status in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]:
             return False, "任务无法取消"
 
+        # 先发停止信号再改状态：worker 在每个 chunk / 重试等待前检查该信号，
+        # 否则协程会继续把文件下完，并在收尾时把取消覆盖成 completed。
+        task_store.request_cancel(task_id)
         task_store.update_task(
             task_id,
-            {"status": TaskStatus.CANCELLED, "completed_at": task.completed_at},
+            {
+                "status": TaskStatus.CANCELLED,
+                "completed_at": datetime.now().isoformat(),
+            },
         )
         return True, "任务已取消"
 
@@ -479,3 +489,67 @@ class DownloadService:
                 return dao.delete_all_completed()
             cutoff = datetime.now() - timedelta(days=days)
             return dao.delete_completed_before(cutoff)
+
+    # 清理预览提供的时间范围（天），与前端单选项一一对应
+    CLEAR_PREVIEW_DAYS = (7, 30, 90)
+
+    @staticmethod
+    def get_clear_preview() -> dict:
+        """清理已完成记录的预览计数。
+
+        Returns:
+            {
+              "all": 全部可清理条数,
+              "before_days": {"7": N, "30": N, "90": N},
+            }
+
+        计数口径与 ``delete_completed_records`` 完全一致
+        （status=COMPLETED + completed_at 非空），保证预览数字即实际删除数。
+        """
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        now = datetime.now()
+        with DownloadTaskDao() as dao:
+            return {
+                "all": dao.count_all_completed(),
+                "before_days": {
+                    str(days): dao.count_completed_before(
+                        now - timedelta(days=days)
+                    )
+                    for days in DownloadService.CLEAR_PREVIEW_DAYS
+                },
+            }
+
+    @staticmethod
+    async def retry_all_failed() -> dict:
+        """重试全部 failed 任务（服务端批量，不受分页限制）。
+
+        顺序调用 ``start_task``，避免一次性抛出大量并发任务；无法重试的
+        （任务记录/图片元数据已丢失）计入 skipped，不让单条失败中断整批。
+
+        Returns:
+            {"requested": 失败任务数, "started": 成功入队数, "skipped": 跳过数}
+        """
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        with DownloadTaskDao() as dao:
+            task_ids = dao.list_failed_task_ids()
+
+        started = 0
+        skipped = 0
+        for task_id in task_ids:
+            ok, _ = await DownloadService.start_task(task_id)
+            if ok:
+                started += 1
+            else:
+                skipped += 1
+
+        logger.info(
+            f"Retry all failed: requested={len(task_ids)} "
+            f"started={started} skipped={skipped}"
+        )
+        return {
+            "requested": len(task_ids),
+            "started": started,
+            "skipped": skipped,
+        }

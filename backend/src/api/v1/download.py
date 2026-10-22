@@ -145,6 +145,37 @@ async def get_image_download_states(
 
 
 @router.get(
+    "/tasks/clear-preview",
+    response_model=BaseResponse,
+    summary="清除已完成记录的预览计数",
+)
+async def get_clear_preview() -> BaseResponse:
+    """返回 7/30/90 天前及全部已完成的记录数，供清理对话框展示。"""
+    try:
+        preview = await asyncio.to_thread(DownloadService.get_clear_preview)
+        return BaseResponse(message=ErrMsg.OK.msg, data=preview)
+    except Exception as e:
+        raise APIException(ErrMsg.QUERY_ERROR, e=e)
+
+
+@router.post(
+    "/tasks/retry-failed",
+    response_model=BaseResponse,
+    summary="重试全部失败任务",
+)
+async def retry_failed_tasks() -> BaseResponse:
+    """重试全部 failed 任务（服务端批量，不受分页限制）。"""
+    try:
+        result = await DownloadService.retry_all_failed()
+        return BaseResponse(
+            message=f"已重试 {result['started']} 个任务",
+            data=result,
+        )
+    except Exception as e:
+        raise APIException(ErrMsg.CREATE_ERROR, e=e)
+
+
+@router.get(
     "/task/{task_id}", response_model=DownloadTaskResponse, summary="获取任务详情"
 )
 async def get_download_task(task_id: str) -> DownloadTaskResponse:

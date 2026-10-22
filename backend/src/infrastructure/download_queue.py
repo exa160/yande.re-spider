@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.common import config, path_constant
 from src.common.constant import TaskStatus
 from src.dao.yande_data_dao import YandeDataRepository
-from src.infrastructure.downloader import FileInfo, MultiDown
+from src.infrastructure.downloader import DownloadCancelled, FileInfo, MultiDown
 from src.models.database.yande import YandeData
 
 
@@ -41,6 +41,15 @@ def _compute_file_md5(file_path: Path) -> Optional[str]:
         return md5_hasher.hexdigest()
     except OSError:
         return None
+
+
+def _remove_partial_file(file_path) -> None:
+    """删除取消后的半成品文件及其 FileLock 锁文件。"""
+    for path in (file_path, file_path.with_suffix(file_path.suffix + ".lock")):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning(f"Failed to remove partial download file {path}: {e}")
 
 
 def _coerce_db_value(field: str, value):
@@ -88,6 +97,33 @@ class TaskStore:
     def __init__(self):
         self._tasks: Dict[str, TaskStore.DownloadTask] = {}
         self._lock = threading.Lock()
+        # 每个正在执行的下载任务一个停止信号（threading.Event 本身线程安全）。
+        # 由 run_download_async 在任务开始时创建、worker 结束时清理。
+        self._cancel_events: Dict[str, threading.Event] = {}
+
+    def get_cancel_event(self, task_id: str) -> threading.Event:
+        """取（或创建）任务的取消信号。只应由即将执行该任务的 worker 调用。"""
+        with self._lock:
+            event = self._cancel_events.get(task_id)
+            if event is None:
+                event = threading.Event()
+                self._cancel_events[task_id] = event
+            return event
+
+    def request_cancel(self, task_id: str) -> None:
+        """通知正在执行的 worker 停止下载。
+
+        PENDING 任务尚未创建 Event，无需发信号 —— cancel 状态本身会被
+        ``run_download_async`` 的 PENDING 门禁拦截，不会开始下载。
+        """
+        with self._lock:
+            event = self._cancel_events.get(task_id)
+        if event is not None:
+            event.set()
+
+    def clear_cancel_event(self, task_id: str) -> None:
+        with self._lock:
+            self._cancel_events.pop(task_id, None)
 
     def load_from_db(self) -> int:
         """进程启动时恢复活跃任务到内存缓存
@@ -95,16 +131,35 @@ class TaskStore:
         步骤：
         1. 崩溃恢复：把上次崩溃时残留的 downloading 任务改为 pending
         2. 拉取 pending/paused 任务到内存缓存
+        3. 回表 yande_data 补齐 yande_data —— run_download_async 依赖
+           file_url/md5/file_ext，只恢复任务行会让所有恢复任务在启动瞬间
+           报 "Missing yande_data" 并全部转为 failed
         """
-        from src.dao.download_task_dao import download_task_dao
+        from sqlalchemy import select
+
+        from src.dao.download_task_dao import DownloadTaskDao
 
         # 1. 崩溃恢复
-        with download_task_dao as dao:
+        with DownloadTaskDao() as dao:
             recovered = dao.recover_downloading_tasks()
 
         # 2. 加载活跃任务
-        with download_task_dao as dao:
+        with DownloadTaskDao() as dao:
             active = dao.list_active()
+
+        # 3. 批量补齐 yande_data（任务行自身不冗余这些字段）
+        image_ids = {rec.image_id for rec in active}
+        yande_map = {}
+        if image_ids:
+            with YandeDataRepository() as repo:
+                yande_map = {
+                    item.id: item
+                    for item in repo.session.execute(
+                        select(YandeData).where(YandeData.id.in_(image_ids))
+                    )
+                    .scalars()
+                    .all()
+                }
 
         loaded = 0
         with self._lock:
@@ -117,6 +172,7 @@ class TaskStore:
                 task = TaskStore.DownloadTask(
                     task_id=rec.task_id,
                     image_id=rec.image_id,
+                    yande_data=yande_map.get(rec.image_id),
                     file_name=rec.file_name,
                     file_size=rec.file_size,
                     downloaded_size=rec.downloaded_size or 0,
@@ -138,13 +194,13 @@ class TaskStore:
         return loaded
 
     def create_task(self, task_id: str, yande_data: YandeData) -> dict:
-        from src.dao.download_task_dao import download_task_dao
+        from src.dao.download_task_dao import DownloadTaskDao
 
         file_name = f"{yande_data.id}.{yande_data.file_ext or 'jpg'}"
         file_size = yande_data.file_size
 
         # 先写 DB
-        with download_task_dao as dao:
+        with DownloadTaskDao() as dao:
             dao.create(task_id, yande_data.id, file_name, file_size)
 
         # 再写内存
@@ -198,8 +254,8 @@ class TaskStore:
             if task:
                 return task
         # 内存未命中：查 DB（终态/历史任务场景）
-        from src.dao.download_task_dao import download_task_dao
-        with download_task_dao as dao:
+        from src.dao.download_task_dao import DownloadTaskDao
+        with DownloadTaskDao() as dao:
             rec = dao.get_by_id(task_id)
             if not rec:
                 return None
@@ -232,8 +288,8 @@ class TaskStore:
         修复策略：DB 提供完整记录（含终态），内存提供活跃任务实时进度。
         终态任务（completed/failed/cancelled）不在内存中，DB 值已是权威。
         """
-        from src.dao.download_task_dao import download_task_dao
-        with download_task_dao as dao:
+        from src.dao.download_task_dao import DownloadTaskDao
+        with DownloadTaskDao() as dao:
             db_tasks, db_total = dao.query(
                 status=status, page=page, page_size=page_size
             )
@@ -264,7 +320,7 @@ class TaskStore:
         DB 写入采用"快照"模式：状态变化时把内存中已有进度字段一并落 DB，
         保证 DB 与内存在该时刻完全一致。
         """
-        from src.dao.download_task_dao import download_task_dao
+        from src.dao.download_task_dao import DownloadTaskDao
 
         db_payload = None
         with self._lock:
@@ -296,15 +352,17 @@ class TaskStore:
                     self._tasks.pop(task_id, None)
 
         if db_payload:
-            with download_task_dao as dao:
+            with DownloadTaskDao() as dao:
                 dao.update(task_id, **db_payload)
 
     def delete_task(self, task_id: str) -> bool:
-        """删除任务：内存 + DB 双删"""
-        from src.dao.download_task_dao import download_task_dao
+        """删除任务：内存 + DB 双删（正在下载的任务同时停止 worker）"""
+        from src.dao.download_task_dao import DownloadTaskDao
+
+        self.request_cancel(task_id)
         with self._lock:
             removed = self._tasks.pop(task_id, None) is not None
-        with download_task_dao as dao:
+        with DownloadTaskDao() as dao:
             db_removed = dao.delete(task_id)
         return removed or db_removed
 
@@ -332,7 +390,14 @@ class DownloadQueue:
                 break
 
             async with self._semaphore:
-                await run_download_async(task_id)
+                try:
+                    await run_download_async(task_id)
+                except Exception:
+                    # worker 不能因为单个任务异常退出：否则后续任务永远排队，
+                    # 表现就像"下载任务全部卡死"。
+                    logger.exception(f"Download worker failed for task {task_id}")
+                finally:
+                    task_store.clear_cancel_event(task_id)
             self._queue.task_done()
 
     async def start(self, num_workers: int = 3):
@@ -368,13 +433,27 @@ async def run_download_async(task_id: str):
     if not task:
         return
 
-    if task.status == TaskStatus.CANCELLED:
+    # 队列里可能有同一 task 的重复条目（重复点「启动」/ 重启恢复），
+    # 只有 PENDING 是待执行状态。其余状态直接跳过：
+    # - 终态任务已从内存清除，get_task 走 DB fallback，不带 yande_data，
+    #   继续执行会把它拉回 DOWNLOADING 再以 "Missing yande_data" 失败；
+    # - DOWNLOADING 说明另一条目已在跑，继续会重复下载。
+    if task.status != TaskStatus.PENDING:
+        return
+
+    cancel_event = task_store.get_cancel_event(task_id)
+    if cancel_event.is_set():
         return
 
     task_store.update_task(
         task_id,
         {"status": TaskStatus.DOWNLOADING, "started_at": datetime.now().isoformat()},
     )
+
+    # cancel 端点在线程池里执行，可能恰好插在 PENDING 检查与 update_task 之间：
+    # 此时任务已被 cancel 移出内存，update_task 是 no-op，task.status 已是 CANCELLED。
+    if cancel_event.is_set() or task.status != TaskStatus.DOWNLOADING:
+        return
 
     yande_data = task.yande_data
 
@@ -407,6 +486,7 @@ async def run_download_async(task_id: str):
         original_path = originals_dir / f"{image_id}.{file_ext}"
 
         download_failed = False
+        cancelled = False
         error_message = None
         db_updated = False
         need_download = True
@@ -470,16 +550,38 @@ async def run_download_async(task_id: str):
                     md5=expected_md5,
                 ),
                 _progress_callback=progress_callback,
+                cancel_event=cancel_event,
             )
             try:
                 await asyncio.to_thread(multi_down.start)
+            except DownloadCancelled:
+                cancelled = True
+                logger.info(f"Download cancelled for task {task_id}")
             except Exception as download_err:
                 download_failed = True
                 error_message = f"下载失败: {str(download_err)}"
                 logger.error(f"Download failed for {task_id}: {download_err}")
             finally:
                 await asyncio.to_thread(multi_down.cleanup)
-        else:
+        # 取消检查必须在任何终态写入之前：worker 收尾时不能把
+        # 用户取消覆盖成 completed（need_download=False 的"已下载"分支同理）。
+        if cancelled or cancel_event.is_set():
+            # 正常路径下 cancel_task 已把状态落成 CANCELLED 并移出内存，
+            # 这里的 update_task 是兜底（直接置 Event 的调用方）；
+            # 关键是不能继续走 COMPLETED/FAILED 分支覆盖用户取消。
+            task_store.update_task(
+                task_id,
+                {
+                    "status": TaskStatus.CANCELLED,
+                    "completed_at": datetime.now().isoformat(),
+                },
+            )
+            if need_download:
+                await asyncio.to_thread(_remove_partial_file, original_path)
+            logger.info(f"Task {task_id} cancelled; partial file cleaned up")
+            return
+
+        if not need_download:
             task_store.update_task(
                 task_id,
                 {
@@ -489,8 +591,7 @@ async def run_download_async(task_id: str):
                     "downloaded_size": file_size
                 },
             )
-
-        if download_failed:
+        elif download_failed:
             task_store.update_task(
                 task_id,
                 {
@@ -515,6 +616,10 @@ async def run_download_async(task_id: str):
         if not db_updated:
             logger.warning(f"Database update skipped for image {image_id}")
     except Exception as e:
+        if cancel_event.is_set():
+            # 取消期间的收尾异常（如半成品 MD5 校验失败）不应记为 failed
+            logger.info(f"Task {task_id} cancelled; suppressed error: {e}")
+            return
         task_store.update_task(
             task_id, {"status": TaskStatus.FAILED, "error_message": str(e)}
         )
