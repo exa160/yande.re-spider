@@ -37,6 +37,14 @@ class MD5MismatchException(DownloadException):
     pass
 
 
+class DownloadCancelled(DownloadException):
+    """用户取消下载。
+
+    ``MultiDown`` 在每个 chunk / 每次重试等待前检查 ``cancel_event``，
+    命中即抛出该异常，由 ``run_download_async`` 清理半成品文件。
+    """
+
+
 def _try_preallocate(target: Path, file_size: int) -> bool:
     """预分配整个文件以减少磁盘碎片。失败时返回 False（降级为流式）。
 
@@ -88,10 +96,16 @@ def file_writer(file_path: str, chunks: list[bytes], file_size: int) -> None:
 
 
 class MultiDown:
-    def __init__(self, file_info: FileInfo, _progress_callback=None) -> None:
+    def __init__(
+        self,
+        file_info: FileInfo,
+        _progress_callback=None,
+        cancel_event: Optional[Event] = None,
+    ) -> None:
         self.thread_num = config.downloader.thread_num
         self.data_q: Queue = Queue()
         self.close_event = Event()
+        self.cancel_event = cancel_event
         self.progress_lock = Lock()
         self.progress_callback = _progress_callback
         self._session = configure_proxy_session(requests.Session())
@@ -132,12 +146,15 @@ class MultiDown:
         data_q: Queue,
         session: requests.Session,
         progress_callback=None,
+        cancel_event: Optional[Event] = None,
     ):
         content_data = []
         success = False
         actual_start = s
 
         for retry in range(config.downloader.retry_times):
+            if cancel_event is not None and cancel_event.is_set():
+                raise DownloadCancelled(f"[{_id}] cancelled before retry {retry}")
             current_start = actual_start
             try:
                 headers = {
@@ -161,6 +178,10 @@ class MultiDown:
                     for chunk in res.iter_content(
                         chunk_size=config.downloader.chunk_size
                     ):
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise DownloadCancelled(
+                                f"[{_id}] cancelled mid-chunk ({current_start}-{e})"
+                            )
                         if chunk:
                             # 单位统一：progress_callback 接收字节数，避免浮点累加误差
                             chunk_len = len(chunk)
@@ -171,12 +192,19 @@ class MultiDown:
 
                 success = True
                 break
+            except DownloadCancelled:
+                raise
             except Exception as err:
                 logger.warning(
                     f"[{_id}] down error {retry} {url} {current_start}-{e}: {err}"
                 )
                 actual_start = current_start
-                sleep(6)
+                # 重试等待必须可被取消打断，否则最多空等 retry_times × 6s
+                if cancel_event is not None:
+                    if cancel_event.wait(6):
+                        raise DownloadCancelled(f"[{_id}] cancelled during retry wait")
+                else:
+                    sleep(6)
 
         if success:
             data_q.put([s, current_start, b"".join(content_data)])
@@ -261,6 +289,10 @@ class MultiDown:
             executor_pool = []
 
             for s_offset in range(0, file_size, split_size):
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    raise DownloadCancelled(
+                        f"[{self.file_info.id}] cancelled before submitting chunks"
+                    )
                 e_offset = s_offset + split_size - 1
                 if e_offset >= file_size - 1:
                     e_offset = file_size - 1
@@ -274,6 +306,7 @@ class MultiDown:
                     self.data_q,
                     self._session,
                     self.progress_callback,
+                    self.cancel_event,
                 )
                 t.add_done_callback(
                     lambda x: logger.warning(x.exception()) if x.exception() else ""
@@ -288,6 +321,9 @@ class MultiDown:
         last_exception = None
 
         for _ in range(max_retries):
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                raise DownloadCancelled(f"[{self.file_info.id}] download cancelled")
+
             self.data_q = Queue()
             self.close_event.clear()
 
@@ -317,7 +353,14 @@ class MultiDown:
             self.close_event.set()
             writer_t.join()
 
+            # 取消优先于 MD5/下载错误：取消时写出的必然是半成品，
+            # MD5 不匹配是预期结果，不能当成普通失败再重试。
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                raise DownloadCancelled(f"[{self.file_info.id}] download cancelled")
+
             exception = writer_exception or download_exception
+            if isinstance(download_exception, DownloadCancelled):
+                raise download_exception
             if exception:
                 last_exception = exception
                 if isinstance(exception, MD5MismatchException):

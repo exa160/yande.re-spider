@@ -218,7 +218,7 @@
                 </template>
               </span>
               <el-popconfirm
-                title="清除同步游标？下次调度将从最早的图片开始重扫全历史，用于补齐历史遗漏（如后来才补上本收藏夹标签的图片）。若只是想重新对齐，可先停用再启用调度。"
+                title="清除后下次同步将从最早图片开始全量重扫，用于补齐历史遗漏。"
                 confirm-button-text="清除游标"
                 cancel-button-text="取消"
                 @confirm="handleResetSync"

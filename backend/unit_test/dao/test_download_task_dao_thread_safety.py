@@ -35,8 +35,8 @@ API 路由全部通过 ``asyncio.to_thread`` 调用这些 DAO，所以这不是�
 每线程独立实例 + StaticPool               16 / 320 异常
 =====================================  ==========================
 
-因此 service 层一律改用 ``with DownloadTaskDao() as dao:``。
-本测试锁定「service 层不再使用模块级单例开 session」这一约束。
+因此运行时调用点一律改用 ``with DownloadTaskDao() as dao:``。
+本测试锁定「运行时代码不再使用模块级单例开 session」这一约束。
 
 注意：SQLite 模式下残留的 16/320 来自 ``StaticPool``（全进程共用一条
 DBAPI 连接，``check_same_thread=False`` 允许跨线程传递但 SQLite C 层并不
@@ -50,39 +50,44 @@ from pathlib import Path
 
 import pytest
 
-SERVICE_PATH = (
-    Path(__file__).resolve().parents[2] / "src" / "services" / "download.py"
-)
+SRC_ROOT = Path(__file__).resolve().parents[2] / "src"
+SERVICE_PATH = SRC_ROOT / "services" / "download.py"
 
 
-class TestServiceDoesNotUseDaoSingleton:
-    """静态约束：service 层不得用模块级单例开 session。"""
-
-    def _source(self) -> str:
-        return SERVICE_PATH.read_text(encoding="utf-8")
+class TestRuntimeDoesNotUseDaoSingleton:
+    """静态约束：运行时代码不得用模块级单例开 session。"""
 
     def test_no_with_on_module_level_singleton(self):
-        """不得出现 `with download_task_dao as dao:`（复用他人 Session）。"""
-        offenders = [
-            f"line {i}: {line.strip()}"
-            for i, line in enumerate(self._source().split("\n"), 1)
-            if line.strip() == "with download_task_dao as dao:"
-        ]
+        """src/ 下不得出现 `with download_task_dao as dao:`（复用他人 Session）。"""
+        offenders = []
+        for path in sorted(SRC_ROOT.rglob("*.py")):
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").split("\n"), 1
+            ):
+                if line.strip() == "with download_task_dao as dao:":
+                    offenders.append(
+                        f"{path.relative_to(SRC_ROOT)}:{lineno}: {line.strip()}"
+                    )
         assert not offenders, (
-            "service 层仍用模块级 download_task_dao 单例开 session，"
+            "运行时仍用模块级 download_task_dao 单例开 session，"
             "并发下会共享 Session（MariaDB 模式下实测 SIGSEGV）：\n"
             + "\n".join(offenders)
         )
 
     def test_with_sites_use_fresh_instance(self):
         """所有 `with ... as dao:` 的 DownloadTaskDao 都必须是新实例。"""
-        bad = re.findall(r"with download_task_dao as dao:", self._source())
+        bad = re.findall(
+            r"with download_task_dao as dao:", SERVICE_PATH.read_text(encoding="utf-8")
+        )
         assert not bad
 
         # 数量断言：防止将来新增调用点时忘记跟上
-        fresh = re.findall(r"with DownloadTaskDao\(\) as dao:", self._source())
-        assert len(fresh) == 5, (
-            f"预期 5 处 `with DownloadTaskDao() as dao:`，实际 {len(fresh)} 处；"
+        fresh = re.findall(
+            r"with DownloadTaskDao\(\) as dao:",
+            SERVICE_PATH.read_text(encoding="utf-8"),
+        )
+        assert len(fresh) == 9, (
+            f"预期 9 处 `with DownloadTaskDao() as dao:`，实际 {len(fresh)} 处；"
             "若新增了调用点请同步本测试的断言"
         )
 

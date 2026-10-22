@@ -324,6 +324,36 @@ class DownloadTaskDao(BaseDAO):
         )
         return self.session.execute(stmt).scalar() or 0
 
+    def count_completed_before(self, cutoff: datetime) -> int:
+        """统计 completed_at < cutoff 且 status=COMPLETED 的记录数（清理预览）。
+
+        与 ``delete_completed_before`` 的筛选条件严格一致，保证预览数字
+        就是实际会删除的条数。
+        """
+        stmt = select(func.count()).select_from(DownloadTask).where(
+            DownloadTask.status == TaskStatus.COMPLETED,
+            DownloadTask.completed_at.isnot(None),
+            DownloadTask.completed_at < cutoff,
+        )
+        return self.session.execute(stmt).scalar() or 0
+
+    def count_all_completed(self) -> int:
+        """统计全部可清理的已完成记录数（status=COMPLETED 且 completed_at 非空）。"""
+        stmt = select(func.count()).select_from(DownloadTask).where(
+            DownloadTask.status == TaskStatus.COMPLETED,
+            DownloadTask.completed_at.isnot(None),
+        )
+        return self.session.execute(stmt).scalar() or 0
+
+    def list_failed_task_ids(self) -> List[str]:
+        """返回全部 status=FAILED 的 task_id（按创建时间倒序），供批量重试。"""
+        stmt = (
+            select(DownloadTask.task_id)
+            .where(DownloadTask.status == TaskStatus.FAILED)
+            .order_by(DownloadTask.created_at.desc())
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
     def delete_completed_before(self, cutoff: datetime) -> int:
         """删除 completed_at < cutoff 且 status=COMPLETED 的记录。返回删除条数。
 

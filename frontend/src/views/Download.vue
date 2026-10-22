@@ -3,81 +3,77 @@
     <div class="toolbar">
       <span class="title">下载任务</span>
       <div class="toolbar-actions">
-        <el-button type="primary" size="small" @click="refreshAll">
-          <el-icon><Refresh /></el-icon>
-          刷新
+        <!-- 失败任务的批量恢复：服务端一次重试全部 failed（不受分页限制） -->
+        <el-button
+          v-if="activeTab === 'failed' && counts.failed > 0"
+          type="primary"
+          size="small"
+          class="toolbar-action"
+          :loading="retryingAll"
+          @click="onRetryAllFailed"
+        >
+          <el-icon><RefreshRight /></el-icon>
+          全部重试 ({{ counts.failed }})
         </el-button>
 
-        <!-- 清除下载完成记录：默认收成一个小图标按钮，点开才展开清除选项。
-             为什么放刷新旁边而不是 tabs 右侧：element-plus 2.13 的 el-tabs 只渲染
-             default / add-icon 两个 slot（tabs.d.ts 的 slots 类型为 {}），没有
-             extra slot，要塞进 el-tabs__nav-scroll 只能靠 :deep() 绝对定位硬撑，
-             属于长期维护的脆弱 hack。放在工具栏里语义也更直白——它是页面级操作。
-             清理的只有 status=completed 的记录，所以只在「全部 / 已完成」出现。 -->
-        <el-popover
+        <!-- 清理只作用于已完成记录：仅在「全部 / 已完成」显示；
+             固定行高保证它出现/消失时页签不上下跳 -->
+        <el-button
           v-if="CLEAR_VISIBLE_TABS.includes(activeTab)"
-          v-model:visible="clearPopoverVisible"
-          placement="bottom-end"
-          :width="270"
-          trigger="click"
-          @hide="resetClearArm"
+          type="danger"
+          plain
+          size="small"
+          class="toolbar-action toolbar-clear"
+          :disabled="completedCount === 0"
+          @click="openClearDialog"
         >
-          <template #reference>
-            <el-button
-              type="danger"
-              plain
-              size="small"
-              class="clear-trigger"
-              :disabled="completedCount === 0"
-              title="清除下载完成记录"
-            >
-              <el-icon><Delete /></el-icon>
-            </el-button>
-          </template>
-
-          <div class="clear-pop">
-            <div class="clear-pop-title">清除下载完成记录</div>
-            <div class="clear-pop-hint">
-              只删除下载任务记录，<b>不会删除本地图片文件</b>。清除后「最近下载」列表会同步变少。
-            </div>
-            <!-- teleported=false 是必须的（不是性能优化）：
-                 el-select 下拉默认 teleported 到 body，点击下拉里的选项时，
-                 事件目标落在 popper 之外 → element-plus tooltip content 的
-                 onClickOutside(popperContentRef) 判定为「点击外部」→ trigger="click"
-                 的 popover 直接关闭，表现为「选完时间弹窗就没了」。
-                 关掉 teleport 后下拉内联渲染在 popper 子树内，判定为内部点击，
-                 弹窗保持打开。 -->
-            <el-select
-              v-model="clearScope"
-              size="small"
-              class="clear-scope"
-              :teleported="false"
-              @change="resetClearArm"
-            >
-              <el-option
-                v-for="opt in CLEAR_SCOPE_OPTIONS"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
-            <el-button
-              type="danger"
-              size="small"
-              class="clear-confirm"
-              :loading="clearingRecords"
-              :disabled="completedCount === 0"
-              @click="onClearClick"
-            >
-              {{ clearingRecords ? '清除中…' : (clearArmed ? '再次点击确认清除' : '清除') }}
-            </el-button>
-            <div v-if="clearArmed && !clearingRecords" class="clear-armed-tip">
-              再次点击即执行，5 秒后自动取消
-            </div>
-          </div>
-        </el-popover>
+          <el-icon><Delete /></el-icon>
+          清除记录 ({{ completedCount.toLocaleString() }})
+        </el-button>
       </div>
     </div>
+
+    <el-dialog
+      v-model="clearDialogVisible"
+      title="清除下载记录"
+      width="min(440px, 92vw)"
+      class="clear-dialog"
+      append-to-body
+    >
+      <el-alert type="warning" :closable="false" show-icon class="clear-alert">
+        只删除下载任务记录，<b>不会删除本地图片文件</b>；清除后「最近下载」列表会同步变少。
+      </el-alert>
+
+      <div v-loading="clearPreviewLoading" class="clear-options" role="radiogroup">
+        <div
+          v-for="opt in clearOptions"
+          :key="opt.value"
+          class="clear-option"
+          :class="{ active: clearScope === opt.value }"
+          role="radio"
+          :aria-checked="clearScope === opt.value"
+          @click="clearScope = opt.value"
+        >
+          <span class="clear-option-label">{{ opt.label }}</span>
+          <span class="clear-option-count">
+            将删除 {{ opt.count.toLocaleString() }} 条
+          </span>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button size="small" @click="clearDialogVisible = false">取消</el-button>
+        <el-button
+          type="danger"
+          size="small"
+          :loading="clearingRecords"
+          :disabled="selectedClearCount === 0"
+          @click="onClearConfirm"
+        >
+          清除 {{ selectedClearCount.toLocaleString() }} 条
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-tabs v-model="activeTab" class="task-tabs" @tab-change="onTabChange">
       <el-tab-pane
@@ -161,17 +157,16 @@
                 size="small"
                 @click="onCardAction({action:'resume', task})"
               >恢复</el-button>
-              <!-- TODO 取消功能暂未开放：worker 在下载期间无 stop signal（F bug），
-                   取消后状态会被强制覆盖为 COMPLETED。等修复后再启用。 -->
               <el-button
                 v-if="['pending', 'downloading', 'paused'].includes(task.status)"
                 size="small"
-                disabled
-                title="取消功能暂未开放"
+                @click="onCardAction({action:'cancel', task})"
               >取消</el-button>
               <el-button
                 type="danger"
+                plain
                 size="small"
+                class="card-delete"
                 @click="onCardAction({action:'delete', task})"
               >删除</el-button>
             </div>
@@ -290,14 +285,11 @@
                 link
                 @click="onCardAction({action:'resume', task:row})"
               >恢复</el-button>
-              <!-- TODO 取消功能暂未开放：worker 在下载期间无 stop signal（F bug），
-                   取消后状态会被强制覆盖为 COMPLETED。等修复后再启用。 -->
               <el-button
                 v-if="['pending', 'downloading', 'paused'].includes(row.status)"
                 size="small"
                 link
-                disabled
-                title="取消功能暂未开放"
+                @click="onCardAction({action:'cancel', task:row})"
               >取消</el-button>
               <el-button
                 type="danger"
@@ -325,7 +317,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onBeforeMount, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Warning, Delete } from '@element-plus/icons-vue'
+import { RefreshRight, Delete, Warning } from '@element-plus/icons-vue'
 import api from '@/api'
 import { recentDownloadsApi } from '@/api/recentDownloads'
 import { fetchRecentDownloadsCount } from '@/composables/useFavoritesConfig'
@@ -487,7 +479,7 @@ const loadCounts = async () => {
     // 把「实际有任务在跑、但旧值 running=0」误判成空闲而停掉定时器。而停掉之后
     // 没有任何东西会再触发 loadCounts（这正是按需启停的前提）→ 进度条永久卡死
     // 且不自愈。保守维持当前定时器状态：多轮询几次的代价远小于 UI 卡住。
-    // 网络恢复后由「刷新」按钮或下一次成功请求纠正。
+    // 网络恢复后由窗口聚焦 / 页面恢复可见 / online 事件或下一次成功请求纠正。
     console.warn('[Download] load counts failed', e)
   }
 }
@@ -530,6 +522,21 @@ const refreshAll = async () => {
   await Promise.all([loadTasks(), loadCounts()])
 }
 
+// 手动刷新入口已移除：页面重新可见 / 窗口聚焦 / 网络恢复时补一次刷新。
+// 运行中的任务仍由 2s 轮询覆盖；1s 去重避免 focus 与 visibilitychange 双触发。
+const AUTO_REFRESH_DEDUPE_MS = 1000
+let lastAutoRefreshAt = 0
+const refreshOnReturn = () => {
+  if (isUnmounted.value) return
+  const now = Date.now()
+  if (now - lastAutoRefreshAt < AUTO_REFRESH_DEDUPE_MS) return
+  lastAutoRefreshAt = now
+  refreshAll()
+}
+const onVisibilityChange = () => {
+  if (document.visibilityState === 'visible') refreshOnReturn()
+}
+
 // ============================================================================
 // 记录清理
 // ----------------------------------------------------------------------------
@@ -543,39 +550,42 @@ const refreshAll = async () => {
 // 安全由后端保证：DAO 固定只删 status==COMPLETED，
 // pending / downloading / paused / failed / cancelled 一律保留。
 //
-// UI：收起成一个图标按钮 → 点开小弹窗（el-popover）→ 选范围 →
-// 「清除」进入待确认态 → 5 秒内再点一次才真正执行。
-// 两步点击都在弹窗内完成，不再叠加 ElMessageBox 模态框。
+// UI：工具栏「更多」下拉 → 标准对话框。对话框逐项显示各范围的
+// 实际删除条数（后端 clear-preview 接口），一次明确确认即可。
 // ============================================================================
 /** 仅在能看见「已完成」记录的两个页签出现清除入口 */
 const CLEAR_VISIBLE_TABS = ['all', 'completed']
-/** 清除范围：0 = 全部已完成（其余为「N 天前」） */
+/** 清除范围：0 = 全部已完成（其余为「保留最近 N 天」） */
 const CLEAR_SCOPE_OPTIONS = [
-  { value: 7,  label: '7 天前的记录' },
-  { value: 30, label: '30 天前的记录' },
-  { value: 90, label: '90 天前的记录' },
+  { value: 7,  label: '保留最近 7 天' },
+  { value: 30, label: '保留最近 30 天' },
+  { value: 90, label: '保留最近 90 天' },
   { value: 0,  label: '全部已完成记录' },
 ]
-/** 清除按钮进入「待确认」态后自动回弹的时长（ms） */
-const CLEAR_ARM_TIMEOUT = 5000
 
 const clearScope = ref(30)
-const clearPopoverVisible = ref(false)
-const clearArmed = ref(false)
+const clearDialogVisible = ref(false)
+const clearPreviewLoading = ref(false)
+const clearPreview = ref(null)
 const clearingRecords = ref(false)
-let clearArmTimer = null
+const retryingAll = ref(false)
 
 /** 已完成记录数——为 0 时没有可清除的东西，入口直接禁用 */
 const completedCount = computed(() => counts.value.completed ?? 0)
 
-/** 取消「待确认」态（切换清除范围、关闭弹窗、超时回弹都走这里） */
-const resetClearArm = () => {
-  if (clearArmTimer !== null) {
-    clearTimeout(clearArmTimer)
-    clearArmTimer = null
-  }
-  clearArmed.value = false
-}
+/** 各范围的「将删除 N 条」：count 与后端 delete 的筛选口径一致 */
+const clearOptions = computed(() =>
+  CLEAR_SCOPE_OPTIONS.map((opt) => ({
+    ...opt,
+    count: opt.value === 0
+      ? (clearPreview.value?.all ?? 0)
+      : (clearPreview.value?.before_days?.[String(opt.value)] ?? 0),
+  }))
+)
+
+const selectedClearCount = computed(
+  () => clearOptions.value.find((o) => o.value === clearScope.value)?.count ?? 0
+)
 
 /** 由 clearScope 生成请求体：0 → all，其余 → before_days */
 const clearPayload = () =>
@@ -583,35 +593,85 @@ const clearPayload = () =>
     ? { mode: 'all' }
     : { mode: 'before_days', days: Number(clearScope.value) }
 
-const onClearClick = async () => {
-  if (clearingRecords.value || completedCount.value === 0) return
-
-  // 第一次点击：只进入待确认态，不发任何请求
-  if (!clearArmed.value) {
-    clearArmed.value = true
-    if (clearArmTimer !== null) clearTimeout(clearArmTimer)
-    clearArmTimer = setTimeout(() => {
-      clearArmTimer = null
-      clearArmed.value = false
-    }, CLEAR_ARM_TIMEOUT)
-    return
+const openClearDialog = async () => {
+  if (completedCount.value === 0) return
+  clearScope.value = 30
+  clearDialogVisible.value = true
+  clearPreviewLoading.value = true
+  try {
+    const resp = await api.get('/download/tasks/clear-preview')
+    clearPreview.value = resp.data?.data || resp.data || null
+    // 默认 30 天；若该范围没有可删除记录，回退到第一个非空范围，
+    // 避免对话框一打开主按钮就是禁用态。
+    const preferred = clearOptions.value.find((o) => o.value === 30)
+    clearScope.value = preferred && preferred.count > 0
+      ? 30
+      : (clearOptions.value.find((o) => o.count > 0)?.value ?? 0)
+  } catch (e) {
+    clearDialogVisible.value = false
+    ElMessage.error(
+      '加载清理预览失败：' + (e?.response?.data?.message || e.message)
+    )
+  } finally {
+    clearPreviewLoading.value = false
   }
+}
 
-  // 第二次点击：真正执行
-  resetClearArm()
+const onClearConfirm = async () => {
+  if (clearingRecords.value || selectedClearCount.value === 0) return
   clearingRecords.value = true
   try {
     const res = await recentDownloadsApi.clear(clearPayload())
     const deleted = res?.data?.deleted
-    ElMessage.success(`已清除 ${typeof deleted === 'number' ? deleted : 0} 条记录`)
+    ElMessage.success(
+      `已清除 ${typeof deleted === 'number' ? deleted : selectedClearCount.value} 条记录`
+    )
+    clearDialogVisible.value = false
     // 清除后重载本页任务 + 各 tab 计数（「最近下载」角标由 composable 自行刷新）
     await refreshAll()
     fetchRecentDownloadsCount().catch(() => {})
-    clearPopoverVisible.value = false
   } catch (e) {
     ElMessage.error('清除失败：' + (e?.message || '未知错误'))
   } finally {
     clearingRecords.value = false
+  }
+}
+
+/** 错误页签：服务端一次重试全部 failed 任务 */
+const onRetryAllFailed = async () => {
+  const failedCount = counts.value.failed ?? 0
+  if (retryingAll.value || failedCount === 0) return
+
+  try {
+    await ElMessageBox.confirm(
+      `将重试全部 ${failedCount} 个失败任务，是否继续？`,
+      '全部重试',
+      { type: 'warning' }
+    )
+  } catch (e) {
+    if (e === 'cancel') return
+    throw e
+  }
+
+  retryingAll.value = true
+  try {
+    const resp = await api.post('/download/tasks/retry-failed')
+    const data = resp.data?.data || resp.data || {}
+    const started = data.started ?? 0
+    const skipped = data.skipped ?? 0
+    ElMessage.success(
+      skipped > 0
+        ? `已重试 ${started} 个任务，跳过 ${skipped} 个`
+        : `已重试 ${started} 个任务`
+    )
+    wakeDownloadState()
+    await refreshAll()
+  } catch (e) {
+    ElMessage.error(
+      '全部重试失败：' + (e?.response?.data?.message || e.message)
+    )
+  } finally {
+    retryingAll.value = false
   }
 }
 
@@ -767,14 +827,17 @@ onMounted(() => {
   // unmount 之后 loadCounts 的 finally 若迟到也会因 running 已无变化而不再起。
   loadTasks()
   loadCounts()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('focus', refreshOnReturn)
+  window.addEventListener('online', refreshOnReturn)
 })
 
 onUnmounted(() => {
   isUnmounted.value = true
   stopPolling()
-  // 待确认态的 5s 回弹定时器必须一起清掉，否则 dialog 关掉后它还会把 clearArmed
-  // 改回去（已卸载的组件上的响应式写入），且 setTimeout 会泄漏到下一次打开。
-  resetClearArm()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('focus', refreshOnReturn)
+  window.removeEventListener('online', refreshOnReturn)
   window.removeEventListener('resize', checkMobile)
 })
 </script>
@@ -788,60 +851,70 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* 固定最小行高：动作按钮出现/消失时页签不上下跳 */
+  min-height: 32px;
   margin-bottom: 15px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
 }
 
-/* 工具栏右侧动作组：刷新 / 清除记录（图标按钮） */
+/* 工具栏右侧动作组：全部重试 / 清除记录 */
 .toolbar-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  margin-left: auto;
+  flex-wrap: nowrap;
 }
 
-/* 清除入口：danger + plain —— 淡红底 + 红边 + 红字。
-   不用 text（无边框无底色）是因为它夹在带边框的「刷新」旁边会很突兀；
-   也不用实心 danger（视觉权重压过主操作），plain 刚好是「危险但次要」的档位。
-   配色全部走 --el-* 变量，亮/暗色自动跟随。 */
-.clear-trigger {
-  padding: 5px 9px;
+/* flex gap 已负责间距，抵消 el-button 相邻默认 margin-left */
+.toolbar-actions .toolbar-action + .toolbar-action {
+  margin-left: 0;
 }
-.clear-trigger:not(.is-disabled):hover {
-  background: var(--el-color-danger-light-8);
+
+/* ---- 清除记录对话框 ---- */
+.clear-alert {
+  margin-bottom: 12px;
+}
+.clear-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.clear-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.clear-option:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+.clear-option.active {
   border-color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
 }
-
-/* ---- 清除记录弹窗 ---- */
-.clear-pop-title {
-  font-size: 14px;
-  font-weight: 600;
+.clear-option-label {
+  font-size: 13px;
   color: var(--el-text-color-primary);
-  margin-bottom: 6px;
 }
-.clear-pop-hint {
+.clear-option-count {
   font-size: 12px;
-  line-height: 1.6;
   color: var(--el-text-color-secondary);
-  margin-bottom: 10px;
+  white-space: nowrap;
 }
-.clear-scope {
-  width: 100%;
-  margin-bottom: 10px;
-}
-.clear-confirm {
-  width: 100%;
-}
-/* 「再点一次确认」的待命提示——配合按钮文案变化，给用户明确的时间窗 */
-.clear-armed-tip {
-  margin-top: 8px;
-  font-size: 12px;
+.clear-option.active .clear-option-count {
   color: var(--el-color-danger);
-  text-align: center;
 }
 
 .title {
+  flex-shrink: 0;
+  line-height: 1.2;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
@@ -960,6 +1033,12 @@ onUnmounted(() => {
   flex: 1;
   min-width: 60px;
 }
+/* 删除是低频破坏性操作：不抢主操作的宽度，右对齐收小 */
+.card-actions .card-delete {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-left: auto;
+}
 
 .pagination {
   margin-top: 15px;
@@ -967,15 +1046,16 @@ onUnmounted(() => {
 }
 
 @media screen and (max-width: 768px) {
+  /* 保持单行：标题 + 动作组不换行，只收紧间距 */
   .toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+    gap: 6px;
   }
-  /* 窄屏：动作组横向排（刷新 + 清除图标），不给图标按钮撑满整行 */
   .toolbar-actions {
-    width: 100%;
-    justify-content: flex-end;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .toolbar-action {
+    padding: 5px 8px;
   }
   .task-tabs :deep(.el-tabs__header) {
     margin-bottom: 10px;
