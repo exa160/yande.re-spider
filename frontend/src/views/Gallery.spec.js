@@ -1402,7 +1402,7 @@ describe('Gallery.vue 详情页 header/footer 分区契约', () => {
     const headerLeft = document.body.querySelector('.float-header-left')
     expect(headerLeft).not.toBeNull()
     expect(headerLeft.querySelector('.heart-overlay')).toBeNull()
-    expect(headerLeft.querySelector('.float-download-btn, .float-redownload-btn, .float-downloaded-tag')).toBeNull()
+    expect(headerLeft.querySelector('.float-download-btn, .float-redownload-btn, .float-downloaded-status')).toBeNull()
   })
 
   it('down_flag=false 分支：.float-footer-left 顺序 = 下载按钮 → HeartOverlay', async () => {
@@ -1435,7 +1435,7 @@ describe('Gallery.vue 详情页 header/footer 分区契约', () => {
     const directChildren = Array.from(footerLeft.children)
     expect(directChildren.length).toBe(3)
     expect(directChildren[0].classList.contains('float-redownload-btn')).toBe(true)
-    expect(directChildren[1].classList.contains('float-downloaded-tag')).toBe(true)
+    expect(directChildren[1].classList.contains('float-downloaded-status')).toBe(true)
     expect(directChildren[2].classList.contains('heart-overlay')).toBe(true)
     expect(directChildren[2].classList.contains('float-heart')).toBe(true)
   })
@@ -1511,7 +1511,7 @@ describe('Gallery.vue 下载态标记（单图 / 批量 / 收藏自动下载）'
     expect(downStateOf(image)).toBe('downloading')
     expect(footerLeft().textContent).toContain('下载中')
     // 「已下载」tag 与「下载原图」按钮都不应出现
-    expect(footerLeft().querySelector('.float-downloaded-tag')).toBeNull()
+    expect(footerLeft().querySelector('.float-downloaded-status')).toBeNull()
   })
 
   it('下载完成后（轮询到 completed）→ 变「已下载」tag + 重新下载按钮', async () => {
@@ -1531,7 +1531,7 @@ describe('Gallery.vue 下载态标记（单图 / 批量 / 收藏自动下载）'
     expect(downStateOf(image)).toBe('downloaded')
     const children = Array.from(footerLeft().children)
     expect(children[0].classList.contains('float-redownload-btn')).toBe(true)
-    expect(children[1].classList.contains('float-downloaded-tag')).toBe(true)
+    expect(children[1].classList.contains('float-downloaded-status')).toBe(true)
   })
 
   it('下载失败（轮询到 failed）→ 复位为未下载，不残留「下载中」', async () => {
@@ -2486,6 +2486,54 @@ describe('Gallery.vue 详情布局（桌面 rail / 移动 dock）', () => {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight })
     }
   }
+
+  /** 打桩 canvas，让 useImageTone 读到可控的顶部/底部亮度 */
+  const stubCanvas = (color) => {
+    const proto = window.HTMLCanvasElement.prototype
+    const orig = proto.getContext
+    proto.getContext = function getContext() {
+      return {
+        clearRect() {},
+        drawImage() {},
+        getImageData(x, y, w, h) {
+          const data = new Uint8ClampedArray(w * h * 4)
+          for (let i = 0; i < w * h; i++) {
+            data[i * 4] = color[0]
+            data[i * 4 + 1] = color[1]
+            data[i * 4 + 2] = color[2]
+            data[i * 4 + 3] = 255
+          }
+          return { data, width: w, height: h }
+        },
+      }
+    }
+    return () => { proto.getContext = orig }
+  }
+
+  const toneAfterImageLoad = async (color) => {
+    const restore = stubCanvas(color)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      const img = wrapperEl().querySelector('img')
+      Object.defineProperty(img, 'naturalWidth', { value: 100, configurable: true })
+      Object.defineProperty(img, 'naturalHeight', { value: 100, configurable: true })
+      img.dispatchEvent(new Event('load'))
+      await flushPromises()
+      return document.querySelector('.image-preview-overlay').getAttribute('data-chrome-tone')
+    } finally {
+      restore()
+    }
+  }
+
+  it('T25b 暗图 load 后 → data-chrome-tone=dark', async () => {
+    expect(await toneAfterImageLoad([0, 0, 0])).toBe('dark')
+  })
+
+  it('T25c 亮图 load 后 → data-chrome-tone=light', async () => {
+    expect(await toneAfterImageLoad([255, 255, 255])).toBe('light')
+  })
 
   // ---------------------------------------------------------------------------
   // 详情形态：桌面右侧栏 / 窄屏图片下方坞

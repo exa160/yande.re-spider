@@ -1127,15 +1127,43 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
   height: 100%;
 }
 
-/* 图片信息悬浮层 - 始终显示 */
+/* 图片信息悬浮层 - 始终显示。
+   信息层本身带半透明遮罩，所以按 app 日/夜主题切换即可，不跟随图片亮度：
+   日间 → 深色遮罩 + 白字/亮色评级；夜间 → 浅色遮罩 + 深字/深色评级。 */
 .image-info-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
-  color: white;
+  color: var(--info-text);
   padding: 8px;
+  --info-text: rgba(255, 255, 255, 0.98);
+  --info-muted: rgba(255, 255, 255, 0.8);
+  --info-spinner: rgba(255, 255, 255, 0.85);
+  --info-dot: #67C23A;
+  --info-heart: rgba(255, 255, 255, 0.85);
+  --info-heart-hover: #fff;
+  --info-heart-active: #F56C6C;
+  --info-rating-success: #b7f08a;
+  --info-rating-warning: #ffd28f;
+  --info-rating-danger: #ffb3b3;
+  --info-rating-info: rgba(255, 255, 255, 0.82);
+}
+
+html.dark-mode .image-info-overlay {
+  background: linear-gradient(transparent, rgba(245, 247, 250, 0.8));
+  --info-text: #1f2329;
+  --info-muted: #4a5058;
+  --info-spinner: #4a5058;
+  --info-dot: #2e7d32;
+  --info-heart: #41464f;
+  --info-heart-hover: #1f2329;
+  --info-heart-active: #d03050;
+  --info-rating-success: #2e7d32;
+  --info-rating-warning: #8a5a00;
+  --info-rating-danger: #b42318;
+  --info-rating-info: #4a5058;
 }
 
 .image-info-content {
@@ -1163,17 +1191,44 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
 }
 
 .info-size {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--info-muted);
 }
 
+/* 瀑布流评级：与大图 header 同一套「透明填充 + 类型色描边/文字」，
+   颜色由信息层的日/夜主题变量决定；!important 用于压过
+   App.vue 里夜间模式的 .dark-mode .el-tag 实底规则。 */
 .info-rating {
   font-size: 10px;
+  background: transparent !important;
+  --el-tag-bg-color: transparent !important;
+  border-width: 1px !important;
+  box-shadow: none !important;
+}
+
+.info-rating.el-tag--success {
+  color: var(--info-rating-success) !important;
+  border-color: var(--info-rating-success) !important;
+}
+
+.info-rating.el-tag--warning {
+  color: var(--info-rating-warning) !important;
+  border-color: var(--info-rating-warning) !important;
+}
+
+.info-rating.el-tag--danger {
+  color: var(--info-rating-danger) !important;
+  border-color: var(--info-rating-danger) !important;
+}
+
+.info-rating.el-tag--info {
+  color: var(--info-rating-info) !important;
+  border-color: var(--info-rating-info) !important;
 }
 
 .downloaded-dot {
   width: 8px;
   height: 8px;
-  background: #67C23A;
+  background: var(--info-dot);
   border-radius: 50%;
 }
 
@@ -1181,7 +1236,7 @@ html.dark-mode .waterfall-image.safe-blur :deep(.el-image__inner) {
    元数据组的排版宽度一致（收藏按钮位置不跳动） */
 .info-downloading {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--info-spinner);
 }
 
 .retry-button {

@@ -321,6 +321,28 @@ describe('FolderTile', () => {
     })
   })
 
+  // 显式 tileSize 时后端已返回对应张数，前端不能再按宽度裁剪
+  describe('显式张数', () => {
+    const renderFixed = async (tileSize, width = 350) => {
+      const folder = mkFolder(1, 8)
+      const wrapper = factory({ folder, tileSize }, { width })
+      await flushPromises()
+      return wrapper.findAll('img').length
+    }
+
+    it('tileSize=8 时 350px 宽也显示 8 张', async () => {
+      expect(await renderFixed('8', 350)).toBe(8)
+    })
+
+    it('tileSize=6 时 500px 宽也显示 6 张', async () => {
+      expect(await renderFixed('6', 500)).toBe(6)
+    })
+
+    it('tileSize=4 时 500px 宽也显示 4 张', async () => {
+      expect(await renderFixed('4', 500)).toBe(4)
+    })
+  })
+
   describe('虚拟磁贴 (isVirtual)', () => {
     it('renders virtual tile for 我的最爱 when folder.isVirtual=true and id="my-favorites"（默认 compactMode=false → 渲染 grid 容器保留 4:3 占位）', () => {
       const wrapper = mount(FolderTile, {

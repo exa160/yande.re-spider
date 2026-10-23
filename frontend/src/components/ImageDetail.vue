@@ -170,17 +170,9 @@ const copyText = computed(() => {
   --detail-ambient-opacity: 0.08;
   --detail-shadow: 0 18px 48px rgba(0, 0, 0, 0.20);
   --rating-safe-text: #2e7d32;
-  --rating-safe-bg: rgba(103, 194, 58, 0.16);
-  --rating-safe-border: rgba(46, 125, 50, 0.32);
   --rating-warn-text: #8a5a00;
-  --rating-warn-bg: rgba(230, 162, 60, 0.18);
-  --rating-warn-border: rgba(138, 90, 0, 0.30);
   --rating-danger-text: #b42318;
-  --rating-danger-bg: rgba(245, 108, 108, 0.16);
-  --rating-danger-border: rgba(180, 35, 24, 0.32);
   --rating-neutral-text: #4a5058;
-  --rating-neutral-bg: rgba(0, 0, 0, 0.05);
-  --rating-neutral-border: rgba(0, 0, 0, 0.12);
 
   position: relative;
   z-index: 12;
@@ -221,17 +213,9 @@ html.dark-mode .image-detail {
   --detail-ambient-opacity: 0.24;
   --detail-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
   --rating-safe-text: #b7f08a;
-  --rating-safe-bg: rgba(103, 194, 58, 0.16);
-  --rating-safe-border: rgba(103, 194, 58, 0.32);
   --rating-warn-text: #ffd28f;
-  --rating-warn-bg: rgba(230, 162, 60, 0.16);
-  --rating-warn-border: rgba(230, 162, 60, 0.34);
   --rating-danger-text: #ffb3b3;
-  --rating-danger-bg: rgba(245, 108, 108, 0.16);
-  --rating-danger-border: rgba(245, 108, 108, 0.34);
-  --rating-neutral-text: rgba(255, 255, 255, 0.78);
-  --rating-neutral-bg: rgba(255, 255, 255, 0.07);
-  --rating-neutral-border: rgba(255, 255, 255, 0.13);
+  --rating-neutral-text: rgba(255, 255, 255, 0.82);
 }
 
 /* 当前图片的模糊环境色。纯视觉层，不承担可读性。 */
@@ -310,36 +294,34 @@ html.dark-mode .image-detail {
   flex-shrink: 0;
 }
 
+/* 与瀑布流 / 大图 header 的评级一致：透明填充 + 同色描边的小矩形 */
 .detail-rating {
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid transparent;
+  background: transparent;
   font-size: 11px;
   line-height: 1.4;
 }
 
 .detail-rating--safe {
   color: var(--rating-safe-text);
-  background: var(--rating-safe-bg);
-  border-color: var(--rating-safe-border);
+  border-color: var(--rating-safe-text);
 }
 
 .detail-rating--warn {
   color: var(--rating-warn-text);
-  background: var(--rating-warn-bg);
-  border-color: var(--rating-warn-border);
+  border-color: var(--rating-warn-text);
 }
 
 .detail-rating--danger {
   color: var(--rating-danger-text);
-  background: var(--rating-danger-bg);
-  border-color: var(--rating-danger-border);
+  border-color: var(--rating-danger-text);
 }
 
 .detail-rating--neutral {
   color: var(--rating-neutral-text);
-  background: var(--rating-neutral-bg);
-  border-color: var(--rating-neutral-border);
+  border-color: var(--rating-neutral-text);
 }
 
 .detail-icon {
@@ -481,7 +463,7 @@ html.dark-mode .image-detail {
   align-items: center;
   gap: 6px;
   padding: 4px 9px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: var(--detail-chip-bg);
   border: 1px solid var(--detail-chip-border);
   font-size: 11px;

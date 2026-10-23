@@ -80,6 +80,9 @@ const props = defineProps({
   // 用于磁贴较多、横向单行空间不足的场景（FavoritePanel 中 3 个虚拟磁贴等分时）。
   // 图标自带 title tooltip（VIRTUAL_TILE_TITLES），悬停仍可看到完整名称。
   hideName: { type: Boolean, default: false },
+  // 后端 tile_size：adaptive / 4 / 6 / 8。
+  // adaptive 时按 tile 实际宽度裁剪；显式 4/6/8 时严格显示该张数。
+  tileSize: { type: String, default: 'adaptive' },
 })
 
 const emit = defineEmits(['click', 'long-press'])
@@ -154,15 +157,25 @@ let observer = null
 let resizeObserver = null
 
 // 后端 tile_size='adaptive' 永远返 8 张，前端按 tile 实际宽度裁剪显示 4 / 6 / 8 张。
-// 阈值 [最小宽度, 显示张数]，从大到小匹配；不命中兜底 4 张。
+// 显式 4/6/8 时后端已经返回对应张数，这里必须原样显示；否则 339px 的 tile 会把
+// 用户选的 8 张再次裁成 6 张，看起来像「收藏夹大小不生效」。
 const ADAPTIVE_THRESHOLDS = [
   [450, 8],
   [300, 6],
   [0, 4],
 ]
+const fixedDisplayCount = computed(() => {
+  if (props.tileSize === 'adaptive') return null
+  const count = Number(props.tileSize)
+  return Number.isFinite(count) && count > 0 ? count : null
+})
 const displayCount = ref(8)
 
 const measureTileWidth = () => {
+  if (fixedDisplayCount.value !== null) {
+    displayCount.value = fixedDisplayCount.value
+    return
+  }
   if (!tileRef.value) return
   const w = tileRef.value.offsetWidth
   for (const [minW, count] of ADAPTIVE_THRESHOLDS) {
@@ -177,6 +190,10 @@ const measureTileWidth = () => {
 const displayedImages = computed(() =>
   (props.folder.preview_images || []).slice(0, displayCount.value)
 )
+
+watch(() => props.tileSize, () => {
+  nextTick(measureTileWidth)
+})
 
 // 虚拟磁贴 + 预览图占位控制：虚拟磁贴无预览图时不应渲染 .folder-preview-grid
 // 容器（否则 aspect-ratio: 4/3 会占用空白区域）。仅当「非虚拟磁贴」或「有预览图」才渲染。

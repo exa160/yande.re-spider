@@ -91,7 +91,7 @@ async function toggle() {
   cursor: pointer;
   padding: 0;
   margin: 0;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--info-heart, rgba(255, 255, 255, 0.85));
   font-size: 18px;
   line-height: 1;
   transition: color 0.2s, transform 0.2s;
@@ -101,10 +101,10 @@ async function toggle() {
 }
 .heart-overlay:hover {
   transform: scale(1.15);
-  color: #fff;
+  color: var(--info-heart-hover, #fff);
 }
 .heart-overlay.active {
-  color: #F56C6C;
+  color: var(--info-heart-active, #F56C6C);
 }
 .heart-overlay.loading {
   opacity: 0.6;

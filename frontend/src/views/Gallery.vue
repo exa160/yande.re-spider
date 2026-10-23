@@ -130,6 +130,7 @@
           <template #default="{ folder }">
             <FolderTile
               :folder="folder"
+              :tile-size="tileSize"
               :save-data-mode="saveDataMode"
               :safe-mode="safeMode"
               @click="handleFolderClick"
@@ -196,6 +197,7 @@
         <div
           v-if="previewVisible && currentImage && !viewerVisible"
           class="image-preview-overlay"
+          :data-chrome-tone="chromeTone"
           @click.self="previewVisible = false"
         >
 <div
@@ -220,6 +222,8 @@
               class="float-main-image"
               :preview-teleported="true"
               @click.stop="viewerVisible = true"
+              @load="onDetailImageLoad"
+              @error="onDetailImageError"
             />
 
             <!-- 右侧导航按钮 -->
@@ -237,7 +241,11 @@
               <div class="float-header-left">
                 <span class="float-id">ID: {{ currentImage.id }}</span>
                 <span class="float-size">{{ currentImage.width }} × {{ currentImage.height }}</span>
-                <el-tag :type="getRatingType(currentImage.rating)" size="small">
+                <el-tag
+                  :type="getRatingType(currentImage.rating)"
+                  size="small"
+                  class="float-rating-tag"
+                >
                   {{ currentImage.rating }}
                 </el-tag>
               </div>
@@ -272,10 +280,10 @@
                 >
                   <el-icon><Download /></el-icon>
                 </el-button>
-                <el-tag type="success" class="float-downloaded-tag">
+                <span class="float-downloaded-status">
                   <el-icon><Check /></el-icon>
                   已下载
-                </el-tag>
+                </span>
               </template>
               <template v-else>
                 <el-button
@@ -407,6 +415,7 @@ import { setLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/
 import { useFavoritesConfig, whenFavoritesConfigReady } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import { useDownloadState } from '@/composables/useDownloadState'
+import { useImageTone } from '@/composables/useImageTone'
 
 const images = ref([])
 const loading = ref(false)
@@ -825,6 +834,22 @@ const showConfigDialog = ref(false)
 
 // 夜间模式
 const isDarkMode = ref(localStorage.getItem('dark_mode') === 'true')
+
+// header/footer 的明暗跟随图片顶部/底部条带，而不是应用主题：
+// 亮图用浅 band + 深字，暗图用暗 band + 白字；详情面板仍跟随日/夜主题。
+const fallbackChromeTone = () => (isDarkMode.value ? 'dark' : 'light')
+const {
+  tone: chromeTone,
+  analyze: analyzeChromeTone,
+  reset: resetChromeTone,
+} = useImageTone(fallbackChromeTone())
+const onDetailImageLoad = (e) => {
+  analyzeChromeTone(e && e.target, fallbackChromeTone())
+}
+const onDetailImageError = () => resetChromeTone(fallbackChromeTone())
+watch(currentImage, () => {
+  resetChromeTone(fallbackChromeTone())
+})
 const toggleDarkMode = () => {
   isDarkMode.value = !isDarkMode.value
   localStorage.setItem('dark_mode', isDarkMode.value ? 'true' : 'false')
@@ -2180,48 +2205,49 @@ html.dark-mode .selection-count {
   cursor: not-allowed;
 }
 
-/* header/footer 日/夜主题变量：日间浅色玻璃 + 深色文字，夜间暗色玻璃 + 白字 */
-.float-header,
-.float-footer {
-  --chrome-band-from: rgba(255, 255, 255, 0.52);
-  --chrome-band-to: rgba(245, 247, 250, 0.42);
-  --chrome-chip: rgba(255, 255, 255, 0.86);
-  --chrome-chip-border: rgba(0, 0, 0, 0.14);
-  --chrome-chip-hover: rgba(255, 255, 255, 0.98);
+/* header/footer 的明暗跟随图片顶部/底部条带（useImageTone）：
+   亮图 → 浅 band + 深字；暗图 → 暗 band + 白字。 */
+.image-preview-overlay[data-chrome-tone='light'] .float-header,
+.image-preview-overlay[data-chrome-tone='light'] .float-footer {
+  --chrome-band-from: rgba(245, 247, 250, 0.72);
+  --chrome-band-to: rgba(232, 236, 242, 0.62);
   --chrome-text: #1f2329;
-  --chrome-muted: #5f6772;
-  --chrome-icon-btn-bg: rgba(255, 255, 255, 0.72);
-  --chrome-icon-btn-border: rgba(0, 0, 0, 0.14);
-  --chrome-icon-btn-color: #303133;
-  --chrome-icon-btn-hover: rgba(255, 255, 255, 0.95);
-  --chrome-heart-bg: rgba(255, 255, 255, 0.72);
-  --chrome-heart-color: #41464f;
+  --chrome-muted: #4a5058;
+  --chrome-icon: #303133;
+  --chrome-hover: rgba(0, 0, 0, 0.06);
+  --chrome-heart: #41464f;
   --chrome-heart-active: #d03050;
+  --chrome-success: #2e7d32;
+  --chrome-primary: #2f7fd9;
   --chrome-text-shadow: none;
   --chrome-band-strong: rgba(255, 255, 255, 0.96);
+  --rating-success: #2e7d32;
+  --rating-warning: #8a5a00;
+  --rating-danger: #b42318;
+  --rating-info: #4a5058;
 }
 
-html.dark-mode .float-header,
-html.dark-mode .float-footer {
-  --chrome-band-from: rgba(16, 18, 22, 0.50);
-  --chrome-band-to: rgba(16, 18, 22, 0.38);
-  --chrome-chip: rgba(16, 18, 22, 0.62);
-  --chrome-chip-border: rgba(255, 255, 255, 0.12);
-  --chrome-chip-hover: rgba(16, 18, 22, 0.76);
+.image-preview-overlay[data-chrome-tone='dark'] .float-header,
+.image-preview-overlay[data-chrome-tone='dark'] .float-footer {
+  --chrome-band-from: rgba(16, 18, 22, 0.56);
+  --chrome-band-to: rgba(16, 18, 22, 0.42);
   --chrome-text: rgba(255, 255, 255, 0.98);
   --chrome-muted: rgba(255, 255, 255, 0.90);
-  --chrome-icon-btn-bg: rgba(0, 0, 0, 0.35);
-  --chrome-icon-btn-border: rgba(255, 255, 255, 0.22);
-  --chrome-icon-btn-color: rgba(255, 255, 255, 0.9);
-  --chrome-icon-btn-hover: rgba(0, 0, 0, 0.5);
-  --chrome-heart-bg: rgba(16, 18, 22, 0.55);
-  --chrome-heart-color: rgba(255, 255, 255, 0.85);
+  --chrome-icon: rgba(255, 255, 255, 0.92);
+  --chrome-hover: rgba(255, 255, 255, 0.12);
+  --chrome-heart: rgba(255, 255, 255, 0.88);
   --chrome-heart-active: #ffa39e;
+  --chrome-success: #8fd3a8;
+  --chrome-primary: #79b8ff;
   --chrome-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.70), 0 0 8px rgba(0, 0, 0, 0.35);
   --chrome-band-strong: rgba(0, 0, 0, 0.80);
+  --rating-success: #b7f08a;
+  --rating-warning: #ffd28f;
+  --rating-danger: #ffb3b3;
+  --rating-info: rgba(255, 255, 255, 0.82);
 }
 
-/* 顶部信息栏 */
+/* 顶部信息栏：不再使用信息 pill，文字直接压在 band 上 */
 .float-header {
   position: absolute;
   top: 0;
@@ -2232,7 +2258,6 @@ html.dark-mode .float-footer {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  /* 固定玻璃：日间浅色、夜间暗色；不做 backdrop-filter */
   background: linear-gradient(180deg, var(--chrome-band-from), var(--chrome-band-to));
 }
 
@@ -2240,11 +2265,7 @@ html.dark-mode .float-footer {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--chrome-chip-border);
-  /* 整条 header 保持透明；只在信息文字下垫一块局部 chip */
-  background: var(--chrome-chip);
+  height: 32px;
 }
 
 .float-id {
@@ -2258,15 +2279,43 @@ html.dark-mode .float-footer {
   font-size: 13px;
 }
 
-/* 关闭/重下载按钮的 chip：跟随日/夜主题 */
+/* 评级：唯一保留的描边徽章；透明填充 + 类型色边框/文字 */
+.float-header .float-rating-tag {
+  background: transparent !important;
+  --el-tag-bg-color: transparent !important;
+  box-shadow: none !important;
+  border-width: 1px !important;
+}
+
+.float-header .float-rating-tag.el-tag--success {
+  color: var(--rating-success) !important;
+  border-color: var(--rating-success) !important;
+}
+
+.float-header .float-rating-tag.el-tag--warning {
+  color: var(--rating-warning) !important;
+  border-color: var(--rating-warning) !important;
+}
+
+.float-header .float-rating-tag.el-tag--danger {
+  color: var(--rating-danger) !important;
+  border-color: var(--rating-danger) !important;
+}
+
+.float-header .float-rating-tag.el-tag--info {
+  color: var(--rating-info) !important;
+  border-color: var(--rating-info) !important;
+}
+
 .float-close-btn {
-  background: var(--chrome-icon-btn-bg) !important;
-  border-color: var(--chrome-icon-btn-border) !important;
-  color: var(--chrome-icon-btn-color) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--chrome-icon) !important;
+  box-shadow: none !important;
 }
 
 .float-close-btn:hover {
-  background: var(--chrome-icon-btn-hover) !important;
+  background: var(--chrome-hover) !important;
 }
 
 /* 底部操作栏 */
@@ -2280,32 +2329,30 @@ html.dark-mode .float-footer {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  /* 与 header 同一套固定玻璃配方；footer 从底边向上渐隐 */
   background: linear-gradient(0deg, var(--chrome-band-from), var(--chrome-band-to));
 }
 
 .float-footer-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-/* 大图底部的收藏标识：紧跟下载按钮，视觉上与 footer 右侧文字同色。
-   flex-shrink:0 防止「已下载」分支变长时星标被压扁。 */
+/* 收藏：无框，仅保留 32px 命中区和 hover 背景 */
 .float-heart {
   flex-shrink: 0;
-  color: var(--chrome-heart-color);
+  width: 32px;
+  height: 32px;
   padding: 4px;
   border-radius: 50%;
-  background: var(--chrome-heart-bg);
+  background: transparent;
+  color: var(--chrome-heart);
 }
 
-/* 已收藏星标改浅红 #ffa39e（对比度 3.24:1，图标按 WCAG 1.4.11 的 ≥3:1 达标）。
-   旧值 #F56C6C 在最坏面板上只有 2.14:1 —— 浅色图上等于看不见。
-   为什么不改 HeartOverlay 组件：它是共享组件，WaterfallGallery / FolderTile
-   都用在浅色卡片上，那里 #F56C6C 反而是对的。本选择器特异性
-   （0,4,0）高于子组件 scoped 的 .heart-overlay.active[data-v-x]（0,3,0），
-   与样式注入顺序无关，确定性生效。 */
+.float-heart:hover {
+  background: var(--chrome-hover);
+}
+
 .float-footer .float-heart.active {
   color: var(--chrome-heart-active);
 }
@@ -2313,18 +2360,17 @@ html.dark-mode .float-footer {
 .float-footer-right {
   display: flex;
   align-items: center;
-  gap: 6px;
-  cursor: pointer;
+  gap: 8px;
+  min-height: 32px;
   padding: 6px 10px;
   border-radius: 10px;
-  border: 1px solid var(--chrome-chip-border);
-  /* 与 header 的局部 chip 同一配方 */
-  background: var(--chrome-chip);
+  background: transparent;
+  cursor: pointer;
   transition: background 0.2s;
 }
 
 .float-footer-right:hover {
-  background: var(--chrome-chip-hover);
+  background: var(--chrome-hover);
 }
 
 .float-expand-text {
@@ -2336,18 +2382,21 @@ html.dark-mode .float-footer {
   color: var(--chrome-muted);
 }
 
+/* 下载：无框主操作，用颜色表达 primary */
 .float-download-btn {
-  background: rgba(64, 158, 255, 0.85) !important;
-  border-color: rgba(64, 158, 255, 0.85) !important;
-  color: white !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--chrome-primary) !important;
+  box-shadow: none !important;
+  padding: 0 6px !important;
 }
 
 .float-download-btn:hover:not(:disabled) {
-  background: rgba(64, 158, 255, 1) !important;
+  background: var(--chrome-hover) !important;
 }
 
 .float-download-btn:disabled {
-  opacity: 0.8 !important;
+  opacity: 0.65 !important;
   cursor: not-allowed !important;
 }
 
@@ -2358,25 +2407,32 @@ html.dark-mode .float-footer {
 }
 
 .float-redownload-btn {
-  background: var(--chrome-icon-btn-bg) !important;
-  border-color: var(--chrome-icon-btn-border) !important;
-  color: var(--chrome-icon-btn-color) !important;
   width: 32px;
   height: 32px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 10px;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--chrome-icon) !important;
+  box-shadow: none !important;
 }
 
 .float-redownload-btn:hover {
-  background: var(--chrome-icon-btn-hover) !important;
+  background: var(--chrome-hover) !important;
 }
 
-.float-downloaded-tag {
-  background: rgba(103, 194, 58, 0.85) !important;
-  border-color: rgba(103, 194, 58, 0.85) !important;
-  color: white !important;
+/* 「已下载」不再是 el-tag，而是裸的绿色 check + 文本 */
+.float-downloaded-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  color: var(--chrome-success);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 /* 图片预览浮层淡入淡出 */
