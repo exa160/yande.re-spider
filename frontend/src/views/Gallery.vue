@@ -198,7 +198,11 @@
           class="image-preview-overlay"
           @click.self="previewVisible = false"
         >
-<div class="float-image-wrapper" :style="wrapperStyle">
+<div
+          class="float-image-wrapper"
+          :class="{ 'float-image-wrapper--detail-open': infoPanelExpanded }"
+          :style="wrapperStyle"
+        >
             <!-- 左侧导航按钮 -->
             <el-button
               v-if="images.length > 1"
@@ -210,17 +214,12 @@
               <el-icon><ArrowLeft /></el-icon>
             </el-button>
 
-            <!-- @load 的 e.target 就是正在显示的那张 <img>（已解码、同源）。
-                 浮层遮罩直接由它求解：零额外请求，且换 src 时旧请求被 abort，
-                 旧 load 事件不会再触发 —— 天然不会写错图。详见 useOverlayScrim.js。 -->
             <el-image
               :src="getDetailUrl(currentImage)"
               fit="contain"
               class="float-main-image"
               :preview-teleported="true"
               @click.stop="viewerVisible = true"
-              @load="onDetailImageLoad"
-              @error="resetOverlayScrim"
             />
 
             <!-- 右侧导航按钮 -->
@@ -305,69 +304,50 @@
               />
             </div>
             
-            <div class="float-footer-right" @click="toggleInfoPanel">
+            <div
+              class="float-footer-right"
+              :data-arrow="isDesktop ? (infoPanelExpanded ? 'left' : 'right') : (infoPanelExpanded ? 'up' : 'down')"
+              @click="toggleInfoPanel"
+            >
               <span class="float-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
               <el-icon class="float-expand-icon">
-                <ArrowUp v-if="infoPanelExpanded" />
-                <ArrowDown v-else />
+                <template v-if="isDesktop">
+                  <ArrowLeft v-if="infoPanelExpanded" />
+                  <ArrowRight v-else />
+                </template>
+                <template v-else>
+                  <ArrowUp v-if="infoPanelExpanded" />
+                  <ArrowDown v-else />
+                </template>
               </el-icon>
             </div>
           </div>
 
-          <transition name="detail-slide-up">
-            <div v-if="infoPanelExpanded" class="float-detail-panel">
-              <div class="detail-grid">
-                <div class="detail-item">
-                  <span class="detail-label">大小</span>
-                  <span class="detail-value">{{ formatFileSize(currentImage.file_size) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">作者</span>
-                  <span class="detail-value">{{ detailAuthor || '-' }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">上传用户</span>
-                  <span class="detail-value">{{ currentImage.author || '-' }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">MD5</span>
-                  <span class="detail-value md5">{{ currentImage.md5 }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">时间</span>
-                  <span class="detail-value">{{ currentImage.created_at }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">来源</span>
-                  <span class="detail-value">
-                    <a
-                      v-if="detailSource"
-                      class="detail-source-link"
-                      :href="detailSource"
-                      :title="detailSource"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >{{ detailSourceLabel }}</a>
-                    <span v-else>-</span>
-                  </span>
-                </div>
-              </div>
-              
-              <div class="detail-tags-area">
-                <div class="detail-tags-label">标签 ({{ currentImage.tags?.length || 0 }})</div>
-                <div class="detail-tags-list">
-                  <el-tag
-                    v-for="tag in currentImage.tags"
-                    :key="tag"
-                    size="default"
-                    class="detail-tag"
-                    :style="getTagStyle(tag)"
-                  >
-                    {{ tag }}
-                  </el-tag>
-                </div>
-              </div>
-            </div>
+        </div>
+
+        <!-- 详情：桌面为右侧玻璃侧栏，窄屏为图片下方坞。
+             两种形态共用 ImageDetail 的字段/标签数据；header/footer 与详情
+             统一为固定透明玻璃，不再按图片采样遮罩。 -->
+        <div
+          ref="detailHostRef"
+          class="detail-host"
+          :class="{ 'detail-host--open': infoPanelExpanded }"
+          :style="detailHostStyle"
+        >
+          <transition name="detail-surface">
+            <ImageDetail
+              v-if="infoPanelExpanded"
+              :layout="isDesktop ? 'rail' : 'dock'"
+              :title="'详情'"
+              :subtitle="detailSubtitle"
+              :rating="currentImage.rating"
+              :sections="detailSections"
+              :tags="detailTags"
+              :height="detailRailHeight"
+              :ambient-src="getDetailAmbientUrl(currentImage)"
+              @close="closeInfoPanel"
+              @copy="copyDetailInfo"
+            />
           </transition>
         </div>
         </div>
@@ -413,6 +393,7 @@ import FolderTile from '@/components/FolderTile.vue'
 import BackButton from '@/components/BackButton.vue'
 import HeartOverlay from '@/components/HeartOverlay.vue'
 import DownloadIndicator from '@/components/DownloadIndicator.vue'
+import ImageDetail from '@/components/ImageDetail.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
@@ -426,7 +407,6 @@ import { setLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/
 import { useFavoritesConfig, whenFavoritesConfigReady } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import { useDownloadState } from '@/composables/useDownloadState'
-import { useOverlayScrim } from '@/composables/useOverlayScrim'
 
 const images = ref([])
 const loading = ref(false)
@@ -570,6 +550,12 @@ const waterfallSourceMode = computed(() => {
 const previewVisible = ref(false)
 const currentImage = ref(null)
 const previewContainerStyle = ref({})
+const infoPanelExpanded = ref(false)
+// 移动端展开详情时用整体上移给坞让位：--detail-shift 由坞的实际高度算出
+const detailHostRef = ref(null)
+const detailShift = ref(0)
+// 详情形态断点：>=980px 用右侧栏，窄屏用图片下方坞（与站内断点一致）
+const isDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= 980 : true)
 const downloading = ref(false)
 // 任务下发请求在途标记（防重复点击）；「下载中」的权威来源是 useDownloadState
 const {
@@ -590,10 +576,6 @@ const downloadTooltipText = computed(() => {
 })
 // 下载完成订阅的退订句柄（onMounted 注册 / onUnmounted 注销）
 let unsubscribeDownloadCompleted = null
-// 大图三块浮层的背景遮罩求解（取代旧的 analyzeImageColor + overlayColorScheme）。
-// scrims 初始为 null —— 此时 wrapperStyle 不写 --overlay-scrim-*，CSS 的
-// var() 兜底 rgba(0,0,0,0.62) 直接生效（对比度 4.53:1）。
-const { scrims: overlayScrims, analyzeFromImageEl, reset: resetOverlayScrim } = useOverlayScrim()
 const safeMode = ref(localStorage.getItem('safe_mode') !== 'false')
 const viewerVisible = ref(false)
 const mobileMenuExpanded = ref(false)
@@ -709,37 +691,35 @@ const onFavoriteChanged = (payload) => {
   }
 }
 
-// 浮层遮罩：直接由 el-image 的 @load 求解，e.target 就是屏幕上那张已解码的 <img>。
-//
-// 旧实现（analyzeImageColor）另起 new Image() 请求 150×150 预览缩略图，且入口
-// 依赖 img.preview_url 非空 —— 而该字段是 /gallery/load 响应序列化那一刻
-// check_local_file() 的结果，瀑布流懒加载时现场生成的预览图不会回写它，
-// 于是新会话首次浏览时恒为 null → 静默降级为 dark（6% 白纱罩，浅色图上白字
-// 1.9:1）。现在：零额外请求、同源不 taint、换 src 时旧 load 不会再来。
-const onDetailImageLoad = (e) => {
-  analyzeFromImageEl(e && e.target)
-}
+// 详情侧栏占位：宽度与 ImageDetail 的 rail 保持一致（340px）
+const DETAIL_RAIL_WIDTH = 340
+const DETAIL_RAIL_GAP = 16
+const DETAIL_LAYOUT_MARGIN = 48
 
-// 切图时先复位，避免上一张图的遮罩残留到新图上（直到 @load 覆盖它）
-watch(currentImage, () => {
-  resetOverlayScrim()
-})
-
-// 计算图片预览容器尺寸，保持图片原始比例，80vh 高度
+// 计算图片预览容器尺寸，保持图片原始比例。
+// 桌面展开详情时给右侧栏让位；移动端不缩放图片，展开时整体上移。
 const calculatePreviewSize = () => {
   if (!currentImage.value) {
     previewContainerStyle.value = {}
     return
   }
-  
+
   const imgWidth = currentImage.value.width || 1920
   const imgHeight = currentImage.value.height || 1080
   const imgRatio = imgWidth / imgHeight
-  
-  // 最大可用高度（80vh）
-  const maxHeight = window.innerHeight * 0.8
-  const maxWidth = window.innerWidth * 0.8
-  
+  const detailsOpen = infoPanelExpanded.value
+  const desktop = isDesktop.value
+
+  const maxHeight = window.innerHeight * (desktop ? 0.8 : 0.9)
+  let maxWidth = window.innerWidth * (desktop ? 0.8 : 0.94)
+  if (desktop && detailsOpen) {
+    maxWidth = Math.min(
+      maxWidth,
+      window.innerWidth - DETAIL_RAIL_WIDTH - DETAIL_RAIL_GAP - DETAIL_LAYOUT_MARGIN,
+    )
+  }
+  maxWidth = Math.max(240, maxWidth)
+
   let width, height
   if (imgRatio > maxWidth / maxHeight) {
     // 图片更宽，以宽度为准
@@ -750,10 +730,53 @@ const calculatePreviewSize = () => {
     height = maxHeight
     width = maxHeight * imgRatio
   }
-  
+
   previewContainerStyle.value = {
     width: `${width}px`,
     height: `${height}px`
+  }
+}
+
+// 侧栏高度跟随图片，极短图保底 480px，最多 80vh
+const detailRailHeight = computed(() => {
+  const imageHeight = parseFloat(previewContainerStyle.value.height) || 0
+  const viewportCap = typeof window !== 'undefined' ? window.innerHeight * 0.8 : 720
+  return `${Math.min(viewportCap, Math.max(480, imageHeight || 480))}px`
+})
+
+// 移动端整体上移：图片底边与坞顶边保持 8px 间距。
+// 只测量坞的高度，图片位置用「居中 + 高度」推算，避免读到已经偏移的 rect。
+const updateDetailShift = () => {
+  if (isDesktop.value || !infoPanelExpanded.value) {
+    detailShift.value = 0
+    return
+  }
+  const dock = detailHostRef.value?.querySelector('.image-detail')
+  const imageHeight = parseFloat(previewContainerStyle.value.height) || 0
+  const dockHeight = dock?.getBoundingClientRect().height || 0
+  if (!imageHeight || !dockHeight) {
+    detailShift.value = 0
+    return
+  }
+  const imageBottom = (window.innerHeight + imageHeight) / 2
+  const dockTop = window.innerHeight - 8 - dockHeight
+  detailShift.value = Math.max(0, Math.round(imageBottom + 8 - dockTop))
+}
+
+const scheduleDetailShiftUpdate = () => {
+  if (!previewVisible.value) return
+  nextTick(updateDetailShift)
+}
+
+watch([infoPanelExpanded, isDesktop], scheduleDetailShiftUpdate)
+
+// 窗口尺寸变化：更新断点并重算预览尺寸与移动端上移量。
+// 命名函数是为了 onUnmounted 能移除（旧实现是匿名监听，卸载后仍会执行）。
+const handleWindowResize = () => {
+  isDesktop.value = window.innerWidth >= 980
+  if (previewVisible.value && currentImage.value) {
+    calculatePreviewSize()
+    scheduleDetailShiftUpdate()
   }
 }
 
@@ -761,35 +784,32 @@ const calculatePreviewSize = () => {
 watch(currentImage, (img) => {
   if (previewVisible.value && img) {
     calculatePreviewSize()
+    scheduleDetailShiftUpdate()
   }
 })
 
-// 包装层的行内 style：尺寸 + 浮层遮罩 CSS 变量。
-// 三块浮层（.float-header / .float-footer / .float-detail-panel）都是
-// .float-image-wrapper 的子元素，自定义属性会继承，所以只写在这里。
-//
-// **scrims 为 null 时刻意不写这两个 key** —— var() 拿不到定义就回落到
-// CSS 里写死的 rgba(0,0,0,0.62)（L1 保底，纯白上 tertiary 4.53:1）。
-// 「JS 少写一个键」就是一层降级，不需要在 JS 里重复实现保底逻辑。
-const wrapperStyle = computed(() => {
-  const style = { ...previewContainerStyle.value }
-  if (overlayScrims.value) {
-    style['--overlay-scrim'] = overlayScrims.value.bar
-    style['--overlay-scrim-panel'] = overlayScrims.value.panel
-  }
-  return style
+// 包装层的行内 style：尺寸 + 移动端展开详情时的整体上移量。
+const wrapperStyle = computed(() => ({
+  ...previewContainerStyle.value,
+  '--detail-shift': `${detailShift.value}px`,
+}))
+
+// 移动端坞与图片同宽；桌面用 host 的宽度过渡给 rail 让位（不再靠 flex 在动画结束瞬间跳变）
+const detailHostStyle = computed(() => {
+  if (!isDesktop.value) return { width: previewContainerStyle.value.width || '100%' }
+  return { height: detailRailHeight.value }
 })
 
 const tagsExpanded = ref(false)
-const infoPanelExpanded = ref(false)
 
-// Tag 类型颜色映射（背景透明度保持和原来一致 0.1，边框用对应颜色）
+// Tag 类型 → 详情 chip 的半透明底色与圆点
 const TAG_TYPE_COLORS = {
-  0: { bg: 'rgba(238, 136, 135, 0.1)', border: '#ee8887' },  // 通用
-  1: { bg: 'rgba(204, 204, 0, 0.1)', border: '#cccc00' },     // 艺术家
-  3: { bg: 'rgba(221, 0, 221, 0.1)', border: '#D0D' },        // 版权
-  4: { bg: 'rgba(0, 170, 0, 0.1)', border: '#0A0' },         // 角色
+  0: { bg: 'rgba(238, 136, 135, 0.10)', border: '#ee8887' },  // 通用
+  1: { bg: 'rgba(204, 204, 0, 0.10)', border: '#cccc00' },     // 艺术家
+  3: { bg: 'rgba(221, 0, 221, 0.10)', border: '#D0D' },        // 版权
+  4: { bg: 'rgba(0, 170, 0, 0.10)', border: '#0A0' },         // 角色
 }
+const getTagColors = (tagName) => TAG_TYPE_COLORS[tagTypesMap.value[tagName]] || null
 
 // 存储 tag 类型信息
 const tagTypesMap = ref({})
@@ -1422,6 +1442,13 @@ const handleImageClick = async (image) => {
 
 const toggleInfoPanel = () => {
   infoPanelExpanded.value = !infoPanelExpanded.value
+  calculatePreviewSize()
+}
+
+const closeInfoPanel = () => {
+  if (!infoPanelExpanded.value) return
+  infoPanelExpanded.value = false
+  calculatePreviewSize()
 }
 
 const handleImageSelect = (image, selected) => {
@@ -1542,19 +1569,6 @@ const getRatingType = (rating) => {
   return types[rating] || 'info'
 }
 
-// 根据 tag 类型获取样式（只返回背景和边框，不改文字颜色）
-const getTagStyle = (tagName) => {
-  const type = tagTypesMap.value[tagName]
-  if (type !== undefined && TAG_TYPE_COLORS[type]) {
-    const colors = TAG_TYPE_COLORS[type]
-    return {
-      backgroundColor: colors.bg,
-      borderColor: colors.border
-    }
-  }
-  return {}
-}
-
 // ---------------------------------------------------------------------------
 // 大图详情面板：作者 / 上传用户 / 来源
 // ---------------------------------------------------------------------------
@@ -1620,6 +1634,72 @@ const formatFileSize = (bytes) => {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
+// 详情副标题：ID + 尺寸（侧栏/坞头部显示，也是复制文本的一部分）
+const detailSubtitle = computed(() => {
+  const image = currentImage.value
+  if (!image) return ''
+  const dimensions = image.width && image.height ? `${image.width} × ${image.height}` : ''
+  return [`#${image.id}`, dimensions].filter(Boolean).join(' · ')
+})
+
+// 详情字段分组：侧栏按「文件 / 来源」分区，窄屏坞拍平成两列网格。
+// 只描述展示结构，不包含任何布局/样式判断。
+const detailSections = computed(() => {
+  const image = currentImage.value
+  if (!image) return []
+  return [
+    {
+      label: '文件',
+      fields: [
+        { label: '大小', value: formatFileSize(image.file_size) },
+        { label: 'MD5', value: image.md5 || '-', mono: true, wide: true },
+        { label: '时间', value: image.created_at || '-' },
+      ],
+    },
+    {
+      label: '来源',
+      fields: [
+        {
+          label: '来源',
+          value: detailSourceLabel.value || '-',
+          href: detailSource.value || '',
+          wide: true,
+        },
+        { label: '作者', value: detailAuthor.value || '-' },
+        { label: '上传用户', value: image.author || '-' },
+      ],
+    },
+  ]
+})
+
+const detailTags = computed(() => (
+  (currentImage.value?.tags || []).map((tag) => {
+    const colors = getTagColors(tag)
+    return {
+      text: tag,
+      dot: colors?.border || 'rgba(255, 255, 255, 0.45)',
+      bg: colors?.bg || '',
+      border: colors?.border || '',
+    }
+  })
+))
+
+const copyDetailInfo = async (text) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('详情已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本')
+  }
+}
+
+// 环境色用预览图而不是原图：同一张图已在瀑布流里加载/缓存，
+// 且侧栏/坞只需要一层模糊色，没必要再解码一张几千像素的原图。
+const getDetailAmbientUrl = (image) => (
+  image ? `/api/v1/gallery/cache/preview/${image.id}` : ''
+)
+
 const getDetailUrl = (image) => {
   if (!image) return ''
   const favStatusParam = enableMyFavorites.value
@@ -1666,11 +1746,7 @@ onMounted(async () => {
     handleSearch({})
   }
   // 窗口尺寸变化时重新计算预览尺寸
-  window.addEventListener('resize', () => {
-    if (previewVisible.value && currentImage.value) {
-      calculatePreviewSize()
-    }
-  })
+  window.addEventListener('resize', handleWindowResize)
   // 键盘左右箭头切换图片
   window.addEventListener('keydown', handleKeydown)
   // 启动下载状态轮询（单例，引用计数）：既对账本前端下的任务，
@@ -1680,6 +1756,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', handleKeydown)
   stopDownloadSync()
   unsubscribeDownloadCompleted?.()
@@ -1983,6 +2060,48 @@ html.dark-mode .selection-count {
   justify-content: center;
 }
 
+@media (max-width: 979px) {
+  .image-preview-overlay {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
+/* 详情宿主：
+   桌面是第三个 flex 项，宽度 0↔340、margin 0↔16 可过渡，收起时不再占位到动画结束；
+   窄屏绝对定位到底部，宽度由图片宽度内联下发。 */
+.detail-host {
+  flex: 0 0 auto;
+  width: 0;
+  margin-left: 0;
+  align-self: center;
+  overflow: hidden;
+  transition: width 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+    margin-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (min-width: 980px) {
+  .detail-host--open {
+    width: 340px;
+    margin-left: 16px;
+  }
+}
+
+@media (max-width: 979px) {
+  .detail-host {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    transition: none;
+  }
+}
+
 /* 图片容器 - 动态尺寸（由JS计算保持图片比例），图片自适应缩放 */
 .float-image-wrapper {
   position: relative;
@@ -1992,6 +2111,24 @@ html.dark-mode .selection-count {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
+  transition: width 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (max-width: 979px) {
+  /* 移动端不缩放图片：展开详情时整体上移，让详情坞落在下方 */
+  .float-image-wrapper {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .float-image-wrapper--detail-open {
+    transform: translate(-50%, calc(-50% - var(--detail-shift, 0px)));
+  }
 }
 
 /* 图片 - 适应容器 */
@@ -2043,6 +2180,47 @@ html.dark-mode .selection-count {
   cursor: not-allowed;
 }
 
+/* header/footer 日/夜主题变量：日间浅色玻璃 + 深色文字，夜间暗色玻璃 + 白字 */
+.float-header,
+.float-footer {
+  --chrome-band-from: rgba(255, 255, 255, 0.52);
+  --chrome-band-to: rgba(245, 247, 250, 0.42);
+  --chrome-chip: rgba(255, 255, 255, 0.86);
+  --chrome-chip-border: rgba(0, 0, 0, 0.14);
+  --chrome-chip-hover: rgba(255, 255, 255, 0.98);
+  --chrome-text: #1f2329;
+  --chrome-muted: #5f6772;
+  --chrome-icon-btn-bg: rgba(255, 255, 255, 0.72);
+  --chrome-icon-btn-border: rgba(0, 0, 0, 0.14);
+  --chrome-icon-btn-color: #303133;
+  --chrome-icon-btn-hover: rgba(255, 255, 255, 0.95);
+  --chrome-heart-bg: rgba(255, 255, 255, 0.72);
+  --chrome-heart-color: #41464f;
+  --chrome-heart-active: #d03050;
+  --chrome-text-shadow: none;
+  --chrome-band-strong: rgba(255, 255, 255, 0.96);
+}
+
+html.dark-mode .float-header,
+html.dark-mode .float-footer {
+  --chrome-band-from: rgba(16, 18, 22, 0.50);
+  --chrome-band-to: rgba(16, 18, 22, 0.38);
+  --chrome-chip: rgba(16, 18, 22, 0.62);
+  --chrome-chip-border: rgba(255, 255, 255, 0.12);
+  --chrome-chip-hover: rgba(16, 18, 22, 0.76);
+  --chrome-text: rgba(255, 255, 255, 0.98);
+  --chrome-muted: rgba(255, 255, 255, 0.90);
+  --chrome-icon-btn-bg: rgba(0, 0, 0, 0.35);
+  --chrome-icon-btn-border: rgba(255, 255, 255, 0.22);
+  --chrome-icon-btn-color: rgba(255, 255, 255, 0.9);
+  --chrome-icon-btn-hover: rgba(0, 0, 0, 0.5);
+  --chrome-heart-bg: rgba(16, 18, 22, 0.55);
+  --chrome-heart-color: rgba(255, 255, 255, 0.85);
+  --chrome-heart-active: #ffa39e;
+  --chrome-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.70), 0 0 8px rgba(0, 0, 0, 0.35);
+  --chrome-band-strong: rgba(0, 0, 0, 0.80);
+}
+
 /* 顶部信息栏 */
 .float-header {
   position: absolute;
@@ -2054,50 +2232,41 @@ html.dark-mode .selection-count {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  /* L1 保底：rgba(0,0,0,0.62) 叠在纯白上 = #616161，白字 tertiary@0.78
-     恰好 4.53:1（WCAG AA 线 4.5）。这是 L1 层，纯 CSS，不会失效。
-     JS 求解成功时 useOverlayScrim 会写入更小的 --overlay-scrim（只往下调，
-     永远不会比这个更轻）；求解失败 / 图 404 / canvas 不可用时 var() 拿不到
-     定义，直接落到这里。fallback 字面量必须与 useOverlayScrim.js 的
-     SCRIM_FLOOR_ALPHA 一致（单测 T9 断言）。 */
-  background: var(--overlay-scrim, rgba(0, 0, 0, 0.62));
-  /* blur 保持原样的 4px：只做轻微柔化，不把浮层变成毛玻璃。
-     （曾试过 blur(10px) saturate(1.15)，但 saturate 是纯美化而非可读性修复，
-     且 10px 模糊会让「半透明薄纱」变成 iOS 毛玻璃 —— 对一个看图的站是降级。
-     blur 从不影响可测量的对比度，那次改动是纯粹的观感投机，已回退。） */
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* 固定玻璃：日间浅色、夜间暗色；不做 backdrop-filter */
+  background: linear-gradient(180deg, var(--chrome-band-from), var(--chrome-band-to));
 }
 
 .float-header-left {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--chrome-chip-border);
+  /* 整条 header 保持透明；只在信息文字下垫一块局部 chip */
+  background: var(--chrome-chip);
 }
 
 .float-id {
   font-weight: bold;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--chrome-text);
   font-size: 14px;
 }
 
 .float-size {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--chrome-muted);
   font-size: 13px;
 }
 
-/* 关闭/重下载按钮的 chip：一律「暗 chip + 白图标」。
-   旧实现分两档（dark 档 rgba(255,255,255,0.1) / light 档 rgba(0,0,0,0.3)）。
-   统一后两端都安全：叠在 L1 保底(97,97,97)上 → chip=63 → 白图标 10.52:1；
-   叠在纯黑图上（求解出 alpha=0）→ chip=0 → 白图标 21:1。 */
+/* 关闭/重下载按钮的 chip：跟随日/夜主题 */
 .float-close-btn {
-  background: rgba(0, 0, 0, 0.35) !important;
-  border-color: rgba(255, 255, 255, 0.22) !important;
-  color: rgba(255, 255, 255, 0.9) !important;
+  background: var(--chrome-icon-btn-bg) !important;
+  border-color: var(--chrome-icon-btn-border) !important;
+  color: var(--chrome-icon-btn-color) !important;
 }
 
 .float-close-btn:hover {
-  background: rgba(0, 0, 0, 0.5) !important;
+  background: var(--chrome-icon-btn-hover) !important;
 }
 
 /* 底部操作栏 */
@@ -2111,10 +2280,8 @@ html.dark-mode .selection-count {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  /* 与 .float-header 共用 --overlay-scrim（两处 fallback 必须同值，见 T9） */
-  background: var(--overlay-scrim, rgba(0, 0, 0, 0.62));
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* 与 header 同一套固定玻璃配方；footer 从底边向上渐隐 */
+  background: linear-gradient(0deg, var(--chrome-band-from), var(--chrome-band-to));
 }
 
 .float-footer-left {
@@ -2127,7 +2294,10 @@ html.dark-mode .selection-count {
    flex-shrink:0 防止「已下载」分支变长时星标被压扁。 */
 .float-heart {
   flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--chrome-heart-color);
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--chrome-heart-bg);
 }
 
 /* 已收藏星标改浅红 #ffa39e（对比度 3.24:1，图标按 WCAG 1.4.11 的 ≥3:1 达标）。
@@ -2137,7 +2307,7 @@ html.dark-mode .selection-count {
    （0,4,0）高于子组件 scoped 的 .heart-overlay.active[data-v-x]（0,3,0），
    与样式注入顺序无关，确定性生效。 */
 .float-footer .float-heart.active {
-  color: #ffa39e;
+  color: var(--chrome-heart-active);
 }
 
 .float-footer-right {
@@ -2146,21 +2316,24 @@ html.dark-mode .selection-count {
   gap: 6px;
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--chrome-chip-border);
+  /* 与 header 的局部 chip 同一配方 */
+  background: var(--chrome-chip);
   transition: background 0.2s;
 }
 
 .float-footer-right:hover {
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--chrome-chip-hover);
 }
 
 .float-expand-text {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--chrome-muted);
 }
 
 .float-expand-icon {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--chrome-muted);
 }
 
 .float-download-btn {
@@ -2185,9 +2358,9 @@ html.dark-mode .selection-count {
 }
 
 .float-redownload-btn {
-  background: rgba(0, 0, 0, 0.35) !important;
-  border-color: rgba(255, 255, 255, 0.22) !important;
-  color: rgba(255, 255, 255, 0.9) !important;
+  background: var(--chrome-icon-btn-bg) !important;
+  border-color: var(--chrome-icon-btn-border) !important;
+  color: var(--chrome-icon-btn-color) !important;
   width: 32px;
   height: 32px;
   padding: 0;
@@ -2197,114 +2370,13 @@ html.dark-mode .selection-count {
 }
 
 .float-redownload-btn:hover {
-  background: rgba(0, 0, 0, 0.5) !important;
+  background: var(--chrome-icon-btn-hover) !important;
 }
 
 .float-downloaded-tag {
   background: rgba(103, 194, 58, 0.85) !important;
   border-color: rgba(103, 194, 58, 0.85) !important;
   color: white !important;
-}
-
-/* 详情面板 - 向上展开 */
-.float-detail-panel {
-  position: absolute;
-  bottom: 48px;
-  left: 0;
-  right: 0;
-  z-index: 9;
-  padding: 14px 16px;
-  /* 独立变量：面板最多占 35vh，若并进 --overlay-scrim，「上暗下亮」的常见
-     人像图 header 会被下半张的亮部无谓压黑。 */
-  background: var(--overlay-scrim-panel, rgba(0, 0, 0, 0.62));
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  max-height: 35vh;
-  overflow-y: auto;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.detail-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* tertiary 档：从 0.5 提到 0.78。它是 11px 的字段名（大小/作者/上传用户/
-   MD5/时间/来源），本来就是信息而非装饰，值得 AA 对比度。
-   求解目标就定在这一档（TARGET_TEXT_ALPHA = 0.78），保证三档同时达标。 */
-.detail-label {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.detail-value {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.95);
-  word-break: break-all;
-}
-
-.detail-value.md5 {
-  font-size: 11px;
-  font-family: monospace;
-}
-
-/* 「来源」超链接：白字 + 常驻下划线，而不是 Element Plus 的蓝色。
-   旧值 var(--el-color-primary)=#409EFF 在最坏面板(#616161)上只有 2.23:1，
-   浅色图上等于隐形；而且旧实现根本没写 .overlay-light 规则（连浅色档都
-   没有覆盖它，实测纯白图上 1.21:1）。
-   为什么不能靠「把面板压得更黑」来救蓝色：要让 #409EFF 达到 4.5:1，面板得
-   压到 ≤ #292929，对应纯白背景需要 alpha 0.84 的遮罩 —— 太重，且违背本元素
-   原本的设计意图（避免抢过 MD5 等关键信息）。白字+下划线既达标又更克制，
-   是暗色工具栏的通行做法。 */
-.detail-source-link {
-  color: rgba(255, 255, 255, 0.95);
-  text-decoration: underline;
-  text-decoration-color: rgba(255, 255, 255, 0.45);
-  text-underline-offset: 2px;
-  word-break: break-all;
-  transition: color 0.15s, text-decoration-color 0.15s;
-}
-.detail-source-link:hover {
-  color: #ffffff;
-  text-decoration-color: #ffffff;
-}
-
-.detail-tags-area {
-  margin-top: 4px;
-}
-
-.detail-tags-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.82);
-  margin-bottom: 8px;
-}
-
-.detail-tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 80px;
-  overflow-y: auto;
-}
-
-.detail-tag {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.9);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.detail-tag:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
 }
 
 /* 图片预览浮层淡入淡出 */
@@ -2317,16 +2389,23 @@ html.dark-mode .selection-count {
   opacity: 0;
 }
 
-/* 详情面板过渡动画 */
-.detail-slide-up-enter-active,
-.detail-slide-up-leave-active {
-  transition: all 0.2s ease;
+/* 详情表面过渡：桌面从右侧滑入，窄屏从下方滑入 */
+.detail-surface-enter-active,
+.detail-surface-leave-active {
+  transition: opacity 0.26s ease, transform 0.30s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.detail-slide-up-enter-from,
-.detail-slide-up-leave-to {
+.detail-surface-enter-from,
+.detail-surface-leave-to {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateX(14px);
+}
+
+@media (max-width: 979px) {
+  .detail-surface-enter-from,
+  .detail-surface-leave-to {
+    transform: translateY(14px);
+  }
 }
 
 /* 深色模式适配 */
@@ -2334,57 +2413,19 @@ html.dark-mode .image-preview-overlay {
   background: rgba(0, 0, 0, 0.86);
 }
 
-/* ---------------------------------------------------------------------------
- * 残差兜底：文字描边阴影
- *
- * **先说清楚它几乎没有可见效果，别被标题误导。**
- * 遮罩的职责就是把背景压暗，所以白字下面的底色本身就是暗的 —— 暗色阴影叠在
- * 暗色背景上是看不见的。它唯一会显形的地方是 §9.5 记录的那条残差：p90 分位
- * 意味着条带里最亮的 10% 像素比面板亮，万一某个笔画正好压在那块亮区上，
- * 这层阴影能稍微把笔画边缘拽回来。
- *
- * 它 **不提供可计算的对比度**，不承担任何「保证」职责。**删掉它方案依然
- * 4.5:1 达标** —— 保留纯粹是因为它是零成本的残差保险。
- *
- * （曾在这里写过「L3 补强：blur 10px + saturate 1.15」来压高频纹理。已回退：
- *  blur 从不影响可测量的对比度，而 10px 模糊 + saturate 会把原本的半透明薄纱
- *  变成 iOS 毛玻璃，对一个看图的站是观感降级。saturate 更是纯色彩美化，
- *  与可读性无关，不该夹带。见 §9.6。）
- *
- * （为什么不用 mix-blend-mode: difference 做自动反色：按 CSS Compositing
- *  规范，混合的 backdrop 被限制在最近的 stacking context 内。.float-header
- *  自身带 backdrop-filter（创建 stacking context）+ background，图片根本不在
- *  混合范围内，difference 只会与自己的遮罩混合 = 什么都没发生。要让文字
- *  直接与图片混合就得同时删掉 background 和 backdrop-filter，代价是失去
- *  blur、彩色 chrome 被反相（绿 tag→品红、蓝链接→橙、红星→青）、Windows
- *  关闭次像素抗锯齿、详情面板 overflow-y 的层叠问题，且 forced-colors 模式
- *  直接忽略。不采用。）
- * ------------------------------------------------------------------------ */
+/* 固定玻璃上的白字：一层轻阴影，让复杂/亮图上的笔画更分离 */
 .float-id,
 .float-size,
 .float-expand-text,
-.float-expand-icon,
-.detail-label,
-.detail-value,
-.detail-tags-label,
-.detail-source-link {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+.float-expand-icon {
+  text-shadow: var(--chrome-text-shadow);
 }
 
-/* ---------------------------------------------------------------------------
- * 无障碍：尊重系统「增加对比度」偏好
- *
- * 刻意 **不读 CSS 变量**（直接给字面量），因此能同时压过上面 var() 的 0.62
- * 兜底以及 JS 写入的 --overlay-scrim-*。
- * ------------------------------------------------------------------------ */
+/* 系统「增加对比度」时提高 band 的不透明度 */
 @media (prefers-contrast: more) {
   .float-header,
   .float-footer {
-    background: rgba(0, 0, 0, 0.80);
-  }
-
-  .float-detail-panel {
-    background: rgba(0, 0, 0, 0.80);
+    background: var(--chrome-band-strong);
   }
 }
 
