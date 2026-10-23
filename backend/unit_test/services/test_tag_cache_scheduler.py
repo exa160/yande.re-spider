@@ -27,7 +27,16 @@ def test_tag_cache_defaults():
     cfg = TagCacheConfig()
     assert cfg.enable_daily_refresh is True
     assert cfg.refresh_cron == "17 4 * * *"
-    assert cfg.batch_limit == 100
+    # batch_limit 已下线写死为 TAG_CACHE_REFRESH_BATCH，配置里不再有这个字段
+    assert "batch_limit" not in cfg.model_dump()
+    assert not hasattr(cfg, "batch_limit")
+
+
+def test_legacy_batch_limit_key_is_ignored():
+    """用户 yaml / 老版本前端若仍带着 batch_limit，必须被静默忽略而不是报错。"""
+    cfg = TagCacheConfig.model_validate({"enable_daily_refresh": True, "batch_limit": 250})
+    assert cfg.enable_daily_refresh is True
+    assert "batch_limit" not in cfg.model_dump()
 
 
 def test_config_exposes_tag_cache_section():
@@ -44,12 +53,6 @@ def test_invalid_cron_rejected(bad):
 
 def test_cron_is_stripped():
     assert TagCacheConfig(refresh_cron="  30 5 * * *  ").refresh_cron == "30 5 * * *"
-
-
-@pytest.mark.parametrize("bad_limit", [0, -1, 1001])
-def test_batch_limit_bounds(bad_limit):
-    with pytest.raises(ValueError):
-        TagCacheConfig(batch_limit=bad_limit)
 
 
 # ============================================================
@@ -71,7 +74,7 @@ def manager():
 
 
 def test_register_tag_cache_refresh_adds_job(manager):
-    manager.register_tag_cache_refresh("17 4 * * *", batch_limit=200)
+    manager.register_tag_cache_refresh("17 4 * * *")
     assert manager.has_tag_cache_refresh()
     jobs = [j for j in manager.get_all_jobs() if j["job_id"] == ScheduleManager.TAG_CACHE_JOB_ID]
     assert len(jobs) == 1
@@ -103,9 +106,18 @@ def test_register_rejects_invalid_cron(manager):
         manager.register_tag_cache_refresh("nope")
 
 
-def test_register_rejects_non_positive_batch_limit(manager):
-    with pytest.raises(ValueError):
-        manager.register_tag_cache_refresh("17 4 * * *", batch_limit=0)
+def test_register_takes_no_batch_argument(manager):
+    """batch_limit 已写死：register 只收 cron，job 也不带任何参数。"""
+    from src.infrastructure import scheduler as sched
+
+    manager.register_tag_cache_refresh("17 4 * * *")
+    job = next(
+        j for j in manager._get_scheduler().get_jobs()
+        if j.id == ScheduleManager.TAG_CACHE_JOB_ID
+    )
+    assert job.args == ()
+    # 触发入口也不再需要形参，页大小来自模块常量
+    assert sched.TAG_CACHE_REFRESH_BATCH == 100
 
 
 # ============================================================
@@ -113,10 +125,8 @@ def test_register_rejects_non_positive_batch_limit(manager):
 # ============================================================
 
 
-def _cfg(enabled: bool, cron: str = "17 4 * * *", limit: int = 100):
-    return TagCacheConfig(
-        enable_daily_refresh=enabled, refresh_cron=cron, batch_limit=limit
-    )
+def _cfg(enabled: bool, cron: str = "17 4 * * *"):
+    return TagCacheConfig(enable_daily_refresh=enabled, refresh_cron=cron)
 
 
 def _fake_config(tag_cache: TagCacheConfig):
@@ -128,7 +138,7 @@ def _fake_config(tag_cache: TagCacheConfig):
 def test_reload_registers_when_enabled(manager):
     from src.lifecycle.scheduler import SchedulerLifecycle
 
-    with patch("src.lifecycle.scheduler.schedule_manager", manager), patch("src.common.config", _fake_config(_cfg(True, "30 5 * * *", 250))):
+    with patch("src.lifecycle.scheduler.schedule_manager", manager), patch("src.common.config", _fake_config(_cfg(True, "30 5 * * *"))):
         SchedulerLifecycle.reload_tag_cache_schedule()
 
     assert manager.has_tag_cache_refresh()
@@ -185,10 +195,11 @@ def test_trigger_calls_incremental_refresh():
     with patch("src.services.tag_cache.TagCacheService", mock_cls), patch(
         "src.common.config", _fake_config(_cfg(True))
     ):
-        asyncio.run(sched._on_tag_cache_trigger(100))
+        asyncio.run(sched._on_tag_cache_trigger())
 
-    # full_refresh=False → 增量分支（表空时 service 自己转全量）
-    mock_cls.refresh_tags.assert_called_once_with(100, False)
+    # full_refresh=False → 增量分支（表空时 service 自己转全量）；
+    # 页大小写死为 TAG_CACHE_REFRESH_BATCH，不再由配置传入
+    mock_cls.refresh_tags.assert_called_once_with(sched.TAG_CACHE_REFRESH_BATCH, False)
 
 
 def test_trigger_skips_and_cleans_job_when_disabled(manager):
@@ -199,7 +210,7 @@ def test_trigger_skips_and_cleans_job_when_disabled(manager):
     with patch("src.infrastructure.scheduler.schedule_manager", manager), patch(
         "src.services.tag_cache.TagCacheService", mock_cls
     ), patch("src.common.config", _fake_config(_cfg(False))):
-        asyncio.run(sched._on_tag_cache_trigger(100))
+        asyncio.run(sched._on_tag_cache_trigger())
 
     mock_cls.refresh_tags.assert_not_called()
     assert not manager.has_tag_cache_refresh()  # 残留 job 被清理
@@ -214,4 +225,4 @@ def test_trigger_failure_is_swallowed():
     with patch("src.services.tag_cache.TagCacheService", mock_cls), patch(
         "src.common.config", _fake_config(_cfg(True))
     ):
-        asyncio.run(sched._on_tag_cache_trigger(100))  # 不抛即通过
+        asyncio.run(sched._on_tag_cache_trigger())  # 不抛即通过

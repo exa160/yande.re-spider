@@ -37,7 +37,6 @@ class SchedulerLifecycle:
                 return
             schedule_manager.register_tag_cache_refresh(
                 cron=tag_cache_cfg.refresh_cron,
-                batch_limit=tag_cache_cfg.batch_limit,
             )
         except ValueError as e:
             logger.warning(f"Tag cache refresh schedule not registered: {e}")

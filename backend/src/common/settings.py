@@ -180,10 +180,9 @@ class TagCacheConfig(ConfigModel):
         default="17 4 * * *",
         description="定时刷新 cron（5 段，服务器本地时区）。默认每天 04:17",
     )
-    batch_limit: int = Field(
-        default=100, ge=1, le=1000,
-        description="单次增量刷新的每页拉取条数",
-    )
+    # 历史版本有 batch_limit（单次增量刷新的每页拉取条数），已下线并写死为
+    # infrastructure.scheduler.TAG_CACHE_REFRESH_BATCH = 100。
+    # 用户 yaml 里若残留该键，Pydantic v2 默认 extra='ignore' 会静默丢弃。
 
     @field_validator("refresh_cron")
     @classmethod
