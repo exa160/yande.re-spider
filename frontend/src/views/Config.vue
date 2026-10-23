@@ -194,27 +194,108 @@
           </div>
 
           <div class="refresh-controls">
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">更新标签</div>
-                <div class="refresh-params">
-                  <span class="param-tip">从 ID {{ tagStats.max_id || 0 }} 开始增量更新</span>
-                  <span class="param-tip" style="color: #E6A23C; margin-left: 8px;">长按全量刷新</span>
+            <div class="refresh-item refresh-item--stacked refresh-item--tag-refresh">
+              <div class="refresh-main">
+                <div class="refresh-info">
+                  <div class="refresh-name">更新标签</div>
+                  <div class="refresh-params">
+                    <span class="param-tip">从 ID {{ tagStats.max_id || 0 }} 开始增量更新</span>
+                    <span class="param-tip" style="color: #E6A23C; margin-left: 8px;">长按全量刷新</span>
+                  </div>
+                </div>
+                <el-button
+                  type="primary"
+                  @click="handleRefreshTags"
+                  @mousedown.native="startLongPress"
+                  @mouseup.native="endLongPress"
+                  @mouseleave.native="endLongPress"
+                  @touchstart.native="startLongPress"
+                  @touchend.native="endLongPress"
+                  :loading="refreshingTags"
+                  size="small"
+                >
+                  刷新
+                </el-button>
+              </div>
+
+              <!-- 定时更新并入「更新标签」框：开关与频率/时间/星期/Cron 使用同一套选项行 -->
+              <div class="tag-cache-schedule">
+                <div class="tag-cache-field tag-cache-toggle">
+                  <span class="tag-cache-label">定时更新</span>
+                  <span class="tag-cache-summary">{{ tagCacheSummary }}</span>
+                  <span v-if="savingTagCache" class="tag-cache-saving">保存中…</span>
+                  <el-radio-group
+                    v-model="tagCacheForm.enableDailyRefresh"
+                    size="small"
+                    class="tag-cache-enable"
+                    @change="onTagCacheToggle"
+                  >
+                    <el-radio-button :label="false">关闭</el-radio-button>
+                    <el-radio-button :label="true">开启</el-radio-button>
+                  </el-radio-group>
+                </div>
+
+                <div v-if="tagCacheForm.enableDailyRefresh" class="tag-cache-fields">
+                  <div class="tag-cache-field">
+                    <span class="tag-cache-label">频率</span>
+                    <el-radio-group
+                      v-model="tagCacheForm.freq"
+                      size="small"
+                      @change="onTagCacheFreqChange"
+                    >
+                      <el-radio-button value="daily">每天</el-radio-button>
+                      <el-radio-button value="weekly">每周</el-radio-button>
+                      <el-radio-button value="custom">自定义</el-radio-button>
+                    </el-radio-group>
+                  </div>
+
+                  <div v-if="tagCacheForm.freq !== TAG_CACHE_FREQ_CUSTOM" class="tag-cache-field">
+                    <span class="tag-cache-label">时间</span>
+                    <el-time-picker
+                      v-model="tagCacheForm.time"
+                      format="HH:mm"
+                      value-format="HH:mm"
+                      placeholder="选择时间"
+                      size="small"
+                      class="tag-cache-time-picker"
+                      @change="onTagCacheTimeChange"
+                    />
+                  </div>
+
+                  <div v-if="tagCacheForm.freq === TAG_CACHE_FREQ_WEEKLY" class="tag-cache-field">
+                    <span class="tag-cache-label">星期</span>
+                    <el-checkbox-group
+                      v-model="tagCacheForm.weekdays"
+                      size="small"
+                      @change="onTagCacheWeekdayChange"
+                    >
+                      <el-checkbox
+                        v-for="d in WEEKDAY_OPTIONS"
+                        :key="d.value"
+                        :value="d.value"
+                      >{{ d.label }}</el-checkbox>
+                    </el-checkbox-group>
+                  </div>
+
+                  <div v-if="tagCacheForm.freq === TAG_CACHE_FREQ_CUSTOM" class="tag-cache-field">
+                    <span class="tag-cache-label">Cron</span>
+                    <el-input
+                      v-model="tagCacheForm.refreshCron"
+                      size="small"
+                      class="tag-cache-cron-input"
+                      placeholder="分 时 日 月 周"
+                      @blur="onTagCacheCronCommit"
+                      @keydown.enter="onTagCacheCronCommit"
+                    />
+                    <a
+                      class="tag-cache-cron-link"
+                      href="https://crontab.guru/"
+                      target="_blank"
+                      rel="noopener"
+                    >cron 语法参考</a>
+                  </div>
                 </div>
               </div>
-              <el-button
-                type="primary"
-                @click="handleRefreshTags"
-                @mousedown.native="startLongPress"
-                @mouseup.native="endLongPress"
-                @mouseleave.native="endLongPress"
-                @touchstart.native="startLongPress"
-                @touchend.native="endLongPress"
-                :loading="refreshingTags"
-                size="small"
-              >
-                刷新
-              </el-button>
             </div>
 
             <div class="refresh-item">
@@ -260,42 +341,6 @@
               </div>
             </div>
 
-            <!-- 标签缓存定时更新：标签面板「/ yande M」的数据源是 yande_tags.count，
-                 只能手动刷。开启后由后端 APScheduler 按 cron 做增量刷新。 -->
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">标签缓存定时更新</div>
-                <div class="refresh-params">
-                  <el-radio-group v-model="tagCacheForm.enableDailyRefresh" size="small">
-                    <el-radio-button :label="false">关闭</el-radio-button>
-                    <el-radio-button :label="true">开启</el-radio-button>
-                  </el-radio-group>
-                  <template v-if="tagCacheForm.enableDailyRefresh">
-                    <el-input
-                      v-model="tagCacheForm.refreshCron"
-                      size="small"
-                      class="tag-cache-cron-input"
-                      placeholder="分 时 日 月 周"
-                    />
-                    <el-input-number
-                      v-model="tagCacheForm.batchLimit"
-                      :min="1"
-                      :max="1000"
-                      size="small"
-                      class="tag-cache-limit-input"
-                    /> 条/页
-                  </template>
-                </div>
-              </div>
-              <el-button
-                type="primary"
-                size="small"
-                :loading="savingTagCache"
-                @click="saveTagCache"
-              >
-                保存
-              </el-button>
-            </div>
 
           </div>
         </div>
@@ -456,7 +501,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { tagCacheApi } from '@/api/tagCache'
@@ -613,12 +658,118 @@ const refreshTagsParams = ref({ after_id: 0 })
 const refreshArtistsParams = ref({ page: 1, limit: 100, max_pages: 10 })
 
 // 标签缓存定时更新配置（PUT /config/tag-cache，保存后端立即重挂 APScheduler job）
+//
+// 交互契约：**选择即保存**。这里没有「保存」按钮，任一控件 change 都直接 PUT。
+// 唯一真值是 tagCacheForm.refreshCron（后端只认这个 cron 字符串），
+// freq / time / weekdays 是它的 UI 投影：改控件 → 重算 cron → 提交；
+// 从后端读回 → 解析 cron → 回填控件。两条路共用 parse/build 两个纯函数。
+const TAG_CACHE_FREQ_DAILY = 'daily'
+const TAG_CACHE_FREQ_WEEKLY = 'weekly'
+const TAG_CACHE_FREQ_CUSTOM = 'custom'
+
+// cron 周字段 0=周日 … 6=周六；UI 按「一…日」顺序展示，故显式给出顺序表
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: '一' },
+  { value: 2, label: '二' },
+  { value: 3, label: '三' },
+  { value: 4, label: '四' },
+  { value: 5, label: '五' },
+  { value: 6, label: '六' },
+  { value: 0, label: '日' },
+]
+const WEEKDAY_LABEL = Object.fromEntries(WEEKDAY_OPTIONS.map((d) => [d.value, d.label]))
+
 const tagCacheForm = reactive({
   enableDailyRefresh: true,
+  freq: TAG_CACHE_FREQ_DAILY,
+  // 初值与后端 TagCacheConfig 默认值一致：load 失败时它就是可信的回滚目标
+  time: '04:17',
+  weekdays: [1],
   refreshCron: '17 4 * * *',
-  batchLimit: 100,
 })
 const savingTagCache = ref(false)
+
+const pad2 = (n) => String(n).padStart(2, '0')
+
+// cron → 预设。解析不出来时返回 null，调用方必须回退「自定义」原样展示，
+// **不能猜**：猜错等于一次无意的自动保存就把用户的 cron 改掉了。
+// 刻意只认「每天 / 每周」两种形态：分 时 必须是具体数字、日 月 必须是 *、
+// 周字段只能是 0-6 的数字或数字列表；`0 */2 * * *`、`1-5`、带秒的六段等一律 null。
+const parseTagCacheCron = (cron) => {
+  const parts = String(cron || '').trim().split(/\s+/)
+  if (parts.length !== 5) return null
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
+  if (!/^\d{1,2}$/.test(minute) || !/^\d{1,2}$/.test(hour)) return null
+  if (dayOfMonth !== '*' || month !== '*') return null
+  const m = Number(minute)
+  const h = Number(hour)
+  if (m > 59 || h > 23) return null
+
+  if (dayOfWeek === '*') {
+    return { freq: TAG_CACHE_FREQ_DAILY, time: `${pad2(h)}:${pad2(m)}`, weekdays: [] }
+  }
+  const days = dayOfWeek.split(',')
+  if (!days.every((d) => /^[0-6]$/.test(d))) return null
+  const weekdays = [...new Set(days.map(Number))]
+    .sort((a, b) => WEEKDAY_OPTIONS.findIndex((o) => o.value === a)
+                  - WEEKDAY_OPTIONS.findIndex((o) => o.value === b))
+  if (weekdays.length === 0) return null
+  return { freq: TAG_CACHE_FREQ_WEEKLY, time: `${pad2(h)}:${pad2(m)}`, weekdays }
+}
+
+// 预设控件 → cron（每周一个都没选时退回每天：空周字段是非法 cron，
+// 与其让后端 422 再回滚，不如在生成时就给出合法值）。
+// 数字不做补零，与后端默认值「17 4 * * *」及 crontab.guru 惯例一致。
+const buildTagCacheCron = () => {
+  const [rawHour, rawMinute] = String(tagCacheForm.time || '00:00').split(':')
+  const h = Number(rawHour) || 0
+  const m = Number(rawMinute) || 0
+  const head = `${m} ${h}`
+  if (tagCacheForm.freq !== TAG_CACHE_FREQ_WEEKLY) return `${head} * * *`
+  const days = [...new Set(tagCacheForm.weekdays)].sort(
+    (a, b) => WEEKDAY_OPTIONS.findIndex((o) => o.value === a)
+            - WEEKDAY_OPTIONS.findIndex((o) => o.value === b)
+  )
+  return `${head} * * ${days.length ? days.join(',') : '*'}`
+}
+
+// 控件变化后重算 cron（自定义模式下 cron 由输入框直接维护，这里不动它）
+const syncCronFromControls = () => {
+  if (tagCacheForm.freq === TAG_CACHE_FREQ_CUSTOM) return
+  tagCacheForm.refreshCron = buildTagCacheCron()
+}
+
+// 后端 cron → UI 控件
+const applyTagCacheCron = (cron) => {
+  const raw = String(cron || '').trim()
+  tagCacheForm.refreshCron = raw
+  const parsed = parseTagCacheCron(raw)
+  if (!parsed) {
+    // 不可解析（如 `0 */2 * * *`）：回退自定义并原样展示，绝不解析成错误的预设
+    tagCacheForm.freq = TAG_CACHE_FREQ_CUSTOM
+    return
+  }
+  tagCacheForm.freq = parsed.freq
+  tagCacheForm.time = parsed.time
+  // 每天形态不携带星期，保留用户此前的星期选择，切到「每周」时才有默认值
+  if (parsed.weekdays.length) tagCacheForm.weekdays = [...parsed.weekdays]
+}
+
+// 摘要行：随开关 / 频率 / 时间实时变化，避免用户对「到底什么时候会刷」没有预期
+const tagCacheSummary = computed(() => {
+  if (!tagCacheForm.enableDailyRefresh) return '已关闭'
+  if (tagCacheForm.freq === TAG_CACHE_FREQ_CUSTOM) {
+    return `自定义 ${tagCacheForm.refreshCron}`
+  }
+  if (tagCacheForm.freq === TAG_CACHE_FREQ_WEEKLY) {
+    const names = [...tagCacheForm.weekdays]
+      .sort((a, b) => WEEKDAY_OPTIONS.findIndex((o) => o.value === a)
+                    - WEEKDAY_OPTIONS.findIndex((o) => o.value === b))
+      .map((d) => WEEKDAY_LABEL[d])
+    if (names.length) return `每周${names.join('、')} ${tagCacheForm.time}`
+  }
+  return `每天 ${tagCacheForm.time}`
+})
 
 const loadTagCacheConfig = async () => {
   try {
@@ -626,28 +777,113 @@ const loadTagCacheConfig = async () => {
     const c = res?.data
     if (!c || typeof c !== 'object') return
     if ('enable_daily_refresh' in c) tagCacheForm.enableDailyRefresh = !!c.enable_daily_refresh
-    if (typeof c.refresh_cron === 'string' && c.refresh_cron) tagCacheForm.refreshCron = c.refresh_cron
-    if ('batch_limit' in c) tagCacheForm.batchLimit = Number(c.batch_limit) || 100
+    if (typeof c.refresh_cron === 'string' && c.refresh_cron) applyTagCacheCron(c.refresh_cron)
+    // 读回来的这份就是服务端当前状态，记为回滚目标
+    tagCacheSynced = takeTagCacheSnapshot()
   } catch (e) {
     console.warn('加载标签缓存配置失败:', e?.message || e)
   }
 }
 
-const saveTagCache = async () => {
-  savingTagCache.value = true
-  try {
-    await api.put('/config/tag-cache', {
-      enable_daily_refresh: tagCacheForm.enableDailyRefresh,
-      refresh_cron: tagCacheForm.refreshCron.trim(),
-      batch_limit: tagCacheForm.batchLimit,
-    })
-    ElMessage.success('标签缓存定时更新配置已保存')
-  } catch (error) {
-    // cron 非法时后端 Pydantic validator 返回 422，这里把原因透出
-    ElMessage.error('保存失败：' + (error?.message || 'cron 表达式非法'))
-  } finally {
-    savingTagCache.value = false
+// 自动保存的串行化：
+// 1) PUT 成功会触发后端重挂 APScheduler job，并发 PUT 会互相覆盖 → 用 promise 链串行；
+// 2) 连续操作合并成「最后一次状态」：每轮真正发请求时读的是**当下**的表单值，
+//    中间态不会发出，因此不会出现「先发旧值、后发新值」把结果倒回去；
+// 3) 组件卸载后不再回写状态（否则响应回来时组件已销毁，界面与实际配置不符）。
+let tagCacheSaveChain = Promise.resolve()
+let tagCacheSavePending = false
+let tagCacheDisposed = false
+
+const takeTagCacheSnapshot = () => ({
+  enableDailyRefresh: tagCacheForm.enableDailyRefresh,
+  freq: tagCacheForm.freq,
+  time: tagCacheForm.time,
+  weekdays: [...tagCacheForm.weekdays],
+  refreshCron: tagCacheForm.refreshCron,
+})
+
+const restoreTagCacheSnapshot = (s) => {
+  tagCacheForm.enableDailyRefresh = s.enableDailyRefresh
+  tagCacheForm.freq = s.freq
+  tagCacheForm.time = s.time
+  tagCacheForm.weekdays = [...s.weekdays]
+  tagCacheForm.refreshCron = s.refreshCron
+}
+
+// 「服务端已确认的那份状态」：加载成功后 / 每次 PUT 成功后刷新。
+// 保存失败要回滚到这里 —— 而不是回滚到本次请求发出去前的表单值
+// （那个值正是没存上的坏值，回滚到它等于没回滚）。
+let tagCacheSynced = takeTagCacheSnapshot()
+
+const runTagCacheSave = async () => {
+  while (tagCacheSavePending) {
+    tagCacheSavePending = false
+    const snapshot = takeTagCacheSnapshot()
+    try {
+      await api.put('/config/tag-cache', {
+        enable_daily_refresh: snapshot.enableDailyRefresh,
+        refresh_cron: snapshot.refreshCron.trim(),
+      })
+      tagCacheSynced = snapshot
+      if (!tagCacheDisposed) ElMessage.success('定时更新配置已保存')
+    } catch (error) {
+      // cron 非法时后端 Pydantic validator 返回 422，这里把原因透出。
+      // 只在「没有更新的意图排队」时回滚：若用户在这期间又改了控件，
+      // 回滚会把他的新操作一起冲掉（而新状态本来就会覆盖这次失败的结果）。
+      if (!tagCacheDisposed && !tagCacheSavePending) restoreTagCacheSnapshot(tagCacheSynced)
+      if (!tagCacheDisposed) {
+        ElMessage.error('保存失败：' + (error?.message || 'cron 表达式非法'))
+      }
+      return // 失败后不再继续合并后续状态，避免连环回滚
+    }
   }
+}
+
+const saveTagCache = () => {
+  tagCacheSavePending = true
+  savingTagCache.value = true
+  tagCacheSaveChain = tagCacheSaveChain
+    .then(runTagCacheSave)
+    .catch(() => {})
+    .finally(() => { savingTagCache.value = false })
+  return tagCacheSaveChain
+}
+
+const onTagCacheToggle = () => saveTagCache()
+
+const onTagCacheFreqChange = () => {
+  // 从「自定义」切回预设时，用 cron 里能解析出的时间/星期回填控件，
+  // 否则控件显示的时间与真正生效的 cron 会各说各话
+  if (tagCacheForm.freq !== TAG_CACHE_FREQ_CUSTOM) {
+    const parsed = parseTagCacheCron(tagCacheForm.refreshCron)
+    if (parsed) {
+      tagCacheForm.time = parsed.time
+      if (parsed.weekdays.length) tagCacheForm.weekdays = [...parsed.weekdays]
+    }
+  }
+  syncCronFromControls()
+  saveTagCache()
+}
+
+const onTagCacheTimeChange = (value) => {
+  // el-time-picker 的 change 只在确认选择后触发，不是实时输入
+  if (value) tagCacheForm.time = value
+  syncCronFromControls()
+  saveTagCache()
+}
+
+const onTagCacheWeekdayChange = () => {
+  syncCronFromControls()
+  saveTagCache()
+}
+
+// 自定义 cron：只在 blur / 回车时保存。挂到 input 上会让半截表达式（如 "0 5"）
+// 直接打后端 → validator 422 + 回滚，输入过程被反复打断。
+// 用 keydown.enter（ElInput 显式 emit 的 keydown）而不是 keyup，后者要靠冒泡穿透组件根节点。
+// 也不在提交时改 freq：用户进「自定义」就是想手写表达式，自动翻回预设反而是惊喜。
+const onTagCacheCronCommit = () => {
+  tagCacheForm.refreshCron = tagCacheForm.refreshCron.trim()
+  saveTagCache()
 }
 
 // 长按定时器
@@ -1014,6 +1250,9 @@ watch(activeMenu, (newVal) => {
 }, { immediate: false })
 
 onUnmounted(() => {
+  // 标签缓存走「选择即保存」，响应可能晚于卸载才回来：
+  // 标记 disposed 后不再弹提示、不再回滚表单，避免对着已销毁的组件改状态
+  tagCacheDisposed = true
   stopProtection()
   document.removeEventListener('contextmenu', disableContextMenu)
   document.removeEventListener('keydown', handleKeyDown)
@@ -1221,15 +1460,94 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-/* 标签缓存定时更新：cron 表达式 + 每页条数 */
-.tag-cache-cron-input {
-  width: 130px;
-  margin-left: 4px;
+/* 更新标签：主行（说明 + 刷新按钮）+ 定时更新选项区，纵向排列 */
+.refresh-item--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 
-.tag-cache-limit-input {
-  width: 110px;
-  margin-left: 4px;
+.refresh-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.tag-cache-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.tag-cache-toggle {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.tag-cache-enable {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.tag-cache-saving {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tag-cache-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-cache-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.tag-cache-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tag-cache-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 56px;
+  flex-shrink: 0;
+}
+
+.tag-cache-time-picker {
+  width: 130px;
+}
+
+.tag-cache-cron-input {
+  width: 170px;
+}
+
+.tag-cache-cron-link {
+  font-size: 12px;
+  /* 用 element-plus 变量取色，暗色模式下自动跟随主题 */
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.tag-cache-cron-link:hover {
+  text-decoration: underline;
 }
 
 /* 收藏夹 section 保存按钮 */
@@ -1301,6 +1619,11 @@ onUnmounted(() => {
 
   .refresh-item .el-button {
     width: 100%;
+  }
+
+  .refresh-main {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

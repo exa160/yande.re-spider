@@ -75,13 +75,33 @@ const factory = () =>
           template: '<button class="radio-button-stub" :data-label="String(label ?? value)"><slot/></button>',
         },
         'el-button': { template: '<button><slot/></button>' },
-        'el-input': { template: '<input>' },
+        'el-input': {
+          props: ['modelValue'],
+          emits: ['update:modelValue'],
+          template: '<input class="input-stub" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">',
+        },
         'el-input-number': { template: '<input type="number">' },
         'el-segmented': { template: '<div><slot/></div>' },
         'el-switch': {
+          name: 'ElSwitch',
           props: ['modelValue', 'disabled'],
-          template: '<input type="checkbox" class="switch-stub" :disabled="disabled || undefined">',
-          emits: ['update:modelValue'],
+          template: '<input type="checkbox" class="switch-stub" :checked="!!modelValue" :disabled="disabled || undefined" @change="$emit(\'update:modelValue\', $event.target.checked); $emit(\'change\', $event.target.checked)">',
+          emits: ['update:modelValue', 'change'],
+        },
+        'el-time-picker': {
+          name: 'ElTimePicker',
+          props: ['modelValue'],
+          emits: ['update:modelValue', 'change'],
+          template: '<input class="time-picker-stub" :value="modelValue">',
+        },
+        'el-checkbox-group': {
+          name: 'ElCheckboxGroup',
+          emits: ['update:modelValue', 'change'],
+          template: '<div class="checkbox-group-stub"><slot/></div>',
+        },
+        'el-checkbox': {
+          props: ['value', 'label'],
+          template: '<span class="checkbox-stub" :data-value="String(value ?? label)"><slot/></span>',
         },
         'el-divider': { template: '<hr class="divider-stub" />' },
         'el-alert': { template: '<div><slot/></div>' },
@@ -414,67 +434,292 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
 
 // =============================================================================
 // 标签缓存定时更新（PUT /config/tag-cache）
-// 标签面板「/ yande M」的数据源是 yande_tags.count，此前只能手动刷新；
-// 这里锁定开关 + cron + 每页条数能读写，以及保存走对端点。
+// 标签面板「/ yande M」的数据源是 yande_tags.count，此前只能手动刷新。
+// 本组锁定「选择即保存」的新交互：cron ↔ 预设互转 + 各控件 change 自动 PUT，
+// 以及 batch_limit 已从前后端彻底移除。
 // =============================================================================
 describe('Config.vue 标签缓存定时更新', () => {
-  const tagCacheResp = {
-    enable_daily_refresh: true,
-    refresh_cron: '30 5 * * *',
-    batch_limit: 250,
-  }
-
-  it('切到高级功能 → GET /config/tag-cache 拉回配置', async () => {
+  const mockTagCacheGet = async (data) => {
     const api = (await import('@/api')).default
     api.get.mockClear()
     api.get.mockImplementation((url) => {
-      if (url === '/config/tag-cache') return Promise.resolve({ data: tagCacheResp })
+      if (url === '/config/tag-cache') return Promise.resolve({ data })
       return Promise.resolve({ data: {} })
     })
+    return api
+  }
 
+  // 打开「高级功能」页并返回已挂好假数据的 wrapper
+  const openAdvanced = async (data) => {
+    const api = await mockTagCacheGet(data)
+    api.put.mockClear()
     const wrapper = factory()
     await flushPromises()
     await clickMenuItem(wrapper, '高级功能')
+    return { wrapper, api }
+  }
+
+  const dailyResp = { enable_daily_refresh: true, refresh_cron: '30 5 * * *' }
+
+  it('加载后把 cron 反解成预设（30 5 * * * → 每天 05:30）', async () => {
+    const { wrapper, api } = await openAdvanced(dailyResp)
 
     expect(api.get).toHaveBeenCalledWith('/config/tag-cache')
+    expect(wrapper.vm.tagCacheForm.freq).toBe('daily')
+    expect(wrapper.vm.tagCacheForm.time).toBe('05:30')
     expect(wrapper.vm.tagCacheForm.enableDailyRefresh).toBe(true)
-    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('30 5 * * *')
-    expect(wrapper.vm.tagCacheForm.batchLimit).toBe(250)
+    // 短摘要跟着设置走
+    expect(wrapper.find('.tag-cache-summary').text()).toBe('每天 05:30')
   })
 
-  it('保存 → PUT /config/tag-cache 带 enable_daily_refresh / refresh_cron / batch_limit', async () => {
-    const api = (await import('@/api')).default
-    api.put.mockClear()
+  it('每周形态的 cron 反解成「每周」+ 星期多选（顺序按 一二三四五六日）', async () => {
+    const { wrapper } = await openAdvanced({
+      enable_daily_refresh: true,
+      refresh_cron: '30 5 * * 0,1,3',
+    })
 
-    const wrapper = factory()
-    await flushPromises()
-    await clickMenuItem(wrapper, '高级功能')
+    expect(wrapper.vm.tagCacheForm.freq).toBe('weekly')
+    expect(wrapper.vm.tagCacheForm.time).toBe('05:30')
+    // 0=周日 会被排到末尾
+    expect(wrapper.vm.tagCacheForm.weekdays).toEqual([1, 3, 0])
+    expect(wrapper.find('.tag-cache-summary').text()).toBe('每周一、三、日 05:30')
+  })
+
+  it('无法解析成预设的 cron 回退「自定义」并原样展示（0 */2 * * *）', async () => {
+    const { wrapper } = await openAdvanced({
+      enable_daily_refresh: true,
+      refresh_cron: '0 */2 * * *',
+    })
+
+    expect(wrapper.vm.tagCacheForm.freq).toBe('custom')
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('0 */2 * * *')
+    // 回退到自定义时不能顺手把 cron 改成预设形态
+    expect(wrapper.find('.tag-cache-cron-input').element.value).toBe('0 */2 * * *')
+    // 自定义态显示 cron 输入框 + crontab.guru 链接；摘要是短 cron 文本
+    expect(wrapper.find('.tag-cache-summary').text()).toBe('自定义 0 */2 * * *')
+    expect(wrapper.find('a.tag-cache-cron-link').attributes('href')).toBe('https://crontab.guru/')
+  })
+
+  it.each([
+    ['每天但带区间', '30 5 * * 1-5'],
+    ['每月', '30 5 1 * *'],
+    ['小时级', '0 */2 * * *'],
+    ['六段带秒', '0 30 5 * * *'],
+  ])('cron「%s」不被误判成预设', async (_label, cron) => {
+    const { wrapper } = await openAdvanced({ enable_daily_refresh: true, refresh_cron: cron })
+
+    expect(wrapper.vm.tagCacheForm.freq).toBe('custom')
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe(cron)
+  })
+
+  it('切开关 → 自动 PUT，且 payload 不含 batch_limit', async () => {
+    const { wrapper, api } = await openAdvanced(dailyResp)
 
     wrapper.vm.tagCacheForm.enableDailyRefresh = false
-    wrapper.vm.tagCacheForm.refreshCron = '  0 6 * * *  '
-    wrapper.vm.tagCacheForm.batchLimit = 300
-    await wrapper.vm.saveTagCache()
+    await wrapper.find('.tag-cache-enable').trigger('change')
 
     expect(api.put).toHaveBeenCalledWith('/config/tag-cache', {
       enable_daily_refresh: false,
-      refresh_cron: '0 6 * * *', // 去空格后提交
-      batch_limit: 300,
+      refresh_cron: '30 5 * * *',
+    })
+    const payload = api.put.mock.calls[0][1]
+    expect(payload).not.toHaveProperty('batch_limit')
+  })
+
+  it('关闭后摘要显示「已关闭」，且频率控件整体隐藏', async () => {
+    const { wrapper } = await openAdvanced({ enable_daily_refresh: false, refresh_cron: '30 5 * * *' })
+
+    // 摘要和单选在同一行，且单选是行的最后一个元素（靠右）
+    const toggleRow = wrapper.find('.tag-cache-toggle')
+    expect(toggleRow.find('.tag-cache-summary').text()).toBe('已关闭')
+    expect(toggleRow.element.lastElementChild.classList.contains('tag-cache-enable')).toBe(true)
+    expect(wrapper.find('.tag-cache-fields').exists()).toBe(false)
+
+    wrapper.vm.tagCacheForm.enableDailyRefresh = true
+    await wrapper.find('.tag-cache-enable').trigger('change')
+    await flushPromises()
+    expect(wrapper.find('.tag-cache-fields').exists()).toBe(true)
+  })
+
+  it('改时间 → 自动 PUT（time-picker 的 change，不是实时输入）', async () => {
+    const { wrapper, api } = await openAdvanced(dailyResp)
+
+    const picker = wrapper.findComponent({ name: 'ElTimePicker' })
+    await picker.vm.$emit('change', '06:45')
+
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('45 6 * * *')
+    expect(api.put).toHaveBeenCalledWith('/config/tag-cache', {
+      enable_daily_refresh: true,
+      refresh_cron: '45 6 * * *',
     })
   })
 
-  it('开关关闭时不显示 cron / 每页条数输入（避免误改无效项）', async () => {
-    const wrapper = factory()
-    await flushPromises()
-    await clickMenuItem(wrapper, '高级功能')
+  it('频率选「每周」→ 星期选择器出现；选回「每天」→ 隐藏', async () => {
+    const { wrapper } = await openAdvanced(dailyResp)
 
-    wrapper.vm.tagCacheForm.enableDailyRefresh = true
-    await flushPromises()
-    const onHtml = wrapper.find('.tag-cache-cron-input').exists()
-    wrapper.vm.tagCacheForm.enableDailyRefresh = false
-    await flushPromises()
-    const offHtml = wrapper.find('.tag-cache-cron-input').exists()
+    // 默认「每天」：没有星期选择器
+    expect(wrapper.find('.checkbox-group-stub').exists()).toBe(false)
 
-    expect(onHtml).toBe(true)
-    expect(offHtml).toBe(false)
+    wrapper.vm.tagCacheForm.freq = 'weekly'
+    await wrapper.find('.tag-cache-fields .radio-group-stub').trigger('change')
+    expect(wrapper.find('.checkbox-group-stub').exists()).toBe(true)
+    // 一…日 七个
+    expect(wrapper.findAll('.checkbox-stub').length).toBe(7)
+    // 无星期的默认 cron 被切成了周一
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('30 5 * * 1')
+
+    wrapper.vm.tagCacheForm.freq = 'daily'
+    await wrapper.find('.tag-cache-fields .radio-group-stub').trigger('change')
+    expect(wrapper.find('.checkbox-group-stub').exists()).toBe(false)
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('30 5 * * *')
+  })
+
+  it('星期选择变化 → 自动 PUT（周日 0 排在最后）', async () => {
+    const { wrapper, api } = await openAdvanced({
+      enable_daily_refresh: true,
+      refresh_cron: '30 5 * * 1,3',
+    })
+    api.put.mockClear()
+
+    wrapper.vm.tagCacheForm.weekdays = [0, 2]
+    await wrapper.findComponent({ name: 'ElCheckboxGroup' }).vm.$emit('change', [0, 2])
+
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('30 5 * * 2,0')
+    expect(api.put).toHaveBeenLastCalledWith('/config/tag-cache', {
+      enable_daily_refresh: true,
+      refresh_cron: '30 5 * * 2,0',
+    })
+  })
+
+  it('自定义 cron 输入框：敲键盘不触发 PUT，blur 才触发', async () => {
+    const { wrapper, api } = await openAdvanced({
+      enable_daily_refresh: true,
+      refresh_cron: '0 */2 * * *',
+    })
+    api.put.mockClear()
+
+    const input = wrapper.find('.tag-cache-cron-input')
+    // 逐字符输入（半截 cron 会让后端 validator 直接 422）
+    for (const value of ['0', '0 ', '0 5', '0 5 ', '0 5 *', '0 5 * *', '0 5 * * ']) {
+      await input.setValue(value)
+    }
+    expect(api.put).not.toHaveBeenCalled()
+
+    // 回车同样提交（value-format 为空时取当前绑定值）
+    await input.trigger('blur')
+    expect(api.put).toHaveBeenCalledTimes(1)
+    expect(api.put).toHaveBeenCalledWith('/config/tag-cache', {
+      enable_daily_refresh: true,
+      refresh_cron: '0 5 * *',
+    })
+    // 提交时仍停留在「自定义」，不会自动翻回预设
+    expect(wrapper.vm.tagCacheForm.freq).toBe('custom')
+  })
+
+  it('自定义 cron 回车也触发保存', async () => {
+    const { wrapper, api } = await openAdvanced({
+      enable_daily_refresh: true,
+      refresh_cron: '0 */2 * * *',
+    })
+    api.put.mockClear()
+
+    await wrapper.find('.tag-cache-cron-input').setValue('15 3 * * *')
+    await wrapper.find('.tag-cache-cron-input').trigger('keydown.enter')
+
+    expect(api.put).toHaveBeenCalledWith('/config/tag-cache', {
+      enable_daily_refresh: true,
+      refresh_cron: '15 3 * * *',
+    })
+  })
+
+  it('保存失败 → 回滚到保存前的快照并弹错误', async () => {
+    const { wrapper, api } = await openAdvanced(dailyResp)
+    api.put.mockClear()
+    api.put.mockRejectedValueOnce(new Error('cron 表达式非法'))
+
+    wrapper.vm.tagCacheForm.time = '07:00'
+    await wrapper.vm.saveTagCache()
+    await flushPromises()
+
+    // 界面回到保存前的 cron / 频率，避免「看着改了其实没存上」
+    expect(wrapper.vm.tagCacheForm.refreshCron).toBe('30 5 * * *')
+    expect(wrapper.vm.tagCacheForm.time).toBe('05:30')
+  })
+
+  it('快速连续操作（同一 tick 内）合并成一次 PUT，且带的是最终状态', async () => {
+    const { wrapper, api } = await openAdvanced(dailyResp)
+    api.put.mockClear()
+
+    wrapper.vm.tagCacheForm.freq = 'weekly'
+    wrapper.vm.onTagCacheFreqChange() // 内含 saveTagCache
+    wrapper.vm.onTagCacheTimeChange('09:00') // 同一 tick 内再次改动
+    await flushPromises()
+
+    // 中间态不落盘：只发一次，且是合并后的最终 cron
+    expect(api.put).toHaveBeenCalledTimes(1)
+    expect(api.put).toHaveBeenCalledWith('/config/tag-cache', {
+      enable_daily_refresh: true,
+      refresh_cron: '0 9 * * 1',
+    })
+  })
+
+  it('请求在飞时的再次改动不丢：串行发出第二次 PUT', async () => {
+    const { wrapper, api } = await openAdvanced(dailyResp)
+    api.put.mockClear()
+    let release
+    api.put.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+
+    wrapper.vm.onTagCacheTimeChange('07:00')
+    await flushPromises() // 第一次 PUT 已挂起
+    wrapper.vm.onTagCacheTimeChange('08:00') // 在飞时的新改动
+    release({ data: {} })
+    await flushPromises()
+
+    expect(api.put).toHaveBeenCalledTimes(2)
+    expect(api.put).toHaveBeenNthCalledWith(2, '/config/tag-cache', {
+      enable_daily_refresh: true,
+      refresh_cron: '0 8 * * *',
+    })
+  })
+
+  it('不再有「保存」按钮，也没有条/页输入', async () => {
+    const { wrapper } = await openAdvanced({
+      enable_daily_refresh: true,
+      refresh_cron: '30 5 * * *',
+    })
+
+    const card = wrapper.find('.refresh-item--tag-refresh')
+    expect(card.findAll('button').some((b) => b.text().includes('保存'))).toBe(false)
+    expect(card.text()).not.toContain('条/页')
+    expect(wrapper.vm.tagCacheForm.batchLimit).toBeUndefined()
+  })
+
+  it('定时更新并入「更新标签」框；更新艺术家 / 预览图清理仍是横排', async () => {
+    const { wrapper } = await openAdvanced(dailyResp)
+
+    const advanced = wrapper.find('.advanced-section')
+    const stacked = advanced.findAll('.refresh-item--stacked')
+    expect(stacked.length).toBe(1)
+    expect(stacked[0].classes()).toContain('refresh-item--tag-refresh')
+    expect(stacked[0].text()).toContain('更新标签')
+    expect(stacked[0].text()).toContain('定时更新')
+    expect(stacked[0].text()).not.toContain('标签缓存定时更新')
+    expect(stacked[0].find('.tag-cache-toggle .tag-cache-label').text()).toBe('定时更新')
+    // 与收藏夹配置一致：布尔项用「关闭 / 开启」单选按钮，不用 el-switch
+    const enableLabels = stacked[0]
+      .findAll('.tag-cache-enable .radio-button-stub')
+      .map((el) => el.text())
+    expect(enableLabels).toEqual(['关闭', '开启'])
+    expect(stacked[0].find('.tag-cache-switch').exists()).toBe(false)
+
+    // 更新标签已是 stacked；另外两项保持横排
+    const plain = advanced
+      .findAll('.refresh-item')
+      .filter((el) => !el.classes().includes('refresh-item--stacked'))
+    expect(plain.length).toBe(2)
+    const texts = plain.map((el) => el.text())
+    expect(texts.some((t) => t.includes('更新艺术家'))).toBe(true)
+    expect(texts.some((t) => t.includes('预览图清理'))).toBe(true)
+    expect(texts.some((t) => t.includes('更新标签'))).toBe(false)
   })
 })

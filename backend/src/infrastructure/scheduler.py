@@ -8,6 +8,17 @@ from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
 
+# 标签缓存单次增量刷新的每页条数。写死而非做成配置：
+# 增量刷新走 TagCacheService._incremental_refresh_tags 的 after_id 游标循环
+# （YandeApi.get_tags 里 limit 还会被 min(limit, 1000) 二次夹紧），它只决定单次
+# HTTP 请求的页大小、**不封顶**单轮刷新总量；调大只是把多轮请求压成一轮，
+# 而 yande.re 的新标签增长极慢，一天一次的新增量通常一两页就取完。
+# 也就是说这个数字对最终刷新结果没有任何影响，暴露成配置项只会让用户在
+# 「100 条/页」这种内部实现细节上做无意义的抉择，故固定 100
+# （与 favorite_scheduler.PER_PAGE_LIMIT = 100 同值，保持站内页大小一致）。
+TAG_CACHE_REFRESH_BATCH = 100
+
+
 class ScheduleManager:
     # 标签缓存定时刷新的固定 job id（非 folder_* 命名空间，与收藏夹调度区分）
     TAG_CACHE_JOB_ID = "tag_cache_daily_refresh"
@@ -128,19 +139,18 @@ class ScheduleManager:
                 pass
         return removed
 
-    def register_tag_cache_refresh(self, cron: str, batch_limit: int = 100) -> None:
+    def register_tag_cache_refresh(self, cron: str) -> None:
         """注册标签缓存的定时增量刷新（单个全局 job，非每收藏夹）
 
         与 ``register_folder`` 分开：标签缓存是全局单表，一天一次足够，
-        不需要按收藏夹注册。
+        不需要按收藏夹注册。刷新的每页条数固定为 ``TAG_CACHE_REFRESH_BATCH``，
+        不再从配置传入。
 
         Raises:
-            ValueError: cron 非法或 batch_limit 越界
+            ValueError: cron 非法
         """
         if not cron or not cron.strip():
             raise ValueError("cron expression cannot be empty")
-        if not isinstance(batch_limit, int) or batch_limit < 1:
-            raise ValueError(f"batch_limit must be a positive int, got: {batch_limit}")
 
         scheduler = self._get_scheduler()
         try:
@@ -154,14 +164,14 @@ class ScheduleManager:
         scheduler.add_job(
             _on_tag_cache_trigger,
             trigger=trigger,
-            args=[batch_limit],
+            args=[],
             id=self.TAG_CACHE_JOB_ID,
             replace_existing=True,
             coalesce=True,
             max_instances=1,
             misfire_grace_time=3600,
         )
-        logger.info(f"Tag cache refresh scheduled: cron='{cron}' batch_limit={batch_limit}")
+        logger.info(f"Tag cache refresh scheduled: cron='{cron}' batch={TAG_CACHE_REFRESH_BATCH}")
 
     def unregister_tag_cache_refresh(self) -> bool:
         """移除标签缓存定时刷新 job（开关关闭 / 关停时调用）"""
@@ -211,10 +221,11 @@ async def _on_folder_trigger(folder_id: int) -> None:
     asyncio.create_task(run_folder_schedule(folder_id))
 
 
-async def _on_tag_cache_trigger(batch_limit: int) -> None:
+async def _on_tag_cache_trigger() -> None:
     """标签缓存定时刷新入口
 
-    行为：走 ``TagCacheService.refresh_tags`` 的**增量**分支（表空时它自己转全量）。
+    行为：走 ``TagCacheService.refresh_tags`` 的**增量**分支（表空时它自己转全量），
+    每页条数固定 ``TAG_CACHE_REFRESH_BATCH``。
     全程 to_thread：yande_api 是同步 requests，不解阻塞会卡住事件循环
     （此时下载进度上报 / 前端轮询全被拖住）。
 
@@ -235,7 +246,7 @@ async def _on_tag_cache_trigger(batch_limit: int) -> None:
         return
 
     try:
-        result = await asyncio.to_thread(TagCacheService.refresh_tags, batch_limit, False)
+        result = await asyncio.to_thread(TagCacheService.refresh_tags, TAG_CACHE_REFRESH_BATCH, False)
         logger.info(f"Tag cache refreshed by schedule: {result}")
     except Exception as e:
         logger.error(f"Scheduled tag cache refresh failed: {e}")

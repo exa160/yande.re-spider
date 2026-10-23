@@ -58,7 +58,8 @@ def test_get_tag_cache_config(client):
     data = resp.json()["data"]
     assert "enable_daily_refresh" in data
     assert "refresh_cron" in data
-    assert "batch_limit" in data
+    # batch_limit 已写死为 TAG_CACHE_REFRESH_BATCH，不再是配置字段，也不对外暴露
+    assert "batch_limit" not in data
 
 
 def test_put_tag_cache_config_persists_and_reloads_schedule(client):
@@ -68,7 +69,6 @@ def test_put_tag_cache_config_persists_and_reloads_schedule(client):
         json={
             "enable_daily_refresh": False,
             "refresh_cron": "30 5 * * *",
-            "batch_limit": 250,
         },
     )
     assert resp.status_code == 200
@@ -79,14 +79,34 @@ def test_put_tag_cache_config_persists_and_reloads_schedule(client):
     data = c.get("/api/v1/config/tag-cache").json()["data"]
     assert data["enable_daily_refresh"] is False
     assert data["refresh_cron"] == "30 5 * * *"
-    assert data["batch_limit"] == 250
+    assert "batch_limit" not in data
+
+
+def test_put_ignores_legacy_batch_limit_key(client):
+    """老版本前端 / 老配置里仍会带 batch_limit：必须被静默忽略而不是 422。"""
+    c, reload_calls = client
+    resp = c.put(
+        "/api/v1/config/tag-cache",
+        json={
+            "enable_daily_refresh": True,
+            "refresh_cron": "30 5 * * *",
+            "batch_limit": 250,
+        },
+    )
+    assert resp.status_code == 200
+    assert reload_calls == [1]
+
+    data = c.get("/api/v1/config/tag-cache").json()["data"]
+    # 遗留键既没生效也没出现在响应里
+    assert data["refresh_cron"] == "30 5 * * *"
+    assert "batch_limit" not in data
 
 
 def test_put_rejects_invalid_cron(client):
     c, reload_calls = client
     resp = c.put(
         "/api/v1/config/tag-cache",
-        json={"enable_daily_refresh": True, "refresh_cron": "not a cron", "batch_limit": 100},
+        json={"enable_daily_refresh": True, "refresh_cron": "not a cron"},
     )
     assert resp.status_code == 422
     # 校验失败不应触发重挂
@@ -97,7 +117,7 @@ def test_reset_tag_cache_section(client):
     c, _ = client
     c.put(
         "/api/v1/config/tag-cache",
-        json={"enable_daily_refresh": False, "refresh_cron": "30 5 * * *", "batch_limit": 7},
+        json={"enable_daily_refresh": False, "refresh_cron": "30 5 * * *"},
     )
     resp = c.post("/api/v1/config/reset", params={"section": "tag_cache"})
     assert resp.status_code == 200
