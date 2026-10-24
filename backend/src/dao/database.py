@@ -5,7 +5,7 @@ from typing import Optional
 from loguru import logger
 from sqlalchemy import URL, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool
 
 from src.common import config
 from src.common.constant import path_constant
@@ -19,10 +19,8 @@ _cached_session_factory = None
 def _apply_sqlite_pragmas(engine) -> None:
     """为 SQLite 连接启用 WAL 日志模式。
 
-    WAL 下读事务不阻塞写事务、写也不阻塞读，可减少后台任务（标签统计 /
-    下载完成写入）与请求读取之间的锁等待。注意：当前 SQLite 仍用 StaticPool
-    单连接，进程内访问实际是串行的；WAL 的并发收益主要体现在未来换成多连接
-    池 / 多进程，以及更好的崩溃恢复行为。
+    WAL 下读事务不阻塞写事务、写也不阻塞读。配合 QueuePool 多连接，
+    ``asyncio.to_thread`` 里的后台 DB 任务与请求读取可以真正并行。
     journal_mode 会写入数据库文件头，重启后保持；**不修改任何业务数据**。
     若底层文件系统不支持 WAL（如某些网络共享），PRAGMA 会返回旧模式，这里只告警。
     """
@@ -73,10 +71,17 @@ def get_db_engine():
             pool_timeout=10,
         )
     else:
+        # QueuePool 而非 StaticPool：to_thread 里的后台 DB 任务与请求处理会
+        # 并发使用不同 session，必须各自持有独立 sqlite 连接。单连接共享在
+        # WAL 下仍会因 SQLAlchemy Session 非线程安全而互相踩事务状态（实测会
+        # 卡死事件循环）。WAL + timeout=30 负责多连接的读写协调。
         _cached_engine = create_engine(
             f"sqlite:///{path_constant.sqlite_file}",
             connect_args={"timeout": 30, "check_same_thread": False},
-            poolclass=StaticPool,
+            poolclass=QueuePool,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
         )
         _apply_sqlite_pragmas(_cached_engine)
     # 必须在首次连接创建前注册 UDF；查询路径动态注册会与并发语句冲突

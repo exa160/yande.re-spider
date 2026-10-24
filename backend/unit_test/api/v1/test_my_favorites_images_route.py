@@ -215,3 +215,25 @@ def test_service_pagination_skips_previous_pages(in_memory_session):
     assert [img.id for img in p1] == [3]
     assert [img.id for img in p2] == [1]
     assert [img.id for img in p3] == [2]
+
+# ============================================================
+# 角标口径：与 /images 的 INNER JOIN 一致（排除孤儿收藏）
+# ============================================================
+
+def test_count_excludes_favorites_without_yande_data(in_memory_session):
+    """my_favorite 有行但 yande_data 缺失时，不计入角标/列表 total。"""
+    from src.services.my_favorites import MyFavoritesService
+
+    _seed_yande(in_memory_session, 1)
+    in_memory_session.commit()
+    MyFavoriteDao.add(in_memory_session, image_id=1)
+    MyFavoriteDao.add(in_memory_session, image_id=999)  # 孤儿：yande_data 不存在
+    in_memory_session.commit()
+
+    assert MyFavoriteDao.count(in_memory_session) == 2
+    assert MyFavoriteDao.count_with_images(in_memory_session) == 1
+    assert MyFavoritesService.count() == 1
+
+    images, total = MyFavoritesService.list_images_paginated(page=1, page_size=20)
+    assert total == 1
+    assert [img.id for img in images] == [1]

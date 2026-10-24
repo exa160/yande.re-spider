@@ -47,3 +47,18 @@ def test_wal_is_persistent_across_reopen(tmp_path):
     engine.dispose()
 
     assert str(mode).lower() == "wal"
+
+
+def test_engine_uses_queue_pool_for_sqlite():
+    """SQLite 必须用多连接池（StaticPool 单连接会让 to_thread 并发 session 互相踩状态）。"""
+    import pytest
+
+    from src.common import config
+
+    if config.database.enable and config.database.host:
+        pytest.skip("MariaDB mode")
+
+    from src.dao.database import get_db_engine
+
+    engine = get_db_engine()
+    assert type(engine.pool).__name__ == "QueuePool"

@@ -14,7 +14,7 @@ from sqlalchemy import case, delete, func, select, update
 
 from src.common.constant import TaskStatus
 from src.dao.database import BaseDAO
-from src.models.database.yande import DownloadTask
+from src.models.database.yande import DownloadTask, YandeData
 
 # 活跃状态：任务还在队列里（前端据此显示「下载中」）
 ACTIVE_STATUSES = (TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.PAUSED)
@@ -310,6 +310,59 @@ class DownloadTaskDao(BaseDAO):
         )
         rows = self.session.execute(stmt).all()
         return [(row[0], row[1]) for row in rows]
+
+    def list_recent_visible_image_ids(
+        self, page: int = 1, page_size: int = 20
+    ) -> List[Tuple[int, datetime]]:
+        """最近下载**可渲染**图片的 (image_id, 最新完成时间)，时间倒序。
+
+        与 ``list_completed_image_ids`` 的区别：额外 INNER JOIN ``yande_data``
+        且要求 ``down_flag=True``，与前端列表
+        ``/gallery/load?sort_by=downloaded_at`` 的筛选保持一致。
+        任务历史本身（含图片已不存在 / down_flag=0 的记录）仍由
+        ``list_completed_image_ids`` 返回，供清除等场景使用。
+        """
+        stmt = (
+            select(
+                DownloadTask.image_id,
+                func.max(DownloadTask.completed_at).label("latest_completed_at"),
+            )
+            .select_from(DownloadTask)
+            .join(YandeData, YandeData.id == DownloadTask.image_id)
+            .where(
+                DownloadTask.status == TaskStatus.COMPLETED,
+                DownloadTask.completed_at.isnot(None),
+                YandeData.down_flag.is_(True),
+            )
+            .group_by(DownloadTask.image_id)
+            .order_by(
+                func.max(DownloadTask.completed_at).desc(),
+                DownloadTask.image_id.desc(),
+            )
+            .offset((max(page, 1) - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = self.session.execute(stmt).all()
+        return [(row[0], row[1]) for row in rows]
+
+    def count_recent_visible_images(self) -> int:
+        """最近下载**可渲染**的去重图片数（与 list_recent_visible_image_ids 同口径）。
+
+        列表页会过滤 ``yande_data.down_flag=True``（本地图库只显示已下载图），
+        如果角标继续统计全部 completed 任务，图片缺失/down_flag=0 时就会出现
+        「角标 23、点进去只有 6 张」。角标/预览统一改用本方法。
+        """
+        stmt = (
+            select(func.count(func.distinct(DownloadTask.image_id)))
+            .select_from(DownloadTask)
+            .join(YandeData, YandeData.id == DownloadTask.image_id)
+            .where(
+                DownloadTask.status == TaskStatus.COMPLETED,
+                DownloadTask.completed_at.isnot(None),
+                YandeData.down_flag.is_(True),
+            )
+        )
+        return self.session.execute(stmt).scalar() or 0
 
     def count_completed_distinct_images(self) -> int:
         """COUNT(DISTINCT image_id)，口径与 list_completed_image_ids 对齐。

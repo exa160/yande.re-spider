@@ -9,7 +9,7 @@ from loguru import logger
 
 from src.common.constant import ErrMsg, Rating
 from src.dao.download_task_dao import DownloadTaskDao
-from src.dao.favorite_dao import favorite_dao
+from src.dao.favorite_dao import FavoriteDao, favorite_dao
 from src.dao.yande_data_dao import YandeDataRepository, SortBy
 from src.infrastructure.scheduler import schedule_manager
 from src.infrastructure.yande_api import YandeApi
@@ -98,89 +98,92 @@ class FavoritesService:
         - 仅当 ``last_refresh`` 早于最近一次 completed 下载时间时才重算，
           避免每次翻页都对整页 folder 跑全量 COUNT。
         """
-        # 1. 关键字过滤（在 DAO 层做，避免 N 个 folder 都被加载后过滤）
-        if keyword:
-            folders, total = favorite_dao.search_paginated(
-                page=page, page_size=page_size, keyword=keyword
-            )
-        else:
-            folders, total = favorite_dao.list_paginated(
-                page=page, page_size=page_size
-            )
-        if not folders:
-            return [], total, False
+        # 本方法会由路由放进 asyncio.to_thread 执行，**不能**使用请求级
+        # favorite_dao 单例：跨线程复用同一个 Session（及其连接）会让两个请求
+        # 直接踩坏共享的 sqlite 连接（实测会卡死事件循环）。这里用 with 自建
+        # session，所有读写（含 local_count 回写）都在 worker 线程内提交。
+        with FavoriteDao() as dao:
+            # 1. 关键字过滤（在 DAO 层做，避免 N 个 folder 都被加载后过滤）
+            if keyword:
+                folders, total = dao.search_paginated(
+                    page=page, page_size=page_size, keyword=keyword
+                )
+            else:
+                folders, total = dao.list_paginated(
+                    page=page, page_size=page_size
+                )
+            if not folders:
+                return [], total, False
 
-        # 2. 按需重算本地数量。
-        #
-        # local_count 是缓存列，唯一会改变它的事实是「某张图下载完成」
-        # （down_flag False→True）。列表接口此前直接返回旧值，后台调度/收藏自动
-        # 下载完成后角标会长期停在旧数字（实测生产 78 个收藏夹里 48 个不准）。
-        #
-        # 用最近一次 completed 下载时间判断是否可能过期：last_refresh 早于它才
-        # 重算，避免每次翻页都为整页 folder 跑全量 COUNT（单次 ~0.3s）。
-        with DownloadTaskDao() as download_task_dao:
-            latest_completed = download_task_dao.max_completed_at()
-        now = datetime.now()
+            # 2. 按需重算本地数量。
+            #
+            # local_count 是缓存列，唯一会改变它的事实是「某张图下载完成」
+            # （down_flag False→True）。列表接口此前直接返回旧值，后台调度/收藏自动
+            # 下载完成后角标会长期停在旧数字（实测生产 78 个收藏夹里 48 个不准）。
+            #
+            # 用最近一次 completed 下载时间判断是否可能过期：last_refresh 早于它才
+            # 重算，避免每次翻页都为整页 folder 跑全量 COUNT（单次 ~0.3s）。
+            with DownloadTaskDao() as download_task_dao:
+                latest_completed = download_task_dao.max_completed_at()
+            now = datetime.now()
 
-        # 3. 共享一个 repo session，遍历所有 folder 收集预览元数据
-        items: list[FavoriteFolderWithMinimalPreview] = []
-        # 缓存同 tags 字符串的查询结果（多 folder 共享时复用）
-        # cache_key 加 include_online 维度，因为相同 tags 在不同 include_online 下结果不同
-        tags_query_cache: dict[str, list[FolderPreviewImageMinimal]] = {}
-        with YandeDataRepository() as repo:
-            for f in folders:
-                needs_count_refresh = f.tags and (
-                    f.last_refresh is None
-                    or (
-                        latest_completed is not None
-                        and f.last_refresh < latest_completed
+            # 3. 共享一个 repo session，遍历所有 folder 收集预览元数据
+            items: list[FavoriteFolderWithMinimalPreview] = []
+            # 缓存同 tags 字符串的查询结果（多 folder 共享时复用）
+            # cache_key 加 include_online 维度，因为相同 tags 在不同 include_online 下结果不同
+            tags_query_cache: dict[str, list[FolderPreviewImageMinimal]] = {}
+            with YandeDataRepository() as repo:
+                for f in folders:
+                    needs_count_refresh = f.tags and (
+                        f.last_refresh is None
+                        or (
+                            latest_completed is not None
+                            and f.last_refresh < latest_completed
+                        )
                     )
-                )
-                if needs_count_refresh:
-                    try:
-                        search_params = FavoritesService._parse_tags_to_params(f.tags)
-                        search_params.page = 1
-                        search_params.page_size = 1
-                        _, fresh_count = repo.query(
-                            query_params=search_params, downloaded_only=True
-                        )
-                        # 直接改 ORM 属性而不是再开一条 UPDATE：repo session 正在
-                        # 使用共享连接（SQLite StaticPool），避免两个 session 在
-                        # 同一连接上交错写。脏字段随请求结束由中间件统一 commit。
-                        f.local_count = fresh_count
-                        f.last_refresh = now
-                    except Exception as e:
-                        # 单个 folder 的 tags 异常不应拖垮整页列表；下次加载会重试
-                        logger.warning(
-                            f"Refresh local_count failed for folder {f.id}: {e}"
-                        )
+                    if needs_count_refresh:
+                        try:
+                            search_params = FavoritesService._parse_tags_to_params(f.tags)
+                            search_params.page = 1
+                            search_params.page_size = 1
+                            _, fresh_count = repo.query(
+                                query_params=search_params, downloaded_only=True
+                            )
+                            dao.update(
+                                f.id, local_count=fresh_count, last_refresh=now
+                            )
+                        except Exception as e:
+                            # 单个 folder 的 tags 异常不应拖垮整页列表；下次加载会重试
+                            logger.warning(
+                                f"Refresh local_count failed for folder {f.id}: {e}"
+                            )
 
-                limit = _preview_count_for_local_count(
-                    f.local_count or 0, tile_size
-                )
-                preview_meta: list[FolderPreviewImageMinimal] = []
-                if f.tags and limit > 0:
-                    cache_key = f"{f.tags}|{limit}|{preview_order}|{include_online}"
-                    if cache_key not in tags_query_cache:
-                        sampled = repo.query_preview_for_tags(
-                            tags=f.tags,
-                            limit=limit,
-                            downloaded_only=not include_online,
-                            order=preview_order,
-                        )
-                        tags_query_cache[cache_key] = [
-                            FolderPreviewImageMinimal.model_validate(img)
-                            for img in sampled
-                        ]
-                    preview_meta = tags_query_cache[cache_key]
-                items.append(
-                    FavoriteFolderWithMinimalPreview(
-                        **FavoriteFolder.model_validate(f).model_dump(),
-                        preview_images=preview_meta,
+                    limit = _preview_count_for_local_count(
+                        f.local_count or 0, tile_size
                     )
-                )
-        has_more = page * page_size < total
-        return items, total, has_more
+                    preview_meta: list[FolderPreviewImageMinimal] = []
+                    if f.tags and limit > 0:
+                        cache_key = f"{f.tags}|{limit}|{preview_order}|{include_online}"
+                        if cache_key not in tags_query_cache:
+                            sampled = repo.query_preview_for_tags(
+                                tags=f.tags,
+                                limit=limit,
+                                downloaded_only=not include_online,
+                                order=preview_order,
+                            )
+                            tags_query_cache[cache_key] = [
+                                FolderPreviewImageMinimal.model_validate(img)
+                                for img in sampled
+                            ]
+                        preview_meta = tags_query_cache[cache_key]
+                    items.append(
+                        FavoriteFolderWithMinimalPreview(
+                            **FavoriteFolder.model_validate(f).model_dump(),
+                            preview_images=preview_meta,
+                        )
+                    )
+            has_more = page * page_size < total
+            return items, total, has_more
 
     @staticmethod
     def create_folder(folder: FavoriteFolderCreate) -> FavoriteFolder:

@@ -86,8 +86,9 @@ class TestRuntimeDoesNotUseDaoSingleton:
             r"with DownloadTaskDao\(\) as dao:",
             SERVICE_PATH.read_text(encoding="utf-8"),
         )
-        assert len(fresh) == 9, (
-            f"预期 9 处 `with DownloadTaskDao() as dao:`，实际 {len(fresh)} 处；"
+        # 2026-10-25: 新增 list_recent_visible_image_ids（最近下载可渲染口径）→ 9→10
+        assert len(fresh) == 10, (
+            f"预期 10 处 `with DownloadTaskDao() as dao:`，实际 {len(fresh)} 处；"
             "若新增了调用点请同步本测试的断言"
         )
 

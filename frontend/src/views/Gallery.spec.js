@@ -133,6 +133,7 @@ beforeEach(async () => {
   const favCfg = useFavoritesConfig()
   favCfg.enableRecentDownloads.value = false
   favCfg.recentDownloadsCount.value = 0
+  favCfg.myFavoritesCount.value = 0
   setLocalCountMock.mockClear()
   updateLocalCountMock.mockClear()
   refreshOnlineCountMock.mockClear()
@@ -2818,6 +2819,82 @@ describe('Gallery.vue 详情布局（桌面 rail / 移动 dock）', () => {
       expect(document.querySelector('.float-footer-right').getAttribute('data-arrow')).toBe('up')
     } finally {
       restoreViewport()
+    }
+  })
+})
+
+// =============================================================================
+// 角标实时刷新/对齐：
+// - 点进「我的最爱 / 最近下载」时用列表 total 对齐角标（后端已与列表同口径）
+// - 收藏切换后刷新 myFavoritesCount
+// - 下载完成（防抖）刷新 recentDownloadsCount
+// =============================================================================
+describe('Gallery.vue 磁贴角标刷新', () => {
+  it('点进我的最爱 → 用 /my_favorites/images total 对齐 myFavoritesCount', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const cfg = useFavoritesConfig()
+    cfg.myFavoritesCount.value = 27
+
+    wrapper.vm.querySource = 'my-favorites'
+    wrapper.vm.currentPage = 1
+    wrapper.vm.queryParams = {}
+    myFavoritesApiMock.images.mockResolvedValueOnce({
+      data: [], total: 11, has_more: false,
+    })
+
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    expect(cfg.myFavoritesCount.value).toBe(11)
+  })
+
+  it('点进最近下载 → 用 /gallery/load total 对齐 recentDownloadsCount', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const cfg = useFavoritesConfig()
+    cfg.recentDownloadsCount.value = 23
+
+    wrapper.vm.querySource = 'recent-downloads'
+    wrapper.vm.currentPage = 1
+    wrapper.vm.queryParams = {}
+    apiMock.post.mockResolvedValueOnce({ data: [], has_more: false, total: 6 })
+
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    expect(cfg.recentDownloadsCount.value).toBe(6)
+  })
+
+  it('收藏切换后刷新 myFavoritesCount', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const cfg = useFavoritesConfig()
+    cfg.myFavoritesCount.value = 27
+    myFavoritesApiMock.count.mockResolvedValueOnce({ data: { count: 28 } })
+
+    await wrapper.vm.onFavoriteChanged({ imageId: 1, favorited: true })
+    await flushPromises()
+
+    expect(cfg.myFavoritesCount.value).toBe(28)
+  })
+
+  it('下载完成 → 防抖后刷新 recentDownloadsCount', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    const cfg = useFavoritesConfig()
+    cfg.recentDownloadsCount.value = 23
+    recentDownloadsApiMock.getCount.mockResolvedValue({ data: { count: 24 } })
+
+    vi.useFakeTimers()
+    try {
+      wrapper.vm.querySource = 'local'
+      wrapper.vm.currentFavorite = null
+      wrapper.vm.handleImagesDownloaded([1])
+      await vi.advanceTimersByTimeAsync(1300)
+      expect(cfg.recentDownloadsCount.value).toBe(24)
+    } finally {
+      vi.useRealTimers()
     }
   })
 })

@@ -21,7 +21,7 @@ from sqlalchemy.orm import sessionmaker
 from src.common.constant import TaskStatus
 from src.dao.database import Base
 from src.dao.download_task_dao import DownloadTaskDao
-from src.models.database.yande import DownloadTask
+from src.models.database.yande import DownloadTask, YandeData
 
 
 @pytest.fixture
@@ -232,3 +232,64 @@ def test_delete_completed_before_returns_zero_when_none_match(dao, seeded):
     """cutoff 早于全部记录时返回 0。"""
     assert dao.delete_completed_before(NOW - timedelta(days=365)) == 0
     assert dao.count_completed_distinct_images() == 4
+
+
+# ============================================================
+# list_recent_visible_image_ids / count_recent_visible_images
+# （与 /gallery/load?sort_by=downloaded_at 列表同口径）
+# ============================================================
+
+
+def _add_yande(session, image_id: int, down_flag: bool = True) -> None:
+    session.add(
+        YandeData(
+            id=image_id,
+            tags="a",
+            width=100,
+            height=100,
+            file_ext="jpg",
+            file_size=1024,
+            file_url=f"http://a/{image_id}.jpg",
+            preview_url=f"http://pa/{image_id}.jpg",
+            md5=f"m{image_id}",
+            author="t",
+            created_at=datetime(2026, 1, 1),
+            down_flag=down_flag,
+        )
+    )
+    session.flush()
+
+
+def test_visible_list_excludes_missing_images_and_not_downloaded(dao, session):
+    """角标/列表口径：JOIN yande_data 且 down_flag=True。
+
+    - image 1: 存在且已下载 → 命中
+    - image 2: 存在但 down_flag=False → 排除
+    - image 3: yande_data 缺失（孤儿任务）→ 排除
+    """
+    _add_yande(session, 1, down_flag=True)
+    _add_yande(session, 2, down_flag=False)
+    _add(session, "a", 1, TaskStatus.COMPLETED, NOW)
+    _add(session, "b", 2, TaskStatus.COMPLETED, NOW)
+    _add(session, "c", 3, TaskStatus.COMPLETED, NOW)
+    session.commit()
+
+    rows = dao.list_recent_visible_image_ids(page=1, page_size=20)
+    assert [r[0] for r in rows] == [1]
+    assert dao.count_recent_visible_images() == 1
+
+    # 任务历史/清除用的老方法保持原口径（不受 JOIN 影响）
+    assert dao.count_completed_distinct_images() == 3
+    assert {r[0] for r in dao.list_completed_image_ids(page=1, page_size=20)} == {1, 2, 3}
+
+
+def test_visible_count_matches_visible_list_with_duplicates(dao, session):
+    """同一图多条 completed 在可见口径下也只算一次。"""
+    _add_yande(session, 1, down_flag=True)
+    _add(session, "a", 1, TaskStatus.COMPLETED, NOW - timedelta(days=2))
+    _add(session, "b", 1, TaskStatus.COMPLETED, NOW - timedelta(days=1))
+    session.commit()
+
+    rows = dao.list_recent_visible_image_ids(page=1, page_size=20)
+    assert [r[0] for r in rows] == [1]
+    assert dao.count_recent_visible_images() == 1

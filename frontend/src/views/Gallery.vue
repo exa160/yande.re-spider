@@ -417,7 +417,12 @@ import { myFavoritesApi } from '@/api/myFavorites'
 // refreshOnlineCount 打的是 yande.re 远程 API —— 后端已加 600s TTL 兜底，
 // 重复调用直接命中缓存，不会真的打远端
 import { setLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
-import { useFavoritesConfig, whenFavoritesConfigReady } from '@/composables/useFavoritesConfig'
+import {
+  useFavoritesConfig,
+  whenFavoritesConfigReady,
+  fetchMyFavoritesCount,
+  fetchRecentDownloadsCount,
+} from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import { useDownloadState } from '@/composables/useDownloadState'
 import { useImageTone } from '@/composables/useImageTone'
@@ -500,6 +505,8 @@ const {
   includeOnline,
   folderPageSize,
   enableMyFavorites,
+  myFavoritesCount,
+  recentDownloadsCount,
 } = useFavoritesConfig()
 
 // Task 19 修复：favorites-folders 视图 prepend 虚拟磁贴（我的最爱 / 随机浏览）
@@ -710,6 +717,8 @@ const onFavoriteChanged = (payload) => {
   if (currentImage.value && currentImage.value.id === payload.imageId) {
     currentImage.value.is_favorited = payload.favorited
   }
+  // 角标实时性：加/取消收藏后刷新「我的最爱」总数（否则磁贴数字停留在首屏值）
+  fetchMyFavoritesCount().catch(() => {})
   if (payload.downloadStarted) {
     markQueued([payload.imageId])
     syncDownloadStates()
@@ -1323,6 +1332,11 @@ const loadImages = async (page) => {
     if (querySource.value === 'my-favorites') {
       const pageSize = queryParams.value.page_size || 20
       const response = await myFavoritesApi.images(targetPage, pageSize)
+      // 后端 total 已改为 JOIN yande_data 的可渲染数量，和列表同口径；
+      // 顺手对齐磁贴角标，避免「外面 27、里面 11」。
+      if (typeof response.total === 'number') {
+        myFavoritesCount.value = response.total
+      }
       const data = response.data
       const imageList = Array.isArray(data) ? data : []
       if (currentPage.value === 1) {
@@ -1391,6 +1405,14 @@ const loadImages = async (page) => {
       ...extraParams,
       page: targetPage
     })
+    // 最近下载的 total 与角标同口径（JOIN yande_data + down_flag=1）；
+    // 点进去时顺手对齐，避免角标停留在旧值。
+    if (
+      querySource.value === 'recent-downloads' &&
+      typeof response.total === 'number'
+    ) {
+      recentDownloadsCount.value = response.total
+    }
     const data = response.data
     // 重构后 data 直接是图片数组
     const imageList = Array.isArray(data) ? data : []
@@ -1579,7 +1601,21 @@ const batchDownload = async () => {
 //   - 只对「当前收藏夹页里已经加载出来的图」计数，避免给无关收藏夹虚增；
 //   - 用户返回收藏夹列表时 handleBackToFolders → loadFolders(1) 会全量重算，
 //     任何期间的漂移（漏加/多加）都会在那一步被纠正回真实值。
+// 下载完成 → 防抖刷新「最近下载」角标。
+// 批量下载会逐张完成，若每张都打一次 /recent_downloads/count 会造成堆积；
+// 统一延后 1.2s，只取最终状态（角标与列表同口径，查询本身很轻）。
+let recentDownloadsCountTimer = null
+const scheduleRecentDownloadsCountRefresh = () => {
+  if (recentDownloadsCountTimer) clearTimeout(recentDownloadsCountTimer)
+  recentDownloadsCountTimer = setTimeout(() => {
+    recentDownloadsCountTimer = null
+    fetchRecentDownloadsCount().catch(() => {})
+  }, 1200)
+}
+
 const handleImagesDownloaded = (ids) => {
+  // 无论当前是否在收藏夹视图，下载完成都可能改变「最近下载」角标
+  scheduleRecentDownloadsCountRefresh()
   if (!Array.isArray(ids) || ids.length === 0) return
   const folder = currentFavorite.value
   const folderId = Number(folder?.id)
@@ -1867,6 +1903,10 @@ onUnmounted(() => {
   stopDownloadSync()
   unsubscribeDownloadCompleted?.()
   unsubscribeDownloadCompleted = null
+  if (recentDownloadsCountTimer) {
+    clearTimeout(recentDownloadsCountTimer)
+    recentDownloadsCountTimer = null
+  }
 })
 
 // 键盘事件处理

@@ -15,10 +15,12 @@
 - 因此本期**不改表结构**，复用 download_task 的 completed_at 作为时间依据
   （设计文档 §2.1）。
 
-筛选条件三者缺一不可（DAO 层强制）：
+筛选条件（count / preview / 列表三项必须完全一致）：
 1. ``status == 'completed'``   —— 排除 pending/downloading/paused/failed/cancelled
 2. ``completed_at IS NOT NULL`` —— 排除「文件已存在、跳过下载」分支产生的 NULL
-3. ``GROUP BY image_id`` + ``MAX(completed_at)`` —— 重复下载去重，排序键取最新完成时间
+3. ``JOIN yande_data AND down_flag=True`` —— 与 ``/gallery/load?sort_by=downloaded_at``
+   的本地列表一致；图片记录缺失或 down_flag=0 时不可渲染，不计入角标/预览
+4. ``GROUP BY image_id`` + ``MAX(completed_at)`` —— 重复下载去重，排序键取最新完成时间
 
 ==================== 已知取舍（OpenAPI 同步可见）====================
 1. 用户删除下载任务记录 → 该图从「最近下载」消失，但**图片文件仍在磁盘**，
@@ -29,7 +31,8 @@
 4. 清除**只删任务日志，不删图片文件**。
 
 ==================== 角标口径 ====================
-本端点 count = ``COUNT(DISTINCT image_id)``（去重）；
+本端点 count = 可渲染的 ``COUNT(DISTINCT image_id)``（completed + completed_at
+非空 + JOIN yande_data + down_flag=True，去重）；
 ``/random_browse/count`` = ``yande_data`` 表 down_flag=True 总数。
 两者口径不同，正常情况下数字不会相撞。
 
@@ -62,11 +65,13 @@ router = APIRouter()
     summary="最近下载去重图片数（磁贴角标）",
 )
 async def get_recent_downloads_count() -> BaseResponse[MyFavoriteCountResponse]:
-    """返回「最近下载」的去重图片数（磁贴角标）。
+    """返回「最近下载」的可渲染去重图片数（磁贴角标）。
 
-    口径 = ``COUNT(DISTINCT image_id)`` of completed 下载任务，与 /preview 完全同源；
-    重复下载同一张图只算一次。响应模型复用 ``MyFavoriteCountResponse``
-    （单字段 int），不为同一个契约再声明一个同构模型。
+    口径 = completed + completed_at 非空 + JOIN yande_data + down_flag=True 的
+    ``COUNT(DISTINCT image_id)``，与 /preview 和
+    ``/gallery/load?sort_by=downloaded_at`` 列表完全同源；重复下载同一张图只算一次。
+    响应模型复用 ``MyFavoriteCountResponse``（单字段 int），不为同一个契约再声明
+    一个同构模型。
     """
     try:
         count = await asyncio.to_thread(DownloadService.count_completed_images)

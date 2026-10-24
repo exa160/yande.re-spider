@@ -393,16 +393,28 @@ class DownloadService:
             return dao.list_completed_image_ids(page=page, page_size=page_size)
 
     @staticmethod
-    def count_completed_images() -> int:
-        """最近下载的**去重图片数**（COUNT(DISTINCT image_id)），用作磁贴角标。
+    def list_recent_visible_image_ids(
+        page: int = 1, page_size: int = 20
+    ) -> List[Tuple[int, datetime]]:
+        """最近下载**可渲染**图片的 (image_id, 最新完成时间)，与列表页同口径。"""
+        from src.dao.download_task_dao import DownloadTaskDao
 
-        与 ``count_downloaded()``（随机浏览角标 = down_flag=True 总数）口径不同：
-        重复下载同一张图只计一次，避免角标虚高。
+        with DownloadTaskDao() as dao:
+            return dao.list_recent_visible_image_ids(page=page, page_size=page_size)
+
+    @staticmethod
+    def count_completed_images() -> int:
+        """最近下载的**可渲染去重图片数**，用作磁贴角标。
+
+        口径：completed + completed_at 非空 + JOIN yande_data + down_flag=True，
+        与 ``/gallery/load?sort_by=downloaded_at`` 的列表完全一致。
+        与 ``count_downloaded()``（随机浏览角标 = down_flag=True 总数）仍不同：
+        重复下载同一张图只计一次。
         """
         from src.dao.download_task_dao import DownloadTaskDao
 
         with DownloadTaskDao() as dao:
-            return dao.count_completed_distinct_images()
+            return dao.count_recent_visible_images()
 
     @staticmethod
     def get_recent_preview(limit: int = 8) -> List[MyFavoritePreviewImage]:
@@ -412,14 +424,16 @@ class DownloadService:
         天然倒序），再回表 yande_data 补齐 tags / rating 元数据，最后按任务侧
         的顺序重排（SQL IN 查询不保证顺序）。
 
-        有意**不**按 ``down_flag=True`` 过滤：角标统计的是 download_task 的
-        completed 记录，若预览再叠加一层 down_flag 过滤，会出现「角标 5 张但
-        磁贴只显示 3 张」的自相矛盾。两者必须同源。
+        与角标/列表同口径：completed + completed_at 非空 + JOIN yande_data +
+        ``down_flag=True``。图片记录缺失或 down_flag=0 的任务不会出现在预览里，
+        避免「角标 23、磁贴/列表只显示 6 张」的口径分裂。
 
         已知取舍：用户手动删掉下载任务记录后该图会从预览中消失，但磁盘文件
         仍在（设计文档 §2.1）。
         """
-        rows = DownloadService.list_completed_image_ids(page=1, page_size=limit)
+        rows = DownloadService.list_recent_visible_image_ids(
+            page=1, page_size=limit
+        )
         if not rows:
             return []
 

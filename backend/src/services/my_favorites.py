@@ -21,7 +21,6 @@ DAO 调用约定：MyFavoriteDao 是纯 static 类，必须显式传入 session�
 from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
-from sqlalchemy import func
 
 from src.common.settings import config
 from src.dao.my_favorite_dao import MyFavoriteDao
@@ -134,9 +133,8 @@ class MyFavoritesService:
         offset = (page - 1) * page_size
         with YandeDataRepository() as repo:
             session = repo.session
-            total = (
-                session.query(func.count()).select_from(MyFavorite).scalar() or 0
-            )
+            # total 必须与 JOIN 后的 rows 同口径；否则角标/翻页会包含孤儿收藏
+            total = MyFavoriteDao.count_with_images(session)
             rows = (
                 session.query(YandeData)
                 .join(MyFavorite, MyFavorite.image_id == YandeData.id)
@@ -154,9 +152,9 @@ class MyFavoritesService:
 
     @staticmethod
     def count() -> int:
-        """我的最爱总数。"""
+        """可渲染的我的最爱总数（JOIN yande_data，与 /my_favorites/images 一致）。"""
         with YandeDataRepository() as repo:
-            return MyFavoriteDao.count(repo.session)
+            return MyFavoriteDao.count_with_images(repo.session)
 
     @staticmethod
     def get_preview(limit: int = 20) -> List[MyFavoritePreviewImage]:

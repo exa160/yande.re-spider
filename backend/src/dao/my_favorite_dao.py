@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.models.database.my_favorite import MyFavorite
+from src.models.database.yande import YandeData
 
 
 class MyFavoriteDao:
@@ -45,8 +46,22 @@ class MyFavoriteDao:
 
     @staticmethod
     def count(session: Session) -> int:
-        """总数。"""
+        """my_favorite 原始行数（含 yande_data 中已不存在的孤儿记录）。"""
         return session.query(MyFavorite).count()
+
+    @staticmethod
+    def count_with_images(session: Session) -> int:
+        """可渲染的收藏数（INNER JOIN yande_data）。
+
+        与 ``/my_favorites/images`` 的查询保持同一口径：图片记录缺失时，
+        该收藏无法在瀑布流中展示，因此不应计入角标。本地 DB 被测试/备份
+        还原后可能残留孤儿 my_favorite 行（此前出现 27 vs 11 的角标/列表差异）。
+        """
+        return (
+            session.query(MyFavorite)
+            .join(YandeData, YandeData.id == MyFavorite.image_id)
+            .count()
+        )
 
     @staticmethod
     def get_preview(session: Session, limit: int = 20) -> List[dict]:
