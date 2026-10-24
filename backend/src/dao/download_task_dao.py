@@ -324,6 +324,18 @@ class DownloadTaskDao(BaseDAO):
         )
         return self.session.execute(stmt).scalar() or 0
 
+    def max_completed_at(self) -> Optional[datetime]:
+        """全局最近一次下载完成时间（供收藏夹 local_count 判断是否需要重算）。
+
+        口径与上面 4 个「最近下载」方法一致：只看 status=COMPLETED 且
+        completed_at 非空。取消/失败任务不会改变 down_flag，不应触发重算。
+        """
+        stmt = select(func.max(DownloadTask.completed_at)).where(
+            DownloadTask.status == TaskStatus.COMPLETED,
+            DownloadTask.completed_at.isnot(None),
+        )
+        return self.session.execute(stmt).scalar()
+
     def count_completed_before(self, cutoff: datetime) -> int:
         """统计 completed_at < cutoff 且 status=COMPLETED 的记录数（清理预览）。
 

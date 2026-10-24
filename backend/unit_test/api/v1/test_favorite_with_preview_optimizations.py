@@ -9,15 +9,17 @@
 from datetime import datetime
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.common.constant import Rating
+from src.common.constant import Rating, TaskStatus
 from src.dao.favorite_dao import favorite_dao
 from src.dao.yande_data_dao import YandeDataRepository
-from src.models.database.yande import Base, YandeData
+from src.models.database.yande import Base, DownloadTask, FavoriteFolder, YandeData
 from src.middleware.session import _request_session
 from src.services.favorites import FavoritesService
 
@@ -288,6 +290,125 @@ def test_get_folders_with_preview_backward_compatible(in_memory_session):
     assert len(items) == 1
     assert items[0].preview_images  # 默认 random 仍能返回至少 1 张
     assert has_more is False
+
+
+# ============================================================
+# 3.5 local_count 按需重算
+#
+# local_count 是缓存列，下载完成（down_flag False→True）后不会自动更新。
+# 列表接口必须在「最近一次 completed 下载」晚于 last_refresh 时重算，
+# 否则后台调度 / 收藏自动下载完成后角标会长期停在旧数字。
+# ============================================================
+
+def _seed_completed_download(sess, image_id: int, completed_at: datetime) -> None:
+    sess.add(
+        DownloadTask(
+            task_id=f"task-{image_id}",
+            image_id=image_id,
+            file_name=f"{image_id}.jpg",
+            status=TaskStatus.COMPLETED,
+            completed_at=completed_at,
+            created_at=completed_at,
+        )
+    )
+    sess.commit()
+
+
+def test_get_folders_with_preview_refreshes_stale_local_count(in_memory_session):
+    """last_refresh 早于最近一次下载完成 → 列表返回并落库真实本地数量。"""
+    sess, _ = in_memory_session
+    folder_id = _seed_folder(sess, "fold_stale", "stale_tag", local_count=999)
+    for i in range(3):
+        _seed_yande(sess, image_id=9000 + i, tags="stale_tag", down_flag=True)
+    for i in range(2):
+        _seed_yande(sess, image_id=9100 + i, tags="stale_tag", down_flag=False)
+
+    favorite_dao.update(folder_id, last_refresh=datetime(2024, 1, 1))
+    _seed_completed_download(sess, image_id=9000, completed_at=datetime(2025, 1, 1))
+
+    items, _, _ = FavoritesService.get_folders_with_preview(page=1, page_size=20)
+
+    assert items[0].local_count == 3
+    # 重算结果随请求 session 落库（expire 后仍读到 3 才算真的写了）
+    sess.commit()
+    sess.expire_all()
+    assert favorite_dao.get_by_id(folder_id).local_count == 3
+
+
+def test_get_folders_with_preview_refreshes_when_never_refreshed(in_memory_session):
+    """last_refresh 为空（从未刷新过）→ 即使没有下载记录也要重算一次。"""
+    sess, _ = in_memory_session
+    folder_id = _seed_folder(sess, "fold_never", "never_tag", local_count=999)
+    for i in range(2):
+        _seed_yande(sess, image_id=9200 + i, tags="never_tag", down_flag=True)
+
+    items, _, _ = FavoritesService.get_folders_with_preview(page=1, page_size=20)
+
+    assert items[0].local_count == 2
+    assert favorite_dao.get_by_id(folder_id).local_count == 2
+
+
+def test_with_preview_route_refreshes_local_count(monkeypatch):
+    """路由层回归：to_thread 内仍能拿到请求级 session，且响应返回重算后的数量。"""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine, expire_on_commit=False)
+    # 必须两处都 patch：middleware.session 在 import 时已绑定工厂引用
+    monkeypatch.setattr("src.dao.database._get_session_factory", lambda: TestSession)
+    monkeypatch.setattr("src.middleware.session._get_session_factory", lambda: TestSession)
+
+    seed = TestSession()
+    seed.add(FavoriteFolder(name="route_fold", tags="route_tag", local_count=999))
+    seed.add(
+        YandeData(
+            id=9400,
+            tags="route_tag",
+            width=100,
+            height=100,
+            file_ext="jpg",
+            file_size=1024,
+            file_url="http://a/9400.jpg",
+            preview_url="http://pa/9400.jpg",
+            md5="m9400",
+            author="t",
+            created_at=datetime(2024, 1, 1),
+            down_flag=True,
+        )
+    )
+    seed.commit()
+    seed.close()
+
+    from src.api.v1.favorites import router as favorites_router
+    from src.middleware.session import RequestSessionMiddleware
+
+    app = FastAPI()
+    app.include_router(favorites_router, prefix="/api/v1/favorites")
+    RequestSessionMiddleware.init_app(app)
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/favorites/with-preview?page=1&page_size=20")
+
+    assert resp.status_code == 200
+    item = resp.json()["data"]["items"][0]
+    assert item["local_count"] == 1
+
+
+def test_get_folders_with_preview_skips_recount_when_fresh(in_memory_session):
+    """last_refresh 晚于最近一次下载完成 → 不重算（避免每次翻页都跑全量 COUNT）。"""
+    sess, _ = in_memory_session
+    folder_id = _seed_folder(sess, "fold_fresh", "fresh_tag", local_count=999)
+    _seed_yande(sess, image_id=9300, tags="fresh_tag", down_flag=True)
+
+    favorite_dao.update(folder_id, last_refresh=datetime(2025, 6, 1))
+    _seed_completed_download(sess, image_id=9300, completed_at=datetime(2025, 1, 1))
+
+    items, _, _ = FavoritesService.get_folders_with_preview(page=1, page_size=20)
+
+    assert items[0].local_count == 999
+    assert favorite_dao.get_by_id(folder_id).local_count == 999
 
 
 # ============================================================

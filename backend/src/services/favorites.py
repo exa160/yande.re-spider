@@ -8,6 +8,7 @@ from typing import List, Optional
 from loguru import logger
 
 from src.common.constant import ErrMsg, Rating
+from src.dao.download_task_dao import DownloadTaskDao
 from src.dao.favorite_dao import favorite_dao
 from src.dao.yande_data_dao import YandeDataRepository, SortBy
 from src.infrastructure.scheduler import schedule_manager
@@ -91,6 +92,11 @@ class FavoritesService:
           random 模式才走 func.random()（按需）。
         - 跨 folder 的 tags 字符串可能重复（多个 folder 引用同一组 tags），用 LRU 缓存复用
           query 结果，避免同一查询重复跑。
+
+        local_count 刷新（2026-10-24 恢复「访问列表时刷新」语义）：
+        - 缓存列只在下载完成时才会变；后台调度/收藏自动下载不会主动更新它。
+        - 仅当 ``last_refresh`` 早于最近一次 completed 下载时间时才重算，
+          避免每次翻页都对整页 folder 跑全量 COUNT。
         """
         # 1. 关键字过滤（在 DAO 层做，避免 N 个 folder 都被加载后过滤）
         if keyword:
@@ -104,13 +110,51 @@ class FavoritesService:
         if not folders:
             return [], total, False
 
-        # 2. 共享一个 repo session，遍历所有 folder 收集预览元数据
+        # 2. 按需重算本地数量。
+        #
+        # local_count 是缓存列，唯一会改变它的事实是「某张图下载完成」
+        # （down_flag False→True）。列表接口此前直接返回旧值，后台调度/收藏自动
+        # 下载完成后角标会长期停在旧数字（实测生产 78 个收藏夹里 48 个不准）。
+        #
+        # 用最近一次 completed 下载时间判断是否可能过期：last_refresh 早于它才
+        # 重算，避免每次翻页都为整页 folder 跑全量 COUNT（单次 ~0.3s）。
+        with DownloadTaskDao() as download_task_dao:
+            latest_completed = download_task_dao.max_completed_at()
+        now = datetime.now()
+
+        # 3. 共享一个 repo session，遍历所有 folder 收集预览元数据
         items: list[FavoriteFolderWithMinimalPreview] = []
         # 缓存同 tags 字符串的查询结果（多 folder 共享时复用）
         # cache_key 加 include_online 维度，因为相同 tags 在不同 include_online 下结果不同
         tags_query_cache: dict[str, list[FolderPreviewImageMinimal]] = {}
         with YandeDataRepository() as repo:
             for f in folders:
+                needs_count_refresh = f.tags and (
+                    f.last_refresh is None
+                    or (
+                        latest_completed is not None
+                        and f.last_refresh < latest_completed
+                    )
+                )
+                if needs_count_refresh:
+                    try:
+                        search_params = FavoritesService._parse_tags_to_params(f.tags)
+                        search_params.page = 1
+                        search_params.page_size = 1
+                        _, fresh_count = repo.query(
+                            query_params=search_params, downloaded_only=True
+                        )
+                        # 直接改 ORM 属性而不是再开一条 UPDATE：repo session 正在
+                        # 使用共享连接（SQLite StaticPool），避免两个 session 在
+                        # 同一连接上交错写。脏字段随请求结束由中间件统一 commit。
+                        f.local_count = fresh_count
+                        f.last_refresh = now
+                    except Exception as e:
+                        # 单个 folder 的 tags 异常不应拖垮整页列表；下次加载会重试
+                        logger.warning(
+                            f"Refresh local_count failed for folder {f.id}: {e}"
+                        )
+
                 limit = _preview_count_for_local_count(
                     f.local_count or 0, tile_size
                 )

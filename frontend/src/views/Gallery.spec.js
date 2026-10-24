@@ -43,16 +43,17 @@ vi.mock('@/api/tagCache', () => ({
 
 // setLocalCount：下载完成后收藏夹角标的 O(1) 增量写入（不打 /refresh 的 COUNT）
 // updateLocalCount：/refresh 那条昂贵路径，Gallery 已不再引用（保留 mock 以便断言「没被调用」）
-const { setLocalCountMock, updateLocalCountMock } = vi.hoisted(() => ({
+const { setLocalCountMock, updateLocalCountMock, refreshOnlineCountMock } = vi.hoisted(() => ({
   setLocalCountMock: vi.fn().mockResolvedValue({ data: { count: 0 } }),
   updateLocalCountMock: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+  refreshOnlineCountMock: vi.fn().mockResolvedValue({ data: { count: 0 } }),
 }))
 
 vi.mock('@/api/favorites', () => ({
   getFoldersWithPreview: (...args) => getFoldersWithPreviewMock(...args),
   updateLocalCount: updateLocalCountMock,
   setLocalCount: setLocalCountMock,
-  refreshOnlineCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+  refreshOnlineCount: refreshOnlineCountMock,
 }))
 
 // vi.mock 会被 hoisted 到文件顶部，引用 top-level 变量会触发 TDZ。
@@ -134,6 +135,7 @@ beforeEach(async () => {
   favCfg.recentDownloadsCount.value = 0
   setLocalCountMock.mockClear()
   updateLocalCountMock.mockClear()
+  refreshOnlineCountMock.mockClear()
   apiMock.post.mockReset()
   apiMock.post.mockResolvedValue({ data: [], has_more: false })
   apiMock.get.mockClear()
@@ -2058,6 +2060,28 @@ describe('Gallery.vue 收藏夹二级页 local_count 对齐', () => {
     await wrapper.vm.loadImages(1)
     await flushPromises()
 
+    expect(setLocalCountMock).not.toHaveBeenCalled()
+  })
+
+  it('收藏夹二级页不再刷新 online_count（online 只属于在线模式）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    await loadFolderPage(wrapper, { id: 48, name: 'f8', local_count: 1 }, 5)
+
+    expect(refreshOnlineCountMock).not.toHaveBeenCalled()
+  })
+
+  it('在线模式选中收藏夹 → refreshOnlineCount(folderId)，不写本地数量', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    wrapper.vm.querySource = 'yande'
+    wrapper.vm.currentFavorite = { id: 49, name: 'f9', local_count: 3, online_count: 0 }
+    wrapper.vm.currentPage = 1
+    apiMock.post.mockResolvedValueOnce({ data: [], has_more: false, total: 0 })
+    await wrapper.vm.loadImages(1)
+    await flushPromises()
+
+    expect(refreshOnlineCountMock).toHaveBeenCalledWith(49)
     expect(setLocalCountMock).not.toHaveBeenCalled()
   })
 })

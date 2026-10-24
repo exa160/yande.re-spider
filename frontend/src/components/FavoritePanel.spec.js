@@ -271,3 +271,42 @@ describe('FavoritePanel.vue 最近下载虚拟磁贴', () => {
     expect(allVirtualTiles[2].classes()).toContain('virtual-recent-downloads')
   })
 })
+
+// =============================================================================
+// 数量展示口径：只有在线（yande）模式展示 online_count，
+// 本地 / 收藏夹 / 虚拟视图一律展示 local_count。
+// =============================================================================
+describe('FavoritePanel.vue 收藏夹数量展示口径', () => {
+  const folder = {
+    id: 901,
+    name: 'count_folder',
+    tags: 'count_tag',
+    local_count: 123,
+    online_count: 456,
+    schedule_enabled: false,
+  }
+
+  const countText = async (sourceMode) => {
+    const wrapper = factory({ realFolders: [folder], sourceMode })
+    await flushPromises()
+    return wrapper.find('.folder-count').text()
+  }
+
+  it('在线模式（yande）展示 online_count', async () => {
+    expect(await countText('yande')).toBe('456')
+  })
+
+  it('本地模式展示 local_count', async () => {
+    expect(await countText('local')).toBe('123')
+  })
+
+  it('收藏夹模式展示 local_count（不再落到 online 分支）', async () => {
+    expect(await countText('favorites')).toBe('123')
+  })
+
+  it('虚拟视图（我的最爱 / 随机浏览 / 最近下载）展示 local_count', async () => {
+    expect(await countText('my-favorites')).toBe('123')
+    expect(await countText('random')).toBe('123')
+    expect(await countText('recent-downloads')).toBe('123')
+  })
+})

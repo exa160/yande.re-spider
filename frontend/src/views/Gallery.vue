@@ -1374,20 +1374,24 @@ const loadImages = async (page) => {
     if (currentPage.value === 1) {
       images.value = imageList
       const folder = currentFavorite.value
-      if (folder && Number.isInteger(folder.id) && querySource.value === 'favorites') {
-        // 收藏夹二级页：把 local_count 直接对齐成 /gallery/load 返回的 total。
-        //
-        // 依据：api/v1/gallery.py 的 favorites 分支是「先取 folder.tags → 查本地
-        // (downloaded_only=True)」，所以 response.total 恰好等于「匹配该收藏夹标签的
-        // 已下载图片数」= local_count 的定义。一条 UPDATE by PK 搞定（O(1)），
-        // 不需要 /favorites/{id}/refresh 那种 tags LIKE + COUNT 全表扫描。
-        //
-        // 沿革：本分支最早是 534f776 的外层 `if (querySource === 'local')`，
-        // 后来被外层 `querySource === 'favorites'` 守卫包住 → 变成永不可达的死代码，
-        // 只剩 else 分支的 refreshOnlineCount 还在跑（那是打 yande.re 远程 API 的）。
-        folder.local_count = response.total
-        setLocalCount(folder.id, response.total).catch(() => {})
-        refreshOnlineCount(folder.id).catch(() => {})
+      if (folder && Number.isInteger(folder.id)) {
+        if (querySource.value === 'favorites') {
+          // 收藏夹二级页：把 local_count 直接对齐成 /gallery/load 返回的 total。
+          //
+          // 依据：api/v1/gallery.py 的 favorites 分支是「先取 folder.tags → 查本地
+          // (downloaded_only=True)」，所以 response.total 恰好等于「匹配该收藏夹标签的
+          // 已下载图片数」= local_count 的定义。一条 UPDATE by PK 搞定（O(1)），
+          // 不需要 /favorites/{id}/refresh 那种 tags LIKE + COUNT 全表扫描。
+          //
+          // 收藏夹视图只展示本地数量，不再顺带刷新 online_count（那是在线模式的职责）。
+          folder.local_count = response.total
+          setLocalCount(folder.id, response.total).catch(() => {})
+        } else if (querySource.value === 'yande') {
+          // 在线模式：下拉面板展示的是 online_count。选中收藏夹做在线搜索时刷新它，
+          // 后端 refresh-online 带 600s TTL（重复调用直接返回缓存，不打 yande.re）。
+          // 本地模式不刷新 online_count（面板显示 local_count，由列表加载时重算）。
+          refreshOnlineCount(folder.id).catch(() => {})
+        }
       }
     } else {
       images.value.push(...imageList)

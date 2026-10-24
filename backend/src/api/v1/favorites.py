@@ -83,10 +83,17 @@ async def get_folders_with_preview(
     include_online: True 时预览图同时包含未下载图片（未来「我的最爱」支持收藏未下载图时启用）。
     preview_images 不含 preview_url —— 前端通过 `/api/v1/gallery/cache/preview/{id}`
     复用现有预览缓存接口渲染图片。
+
+    local_count 会按需重算：当 folder.last_refresh 早于最近一次下载完成时间时，
+    用 folder.tags 重新 COUNT 已下载图片并落库（后台调度/自动下载后角标不再陈旧）。
     """
     try:
         kw = keyword.strip() if keyword else ""
-        items, total, has_more = FavoritesService.get_folders_with_preview(
+        # to_thread 必须：列表会按需重算 local_count（每个过期 folder 一次
+        # tags LIKE + down_flag 的 COUNT，随已下载库线性放大），同步执行会阻塞
+        # 整个事件循环（下载进度上报、前端轮询全被卡住）。
+        items, total, has_more = await asyncio.to_thread(
+            FavoritesService.get_folders_with_preview,
             page=page,
             page_size=page_size,
             tile_size=tile_size,

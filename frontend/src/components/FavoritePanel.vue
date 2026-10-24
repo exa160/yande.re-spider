@@ -77,8 +77,10 @@
             >
               <el-icon><VideoPlay /></el-icon>
             </el-button>
+            <!-- 只有在线模式展示 online_count；本地 / 收藏夹 / 虚拟视图
+                 （我的最爱、随机浏览、最近下载）一律展示本地数量。 -->
             <span class="folder-count">
-              {{ sourceMode === 'local' ? (folder.local_count || 0) : (folder.online_count || 0) }}
+              {{ sourceMode === 'yande' ? (folder.online_count || 0) : (folder.local_count || 0) }}
             </span>
           </div>
         </div>
