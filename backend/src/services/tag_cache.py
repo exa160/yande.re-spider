@@ -7,7 +7,13 @@ from typing import List, Optional, Tuple
 from loguru import logger
 
 from src.dao import TagRepository, ArtistRepository
+from src.dao.download_task_dao import DownloadTaskDao
 from src.infrastructure.yande_api import YandeApi
+
+# 全量本地统计要求下载队列连续空闲的时长（秒）。
+# 全量重算是「读全表 → 聚合 → 批量写」，与下载/在线扫描并发会放大 SQLite 锁竞争，
+# 也容易把下载期间的增量变更覆盖掉；空闲 5 分钟后才允许跑。
+TAG_STATS_MIN_IDLE_SECONDS = 300
 
 
 class TagCacheService:
@@ -164,12 +170,66 @@ class TagCacheService:
             return repo.search_artists(keyword, limit)
 
     @staticmethod
-    def calculate_local_stats() -> int:
-        """计算本地标签统计"""
+    def calculate_local_stats(
+        min_idle_seconds: float = TAG_STATS_MIN_IDLE_SECONDS,
+    ) -> dict:
+        """全量重算本地标签统计（带两道门禁）。
+
+        1. 下载队列需连续空闲 ``min_idle_seconds``（默认 5 分钟）：避免全表扫描
+           与下载写入并发（SQLite 下尤其重要），也避免统计期间数据继续变化。
+        2. 最近一次下载完成时间不晚于上次全量计算时间时直接跳过：没有新数据
+           就没必要重扫 3 万+ 图片。
+
+        Returns:
+            {
+                "success": True,
+                "calculated": bool,          # 是否真的执行了重算
+                "skipped": Optional[str],    # download_busy / up_to_date
+                "tags_updated": int,
+                "idle_seconds": float,       # 判定时的队列空闲时长
+                "min_idle_seconds": float,
+            }
+        """
+        # 延迟导入：download_queue 属于 infrastructure，避免模块加载期建立反向依赖
+        from src.infrastructure.download_queue import download_queue
+
+        idle_seconds = download_queue.get_idle_seconds()
+        base = {
+            "success": True,
+            "calculated": False,
+            "skipped": None,
+            "tags_updated": 0,
+            "idle_seconds": round(idle_seconds, 1),
+            "min_idle_seconds": float(min_idle_seconds),
+        }
+
+        if idle_seconds < min_idle_seconds:
+            base["skipped"] = "download_busy"
+            logger.info(
+                f"Local stats skipped: queue idle {idle_seconds:.0f}s "
+                f"< {min_idle_seconds:.0f}s"
+            )
+            return base
+
+        with DownloadTaskDao() as download_task_dao:
+            latest_completed = download_task_dao.max_completed_at()
+
         with TagRepository() as repo:
+            last_calculated = repo.get_local_stats_last_calculated()
+            # 没有任何 stats 行（首次）→ 必须算；有记录且不早于最近下载 → 跳过
+            if last_calculated is not None and (
+                latest_completed is None or last_calculated >= latest_completed
+            ):
+                base["skipped"] = "up_to_date"
+                logger.info("Local stats skipped: already up to date")
+                return base
+
             stats_updated = repo.calculate_local_stats()
+
+        base["calculated"] = True
+        base["tags_updated"] = stats_updated
         logger.info(f"Local stats calculated: {stats_updated} tags updated")
-        return stats_updated
+        return base
 
     @staticmethod
     def get_tags_with_stats(

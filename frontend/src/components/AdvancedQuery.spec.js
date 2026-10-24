@@ -31,6 +31,8 @@ vi.mock('@/api/tagCache', () => ({
   },
 }))
 
+const { tagCacheApi } = await import('@/api/tagCache')
+
 // 全局桩 — Element Plus 组件统一成最小可用 DOM，避免 happy-dom 报未解析组件
 const elementStubs = {
   'el-icon': { template: '<i class="el-icon-stub"><slot/></i>' },
@@ -342,5 +344,83 @@ describe('AdvancedQuery.vue virtualFavorite chip（我的最爱 / 随机浏览�
     // AdvancedQuery 应把该事件转发给父组件 Gallery
     expect(wrapper.emitted('virtual-tile-navigate')).toBeTruthy()
     expect(wrapper.emitted('virtual-tile-navigate').at(-1)[0]).toBe('my-favorites')
+  })
+})
+
+// =============================================================================
+// 标签浏览本地统计：非阻塞渲染 + 后端门禁（download_busy / up_to_date）
+// =============================================================================
+describe('AdvancedQuery.vue 标签页本地统计', () => {
+  beforeEach(() => {
+    tagCacheApi.getTagsWithStats.mockClear()
+    tagCacheApi.getTagsWithStats.mockResolvedValue({ data: { tags: [] } })
+    tagCacheApi.calculateLocalStats.mockReset()
+  })
+
+  it('先渲染标签列表，不等待重算完成；calculated=true 后再刷新一次', async () => {
+    let resolveCalc
+    tagCacheApi.calculateLocalStats.mockReturnValueOnce(
+      new Promise((resolve) => { resolveCalc = resolve })
+    )
+    const wrapper = factory()
+
+    const pending = wrapper.vm.switchToTagsTab()
+    await flushPromises()
+
+    // 重算还在途中，但列表已经请求并渲染
+    expect(tagCacheApi.getTagsWithStats).toHaveBeenCalledTimes(1)
+    expect(tagCacheApi.calculateLocalStats).toHaveBeenCalledTimes(1)
+
+    resolveCalc({ data: { calculated: true, tags_updated: 2 } })
+    await pending
+    await flushPromises()
+
+    expect(tagCacheApi.getTagsWithStats).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('skipped=download_busy → 不重复刷新列表；重新进入标签页会再次发起', async () => {
+    tagCacheApi.calculateLocalStats.mockResolvedValue({
+      data: {
+        calculated: false,
+        skipped: 'download_busy',
+        idle_seconds: 0,
+        min_idle_seconds: 300,
+      },
+    })
+    const wrapper = factory()
+
+    await wrapper.vm.switchToTagsTab()
+    await flushPromises()
+
+    expect(tagCacheApi.getTagsWithStats).toHaveBeenCalledTimes(1)
+    expect(tagCacheApi.calculateLocalStats).toHaveBeenCalledTimes(1)
+
+    // 第二次显式进入标签页 → 主动重试（不受退避计时器阻挡）
+    await wrapper.vm.switchToTagsTab()
+    await flushPromises()
+
+    expect(tagCacheApi.calculateLocalStats).toHaveBeenCalledTimes(2)
+    expect(tagCacheApi.getTagsWithStats).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('skipped=up_to_date → 不额外刷新列表；再次进入仅做轻量检查', async () => {
+    tagCacheApi.calculateLocalStats.mockResolvedValue({
+      data: { calculated: false, skipped: 'up_to_date' },
+    })
+    const wrapper = factory()
+
+    await wrapper.vm.switchToTagsTab()
+    await flushPromises()
+    // up_to_date 不应触发第二次 loadTags（1 次来自进入标签页）
+    expect(tagCacheApi.getTagsWithStats).toHaveBeenCalledTimes(1)
+
+    await wrapper.vm.switchToTagsTab()
+    await flushPromises()
+    // 第二次进入：一次加载 + 一次轻量检查
+    expect(tagCacheApi.getTagsWithStats).toHaveBeenCalledTimes(2)
+    expect(tagCacheApi.calculateLocalStats).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
   })
 })

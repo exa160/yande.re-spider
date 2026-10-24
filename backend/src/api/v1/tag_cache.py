@@ -96,12 +96,18 @@ async def search_artists(keyword: str, limit: int = 20) -> BaseResponse:
     summary="计算本地标签统计",
 )
 async def calculate_local_stats() -> BaseResponse:
-    """从本地已下载图片计算每个标签的使用次数并存储到 tag_local_stats 表"""
+    """从本地已下载图片计算每个标签的使用次数并存储到 tag_local_stats 表。
+
+    执行条件：下载队列连续空闲 ≥5 分钟，且最近一次下载完成晚于上次全量计算。
+    不满足时返回 ``calculated=false`` + ``skipped``，前端可稍后重试。
+
+    ``to_thread`` 是必须的：全量扫描已下载图库（数万行）+ 批量 upsert，
+    同步执行会阻塞事件循环。
+    """
     try:
-        stats_updated = TagCacheService.calculate_local_stats()
-        return BaseResponse(
-            message="计算完成", data={"success": True, "tags_updated": stats_updated}
-        )
+        result = await asyncio.to_thread(TagCacheService.calculate_local_stats)
+        message = "计算完成" if result.get("calculated") else "已跳过"
+        return BaseResponse(message=message, data=result)
     except Exception as e:
         raise APIException(ErrMsg.UPDATE_ERROR, e=e)
 

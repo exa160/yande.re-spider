@@ -455,7 +455,6 @@ const activePanelTab = ref('favorites')
 const tagSearchKeyword = ref('')
 const selectedTagType = ref(0)
 const tagList = ref([])
-const tagStatsLoaded = ref(false)
 
 const tagTypeOptions = [
   { label: '全部', value: -1, color: '#888' },
@@ -483,14 +482,69 @@ const formatCount = (count) => {
   return count
 }
 
+// 全量本地统计是「数万行扫描 + 聚合」，后端要求下载队列空闲 ≥5 分钟才执行。
+// 前端只负责发起与重试，不能阻塞标签列表渲染：
+//   1. 先 loadTags() 用现有数据渲染
+//   2. 后台请求重算；calculated=true → 再刷一次列表
+//   3. skipped=download_busy → 按后端返回的剩余空闲时间安排重试（有上限）
+//   4. skipped=up_to_date → 后端只做两次轻量查询就返回，无需前端记状态
+const TAG_STATS_RETRY_LIMIT = 3
+const tagStatsRefreshing = ref(false)
+let tagStatsRetryTimer = null
+let tagStatsRetryCount = 0
+
+const clearTagStatsRetry = () => {
+  if (tagStatsRetryTimer) {
+    clearTimeout(tagStatsRetryTimer)
+    tagStatsRetryTimer = null
+  }
+}
+
+const scheduleTagStatsRetry = (data) => {
+  if (tagStatsRetryCount >= TAG_STATS_RETRY_LIMIT) return
+  const minIdle = Number(data?.min_idle_seconds ?? 300)
+  const idle = Number(data?.idle_seconds ?? 0)
+  // 等到队列达到空闲门槛再试；下限 15s 避免立即打转，上限 5 分钟
+  const waitMs = Math.max(15_000, Math.min(300_000, (minIdle - idle) * 1000))
+  clearTagStatsRetry()
+  tagStatsRetryTimer = setTimeout(() => {
+    tagStatsRetryTimer = null
+    if (activePanelTab.value !== 'tags') return
+    tagStatsRetryCount += 1
+    refreshLocalStats()
+  }, waitMs)
+}
+
+const refreshLocalStats = async () => {
+  if (tagStatsRefreshing.value) return
+  tagStatsRefreshing.value = true
+  try {
+    const res = await tagCacheApi.calculateLocalStats()
+    const data = res?.data || {}
+    if (data.calculated) {
+      tagStatsRetryCount = 0
+      await loadTags()
+    } else if (data.skipped === 'download_busy') {
+      scheduleTagStatsRetry(data)
+    }
+    // skipped=up_to_date：后端已确认无新下载，无需刷新列表
+  } catch (error) {
+    console.error('计算本地统计失败:', error)
+  } finally {
+    tagStatsRefreshing.value = false
+  }
+}
+
 const switchToTagsTab = async () => {
   activePanelTab.value = 'tags'
   await loadFavoriteFolders()
-  if (!tagStatsLoaded.value) {
-    await calculateLocalStats()
-    tagStatsLoaded.value = true
-  }
+  // 先渲染现有统计，重算/检查在后台进行。
+  // 每次进入都检查一次：up_to_date 时后端只做两次轻量查询，开销可忽略。
   loadTags()
+  if (!tagStatsRefreshing.value) {
+    tagStatsRetryCount = 0
+    refreshLocalStats()
+  }
 }
 
 const selectTagType = (type) => {
@@ -500,14 +554,6 @@ const selectTagType = (type) => {
 
 const handleTagSearch = () => {
   loadTags()
-}
-
-const calculateLocalStats = async () => {
-  try {
-    await tagCacheApi.calculateLocalStats()
-  } catch (error) {
-    console.error('计算本地统计失败:', error)
-  }
 }
 
 const loadTags = async () => {
@@ -701,6 +747,7 @@ const handleClickOutside = (e) => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  clearTagStatsRetry()
 })
 
 // 一键订阅当前搜索

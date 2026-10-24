@@ -236,6 +236,18 @@ class TaskStore:
             self._tasks[task_id] = task
             return task
 
+    def has_unfinished_downloads(self) -> bool:
+        """是否还有正在排队 / 正在下载的任务。
+
+        - 终态（completed/failed/cancelled）已从 self._tasks 移除；
+        - PAUSED 不算：用户暂停的任务可能长期不动，不应让后台统计永远无法执行。
+        """
+        with self._lock:
+            return any(
+                t.status in (TaskStatus.PENDING, TaskStatus.DOWNLOADING)
+                for t in self._tasks.values()
+            )
+
     def get_pending_task_ids(self) -> List[str]:
         """返回内存中所有 PENDING 状态的 task_id（lifecycle 重启恢复时使用）
 
@@ -377,6 +389,22 @@ class DownloadQueue:
         self._running = False
         self._max_concurrent = 3
         self._semaphore = asyncio.Semaphore(config.downloader.max_concurrent_tasks)
+        # 空闲判定基准：入队 / 每个任务结束时刷新（time.monotonic，避免系统时钟回拨）
+        self._last_activity = time.monotonic()
+
+    def _touch(self) -> None:
+        self._last_activity = time.monotonic()
+
+    def get_idle_seconds(self) -> float:
+        """下载队列连续空闲时长（秒）。
+
+        队列里还有待处理任务、或 TaskStore 仍有 PENDING/DOWNLOADING 任务时
+        返回 0（PAUSED 不算）；否则返回距最后一次入队/任务结束的秒数。
+        供标签全量统计的算力门禁使用。
+        """
+        if self._queue.qsize() > 0 or task_store.has_unfinished_downloads():
+            return 0.0
+        return max(0.0, time.monotonic() - self._last_activity)
 
     async def _worker(self, worker_id: int):
         while self._running:
@@ -398,6 +426,7 @@ class DownloadQueue:
                     logger.exception(f"Download worker failed for task {task_id}")
                 finally:
                     task_store.clear_cancel_event(task_id)
+                    self._touch()
             self._queue.task_done()
 
     async def start(self, num_workers: int = 3):
@@ -418,6 +447,7 @@ class DownloadQueue:
         logger.info("Download queue stopped")
 
     async def add_task(self, task_id: str):
+        self._touch()
         await self._queue.put(task_id)
         logger.debug(f"Task {task_id} added to queue")
 

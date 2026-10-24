@@ -115,59 +115,83 @@ class TagRepository(BaseDAO):
             for t in results
         ]
 
+    def get_local_stats_last_calculated(self) -> Optional[datetime]:
+        """全量本地统计的最后计算时间。
+
+        ``calculate_local_stats`` 会把所有行刷成同一时刻，之后
+        ``adjust_local_stats`` 只会更新被触及的行，因此 MIN 仍代表「上次全量」
+        时间，可用于判断是否还有必要重算。
+        """
+        return self.session.execute(
+            select(func.min(TagLocalStats.last_calculated))
+        ).scalar()
+
     def calculate_local_stats(self) -> int:
+        """全量重算本地标签统计（只统计已下载图片，且只落库已缓存标签）。
+
+        性能要点（2026-10-25 优化）：
+        - 流式读取 tags（yield_per），避免一次性把 3 万+ 标签字符串全部读入内存；
+        - 写回改为 chunked ``INSERT ... ON CONFLICT DO UPDATE``，不再构造/追踪
+          上万个 ORM 对象（此前 mutate + flush 是全流程最大开销）。
+        """
         tag_counter: Counter = Counter()
 
         with self.session.no_autoflush:
-            stmt = select(YandeData.tags).where(YandeData.down_flag == True)
-            results = self.session.execute(stmt).scalars().all()
-
-            for tags_str in results:
+            stmt = (
+                select(YandeData.tags)
+                .where(YandeData.down_flag == True)  # noqa: E712
+                .execution_options(yield_per=2000)
+            )
+            for tags_str in self.session.execute(stmt).scalars():
                 if tags_str:
                     tag_counter.update(tags_str.split())
 
         if not tag_counter:
             return 0
 
-        now = datetime.now()
-
         tag_names = list(tag_counter.keys())
         tags_stmt = select(YandeTag).filter(YandeTag.name.in_(tag_names))
         tag_objs = {t.name: t for t in self.session.execute(tags_stmt).scalars().all()}
-
-        tag_ids = [t.id for t in tag_objs.values()]
-        if not tag_ids:
+        if not tag_objs:
             return 0
 
-        stats_stmt = select(TagLocalStats).filter(TagLocalStats.tag_id.in_(tag_ids))
-        existing_stats = {s.tag_id: s for s in self.session.execute(stats_stmt).scalars().all()}
+        now = datetime.now()
+        rows = [
+            {
+                "tag_id": tag_objs[name].id,
+                "local_count": local_count,
+                "last_calculated": now,
+            }
+            for name, local_count in tag_counter.items()
+            if name in tag_objs
+        ]
+        if not rows:
+            return 0
 
-        to_update = []
-        to_insert = []
+        # 注意：必须把参数列表传给 execute（DBAPI executemany），不能把 rows
+        # 拼进 .values() 生成超大单条 INSERT —— 后者每 1000 行要让 SQLAlchemy
+        # 重新编译一次 3000 参数的语句，实测比 executemany 慢一个数量级。
+        use_mariadb = config.database.enable and config.database.host
+        if use_mariadb:
+            insert_stmt = mysql_insert(TagLocalStats)
+            stmt = insert_stmt.on_duplicate_key_update(
+                local_count=insert_stmt.inserted.local_count,
+                last_calculated=insert_stmt.inserted.last_calculated,
+            )
+        else:
+            insert_stmt = sqlite_insert(TagLocalStats)
+            stmt = insert_stmt.on_conflict_do_update(
+                index_elements=[TagLocalStats.tag_id],
+                set_={
+                    "local_count": insert_stmt.excluded.local_count,
+                    "last_calculated": insert_stmt.excluded.last_calculated,
+                },
+            )
 
-        for tag_name, local_count in tag_counter.items():
-            tag_obj = tag_objs.get(tag_name)
-            if not tag_obj:
-                continue
+        for chunk in self._chunked(rows, 500):
+            self.session.execute(stmt, chunk)
 
-            if tag_obj.id in existing_stats:
-                to_update.append((existing_stats[tag_obj.id], local_count))
-            else:
-                to_insert.append({
-                    'tag_id': tag_obj.id,
-                    'local_count': local_count,
-                    'last_calculated': now,
-                })
-
-        for stats_obj, local_count in to_update:
-            stats_obj.local_count = local_count
-            stats_obj.last_calculated = now
-
-        if to_insert:
-            for data in to_insert:
-                self.session.add(TagLocalStats(**data))
-
-        return len(tag_counter)
+        return len(rows)
 
     def adjust_local_stats(self, added: List[str], removed: List[str]) -> int:
         """按单张图片的标签增减量更新本地统计。

@@ -2,7 +2,8 @@ import os
 
 from typing import Optional
 
-from sqlalchemy import URL, create_engine
+from loguru import logger
+from sqlalchemy import URL, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -12,6 +13,34 @@ from src.models.database.yande import Base
 
 _cached_engine = None
 _cached_session_factory = None
+
+
+def _apply_sqlite_pragmas(engine) -> None:
+    """为 SQLite 连接启用 WAL 日志模式。
+
+    WAL 下读事务不阻塞写事务、写也不阻塞读，可减少后台任务（标签统计 /
+    下载完成写入）与请求读取之间的锁等待。注意：当前 SQLite 仍用 StaticPool
+    单连接，进程内访问实际是串行的；WAL 的并发收益主要体现在未来换成多连接
+    池 / 多进程，以及更好的崩溃恢复行为。
+    journal_mode 会写入数据库文件头，重启后保持；**不修改任何业务数据**。
+    若底层文件系统不支持 WAL（如某些网络共享），PRAGMA 会返回旧模式，这里只告警。
+    """
+
+    @event.listens_for(engine, "connect")
+    def _on_connect(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            row = cursor.execute("PRAGMA journal_mode=WAL").fetchone()
+            mode = (row[0] if row else "unknown") or "unknown"
+            if str(mode).lower() == "wal":
+                logger.info("SQLite journal_mode=WAL enabled")
+            else:
+                logger.warning(
+                    f"SQLite journal_mode={mode} (WAL not applied; "
+                    "filesystem may not support it)"
+                )
+        finally:
+            cursor.close()
 
 
 def get_db_engine():
@@ -48,6 +77,7 @@ def get_db_engine():
             connect_args={"timeout": 30, "check_same_thread": False},
             poolclass=StaticPool,
         )
+        _apply_sqlite_pragmas(_cached_engine)
     # TODO 考虑取消自动建表/迁移，改为手动执行脚本
     Base.metadata.create_all(bind=_cached_engine)
 
@@ -61,7 +91,6 @@ def _auto_migrate(engine) -> None:
         Boolean, Column, DateTime, Integer, JSON, String, inspect
     )
     from sqlalchemy.schema import CreateColumn
-    from loguru import logger
 
     inspector = inspect(engine)
     if "favorite_folders" not in inspector.get_table_names():
