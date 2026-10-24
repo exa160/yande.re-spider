@@ -65,7 +65,19 @@ class GalleryLoadRequest(BaseModel):
     )
     random: bool = Field(
         default=False,
-        description="True 时使用 ORDER BY RANDOM() + DISTINCT image_id 返回随机图片（仅 local source 生效）",
+        description=(
+            "True 时返回随机图片（仅 local source 生效）。"
+            "配合 random_seed 使用稳定排序，否则走 ORDER BY RANDOM() + DISTINCT"
+        ),
+    )
+    random_seed: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=2_147_483_647,
+        description=(
+            "random=True 时的确定性随机种子。传入后使用稳定排序，"
+            "与 /random_browse/preview 同 seed 时顺序一致；不传则保持 RANDOM() 行为"
+        ),
     )
 
 

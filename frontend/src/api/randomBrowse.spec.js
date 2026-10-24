@@ -17,7 +17,7 @@ vi.mock('./index', () => {
 })
 
 import api from './index'
-import { randomBrowseApi } from './randomBrowse'
+import { createRandomSeed, randomBrowseApi } from './randomBrowse'
 
 beforeEach(() => {
   vi.mocked(api.get).mockClear()
@@ -41,5 +41,30 @@ describe('randomBrowseApi', () => {
   it('getPreview(20) → GET /random_browse/preview?limit=20', () => {
     randomBrowseApi.getPreview(20)
     expect(api.get).toHaveBeenCalledWith('/random_browse/preview', { params: { limit: 20 } })
+  })
+
+  it('getPreview(8, seed) → 带上 seed（与瀑布流 random_seed 共享）', () => {
+    randomBrowseApi.getPreview(8, 123456)
+    expect(api.get).toHaveBeenCalledWith('/random_browse/preview', {
+      params: { limit: 8, seed: 123456 },
+    })
+  })
+
+  it('getPreview(8, 0) → seed=0 也必须透传（不是 falsy 判断）', () => {
+    randomBrowseApi.getPreview(8, 0)
+    expect(api.get).toHaveBeenCalledWith('/random_browse/preview', {
+      params: { limit: 8, seed: 0 },
+    })
+  })
+})
+
+describe('createRandomSeed', () => {
+  it('返回 [0, 2^31-1) 内的整数', () => {
+    for (let i = 0; i < 20; i++) {
+      const seed = createRandomSeed()
+      expect(Number.isInteger(seed)).toBe(true)
+      expect(seed).toBeGreaterThanOrEqual(0)
+      expect(seed).toBeLessThan(2147483647)
+    }
   })
 })

@@ -18,6 +18,7 @@ from src.common.constant import TaskStatus
 from src.common.constant import path_constant
 from src.common.settings import config
 from src.common.utils import get_error_type_from_exception
+from src.dao.seeded_order import seeded_order_expr
 from src.dao.tag_dao import TagRepository
 from src.dao.yande_data_dao import SortBy, YandeDataRepository, yande_data_repository
 from src.infrastructure.image_cache import ImageCache
@@ -83,6 +84,7 @@ class GalleryService:
         params: GalleryLoadRequest,
         include_favorite_status: Optional[bool] = None,
         random: Optional[bool] = None,
+        random_seed: Optional[int] = None,
     ) -> tuple[List[YandeData], int]:
         """
         查询本地数据库。
@@ -101,6 +103,7 @@ class GalleryService:
             params: GalleryLoadRequest（含 include_favorite_status / random 字段）
             include_favorite_status: 覆盖 request.include_favorite_status（None=沿用 request）
             random: 覆盖 request.random（None=沿用 request）
+            random_seed: 覆盖 request.random_seed（None=沿用 request）
 
         Returns:
             (图片列表, 总数)；effective_include_favorite=True 时每个
@@ -112,6 +115,7 @@ class GalleryService:
             else params.include_favorite_status
         )
         req_random = random if random is not None else params.random
+        req_seed = random_seed if random_seed is not None else params.random_seed
         effective_include_favorite = bool(
             req_include and getattr(config.favorites, "enable_my_favorites", False)
         )
@@ -133,6 +137,7 @@ class GalleryService:
                 params=params,
                 effective_include_favorite=effective_include_favorite,
                 random=req_random,
+                random_seed=req_seed if req_random else None,
             )
         return images, total
 
@@ -170,16 +175,19 @@ class GalleryService:
         params: GalleryLoadRequest,
         effective_include_favorite: bool,
         random: bool,
+        random_seed: Optional[int] = None,
     ) -> tuple[List[YandeData], int]:
-        """自构 SQL：LEFT JOIN my_favorite + 可选 ORDER BY RANDOM() + DISTINCT。
+        """自构 SQL：LEFT JOIN my_favorite + 可选随机排序。
 
         与 YandeDataRepository.query() 共用同一套 filter_funcs，保证 tags / rating /
         file_types / size / author 等过滤条件一致。
 
-        三条分支互不干扰、可自由组合：
+        四条分支互不干扰、可自由组合：
         1. ``effective_include_favorite`` → LEFT JOIN my_favorite 带出 is_favorited
-        2. ``random`` → ORDER BY RANDOM() + DISTINCT（优先级高于排序键）
-        3. ``sort_by == SortBy.DOWNLOADED_AT`` → INNER JOIN download_task 子查询，
+        2. ``random`` + ``random_seed`` → 每张图按 (id, seed) 的稳定键排序，
+           同 seed 的预览/瀑布流顺序一致，翻页亦稳定
+        3. ``random`` 无 seed → 旧行为 ORDER BY RANDOM() + DISTINCT
+        4. ``sort_by == SortBy.DOWNLOADED_AT`` → INNER JOIN download_task 子查询，
            按 MAX(completed_at) 排序（yande_data 无该列，只能走 JOIN，见 §3.4）
         """
         session = repo.session
@@ -252,9 +260,18 @@ class GalleryService:
         stmt = stmt.filter(*filter_funcs)
 
         if random:
-            # 用 .distinct() 而非 .distinct(YandeData.id)：后者编译为 PostgreSQL 专属
-            # DISTINCT ON (col)，在 SQLite/MariaDB 上会被静默忽略。
-            stmt = stmt.order_by(func.random()).distinct()
+            if random_seed is None:
+                # 旧行为：每页独立随机。用 .distinct() 而非 .distinct(YandeData.id)：
+                # 后者编译为 PostgreSQL 专属 DISTINCT ON (col)，在 SQLite/MariaDB 上
+                # 会被静默忽略。
+                stmt = stmt.order_by(func.random()).distinct()
+            else:
+                # yande_data.id 唯一且 my_favorite.image_id UNIQUE，JOIN 不会产生
+                # 重复行；不套 DISTINCT，既省去宽行去重开销，也避免 MariaDB 对
+                # 「DISTINCT + ORDER BY 表达式」的限制。
+                stmt = stmt.order_by(
+                    seeded_order_expr(session, random_seed), YandeData.id
+                )
         elif latest_subq is not None:
             sort_column = latest_subq.c.latest_at
             # 第二排序键 YandeData.id：同秒完成时给出确定性顺序，避免翻页抖动

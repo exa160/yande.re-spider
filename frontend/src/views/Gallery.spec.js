@@ -1053,6 +1053,43 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(payload.random).toBe(true)
   })
 
+  it('random 模式 loadImages 携带 random_seed，翻页复用同一 seed', async () => {
+    mockRoute.value.query = { querySource: 'random' }
+    const wrapper = factory()
+    await flushPromises()
+
+    const first = await getLastLoadPayload()
+    expect(Number.isInteger(first.random_seed)).toBe(true)
+    expect(first.random_seed).toBeGreaterThanOrEqual(0)
+
+    // 模拟 loadMore：翻页请求必须复用 seed，否则第 2 页会重新随机
+    apiMock.post.mockClear()
+    wrapper.vm.currentPage = 2
+    await wrapper.vm.loadImages(2)
+    await flushPromises()
+
+    const second = await getLastLoadPayload()
+    expect(second.random_seed).toBe(first.random_seed)
+  })
+
+  it('点击随机磁贴 → 瀑布流复用磁贴的 preview_seed（预览 = 前 N 张）', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    apiMock.post.mockClear()
+
+    wrapper.vm.handleFolderClick({
+      id: 'random',
+      isVirtual: true,
+      preview_seed: 987654,
+    })
+    await flushPromises()
+
+    const payload = await getLastLoadPayload()
+    expect(payload.source).toBe('local')
+    expect(payload.random).toBe(true)
+    expect(payload.random_seed).toBe(987654)
+  })
+
   it('querySource=my-favorites → /gallery/load 不被调（走专用 /my_favorites/images）', async () => {
     mockRoute.value.query = { querySource: 'my-favorites' }
     factory()

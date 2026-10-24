@@ -13,7 +13,9 @@
 
 随机浏览的语义边界：
 - 每次刷新页面会重新抽样（与 /gallery/load?random=true 一致）
-- 磁贴缩略图和瀑布流二级页的图片不保证一致（需 SQL seed 支持，已记入 docs/todo）
+- 磁贴缩略图和瀑布流二级页通过共享 seed 保持一致：前端加载预览时生成 seed，
+  同时传给本接口与 /gallery/load 的 ``random_seed``，两边使用同一套确定性排序
+- 不传 seed 时退回 ``ORDER BY RANDOM()``（每次请求不同），兼容旧调用方
 """
 from typing import Optional
 
@@ -62,6 +64,15 @@ async def get_random_browse_count() -> BaseResponse[MyFavoriteCountResponse]:
 )
 async def get_random_browse_preview(
     limit: int = Query(8, ge=1, le=20, description="预览图数量上限"),
+    seed: Optional[int] = Query(
+        None,
+        ge=0,
+        le=2_147_483_647,
+        description=(
+            "确定性随机种子。与 /gallery/load 的 random_seed 传同一个值时，"
+            "预览顺序与瀑布流列表顺序一致；不传则每次随机"
+        ),
+    ),
     tile_size: Optional[str] = Query(
         None,
         description="tile 尺寸占位（adaptive/small/medium/large）。与 /my_favorites/preview URL 形态保持一致",
@@ -69,8 +80,8 @@ async def get_random_browse_preview(
 ) -> BaseResponse[MyFavoritePreviewResponse]:
     """随机抽样本地图片用作磁贴预览图。
 
-    SQL: ``SELECT * FROM yande_data WHERE down_flag=true ORDER BY RANDOM() LIMIT N``
-    每次返回不同的随机序列（无 seed）。
+    - 传 ``seed``：按 (id, seed) 稳定排序，取前 N 张；
+    - 不传 ``seed``：``ORDER BY RANDOM() LIMIT N``，每次不同。
     """
     try:
         with YandeDataRepository() as repo:
@@ -78,6 +89,7 @@ async def get_random_browse_preview(
                 tags="",
                 limit=limit,
                 downloaded_only=True,
+                seed=seed,
             )
         items = [
             MyFavoritePreviewImage(

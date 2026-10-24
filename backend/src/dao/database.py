@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.common import config
 from src.common.constant import path_constant
+from src.dao.seeded_order import install_sqlite_seeded_hash
 from src.models.database.yande import Base
 
 _cached_engine = None
@@ -78,6 +79,9 @@ def get_db_engine():
             poolclass=StaticPool,
         )
         _apply_sqlite_pragmas(_cached_engine)
+    # 必须在首次连接创建前注册 UDF；查询路径动态注册会与并发语句冲突
+    # （sqlite3_create_function → OperationalError: Error creating function）
+    install_sqlite_seeded_hash(_cached_engine)
     # TODO 考虑取消自动建表/迁移，改为手动执行脚本
     Base.metadata.create_all(bind=_cached_engine)
 

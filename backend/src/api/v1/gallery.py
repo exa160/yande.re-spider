@@ -82,6 +82,7 @@ async def load_gallery(request: GalleryLoadRequest) -> GalleryLoadResponse:
             request,
             request.include_favorite_status,
             request.random,
+            request.random_seed,
         )
     else:
         images, total = await asyncio.to_thread(

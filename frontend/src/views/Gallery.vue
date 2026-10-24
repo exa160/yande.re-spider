@@ -409,6 +409,7 @@ import ImageDetail from '@/components/ImageDetail.vue'
 import DownloadManager from '@/views/Download.vue'
 import ConfigPanel from '@/views/Config.vue'
 import api from '@/api'
+import { createRandomSeed } from '@/api/randomBrowse'
 import { tagCacheApi } from '@/api/tagCache'
 import { myFavoritesApi } from '@/api/myFavorites'
 // 注意：updateLocalCount 打的是 /favorites/{id}/refresh（后端重跑 COUNT，昂贵），
@@ -459,6 +460,16 @@ const initialSource = (() => {
 })()
 const querySource = ref(initialSource)
 const saveDataMode = ref(localStorage.getItem('gallery_saveData') === 'true')
+
+// 随机浏览 seed：磁贴预览生成后经 preview_seed 传入；其它入口进入随机视图时新建。
+// 同一 seed 下后端做确定性排序，保证瀑布流前 N 张 = 磁贴预览的 N 张。
+const randomSeed = ref(null)
+const ensureRandomSeed = () => {
+  if (randomSeed.value == null) {
+    randomSeed.value = createRandomSeed()
+  }
+  return randomSeed.value
+}
 
 // 虚拟 favorite chip（搜索栏显示用）—— 基于 querySource 派生：
 //   - 'my-favorites'    → 显示 "★ 我的最爱"
@@ -881,6 +892,8 @@ const stopSourceWatch = watch(querySource, (val) => {
 watch(() => route?.query?.querySource, (val) => {
   if (typeof val === 'string' && val && val !== querySource.value) {
     querySource.value = val
+    // 路由入口没有磁贴 provider 的 seed，随机视图这里新开一批
+    randomSeed.value = val === 'random' ? createRandomSeed() : null
     // 虚拟磁贴跳转后必须重新触发 loadImages（onMounted 已跑过，仅靠 ref 变化不重 fetch）
     currentPage.value = 1
     images.value = []
@@ -1182,7 +1195,8 @@ const handleFolderClick = (folder) => {
     if (folder.id === 'my-favorites') {
       handleSourceChange('my-favorites')
     } else if (folder.id === 'random') {
-      handleSourceChange('random')
+      // 复用磁贴预览的 seed：瀑布流前 N 张与预览缩略图同图同序
+      handleSourceChange('random', folder.preview_seed)
     } else if (folder.id === 'recent-downloads') {
       handleSourceChange('recent-downloads')
     }
@@ -1238,8 +1252,14 @@ const handleBackToFolders = () => {
 
 // 收藏夹配置现由 useFavoritesConfig composable 全局共享，
 // Config.vue（高级功能 tab）修改后 Gallery 自动响应
-const handleSourceChange = (newSource) => {
+//
+// seed：随机磁贴点击时传入 folder.preview_seed，让瀑布流复用预览的顺序；
+// 其它入口进入 random 时生成新 seed。离开 random 清空，保证下次进入换一批。
+const handleSourceChange = (newSource, seed) => {
   const prevSource = querySource.value
+  randomSeed.value = newSource === 'random'
+    ? (Number.isInteger(seed) ? seed : createRandomSeed())
+    : null
 
   // favorites ↔ 非 favorites 切换时清理搜索栏 stale state
   if (prevSource !== newSource && (prevSource === 'favorites' || newSource === 'favorites')) {
@@ -1331,7 +1351,8 @@ const loadImages = async (page) => {
     }
 
     // v2 我的最爱 / 随机浏览 / 最近下载（其余模式）：根据当前 querySource 注入额外参数
-    //   - random=true: 仅在 querySource === 'random' 时追加（后端走 ORDER BY RANDOM() + DISTINCT image_id）
+    //   - random=true + random_seed: 仅在 querySource === 'random' 时追加；
+    //     后端按 (id, seed) 稳定排序，磁贴预览用同一个 seed → 前 N 张一致，翻页不重复
     //   - sort_by=downloaded_at + sort_order=desc: 仅在 querySource === 'recent-downloads' 时追加
     //     （后端走 download_task JOIN 子查询按 MAX(completed_at) 倒序）
     //   - include_favorite_status=true: 仅在 showHeart && enableMyFavorites 时追加（双判断见 spec §6.6），
@@ -1339,6 +1360,8 @@ const loadImages = async (page) => {
     const extraParams = {}
     if (querySource.value === 'random') {
       extraParams.random = true
+      // loadMore 复用同一 seed；只有重新进入随机视图才会生成新 seed
+      extraParams.random_seed = ensureRandomSeed()
     }
     if (querySource.value === 'recent-downloads') {
       extraParams.sort_by = 'downloaded_at'

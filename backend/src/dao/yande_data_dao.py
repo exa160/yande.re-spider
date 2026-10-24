@@ -11,6 +11,7 @@ from src.common import config
 from src.common.constant import Rating
 from src.common.utils import check_local_file
 from src.dao.database import BaseDAO
+from src.dao.seeded_order import seeded_order_expr
 from src.models.database.yande import YandeData
 
 
@@ -206,13 +207,19 @@ class YandeDataRepository(BaseDAO):
         tags: str,
         limit: int,
         downloaded_only: bool = True,
+        seed: Optional[int] = None,
     ) -> List[YandeData]:
         """按 tags 过滤，随机抽样 limit 条图片。
+
+        seed 不为 None 时使用确定性顺序（见 ``seeded_order_expr``），
+        使同 seed 的预览与瀑布流首屏完全一致；为 None 时保持原
+        ``ORDER BY RANDOM()`` 行为。
 
         Args:
             tags: 标签字符串（与 query() 使用同一 _tag_filter 解析）
             limit: 抽样上限
             downloaded_only: True 时仅返回 down_flag=True 的图片（收藏夹预览场景）
+            seed: 确定性随机种子；None 时退回 func.random()
 
         Returns:
             随机排序的 YandeData 列表，最多 limit 条；无匹配返回空列表
@@ -224,13 +231,14 @@ class YandeDataRepository(BaseDAO):
                 filter_funcs.append(tag_cond)
         if downloaded_only:
             filter_funcs.append(YandeData.down_flag.is_(True))
-        stmt = (
-            select(YandeData)
-            .filter(*filter_funcs)
-            .order_by(func.random())
-            .limit(limit)
-        )
-        return list(self.session.execute(stmt).scalars().all())
+        stmt = select(YandeData).filter(*filter_funcs)
+        if seed is None:
+            stmt = stmt.order_by(func.random())
+        else:
+            stmt = stmt.order_by(
+                seeded_order_expr(self.session, seed), YandeData.id
+            )
+        return list(self.session.execute(stmt.limit(limit)).scalars().all())
 
     def query_preview_for_tags(
         self,

@@ -18,6 +18,7 @@ vi.mock('@/api/myFavorites', () => ({
   },
 }))
 vi.mock('@/api/randomBrowse', () => ({
+  createRandomSeed: vi.fn(() => 123456),
   randomBrowseApi: {
     getPreview: vi.fn().mockResolvedValue({ data: { images: [] } }),
     getCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
@@ -111,8 +112,9 @@ describe('useFavoriteFoldersList — 虚拟磁贴 + 预览图加载', () => {
     // 关键断言（修复问题 11）：随机浏览磁贴的 preview_images 来自 randomBrowsePreview
     expect(random.preview_images).toEqual([{ id: 100 }, { id: 101 }, { id: 102 }])
     expect(randomBrowsePreview.value).toEqual([{ id: 100 }, { id: 101 }, { id: 102 }])
-    // 调用了 randomBrowseApi.getPreview（之前是硬编码空数组，未调 API）
-    expect(randomBrowseApi.getPreview).toHaveBeenCalled()
+    // 预览请求必须带 seed，磁贴保存同一个 seed 供瀑布流复用
+    expect(randomBrowseApi.getPreview).toHaveBeenCalledWith(8, 123456)
+    expect(random.preview_seed).toBe(123456)
   })
 
   it('enableRandomBrowse=false → 随机浏览预览图不加载（开关关闭）', async () => {
@@ -172,7 +174,7 @@ describe('useFavoriteFoldersList — 虚拟磁贴 + 预览图加载', () => {
 
     await new Promise((r) => setTimeout(r, 0))
 
-    expect(randomBrowseApi.getPreview).toHaveBeenCalledWith(8)
+    expect(randomBrowseApi.getPreview).toHaveBeenCalledWith(8, 123456)
   })
 
   it('randomBrowseApi.getPreview 失败时 randomBrowsePreview 保持空数组（防降级）', async () => {

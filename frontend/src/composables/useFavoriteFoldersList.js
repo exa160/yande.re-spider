@@ -16,7 +16,9 @@
  *    现改为无条件 prepend，磁贴始终置顶可见。
  * 3. **可选预览图回填**：当 `fetchPreview=true` 时：
  *    - 「我的最爱」磁贴的 preview_images 通过 GET /my_favorites/preview?limit=N 异步拉取
- *    - 「随机浏览」磁贴的 preview_images 通过 GET /random_browse/preview?limit=N 异步拉取
+ *    - 「随机浏览」磁贴的 preview_images 通过 GET /random_browse/preview?limit=N&seed=S 异步拉取；
+ *      每次加载生成新 seed，并挂到磁贴 preview_seed，点击进入瀑布流时复用，
+ *      保证预览图与瀑布流列表顺序一致
  *    - 「最近下载」磁贴的 preview_images 通过 GET /recent_downloads/preview?limit=N 异步拉取
  *    N 取自 useFavoritesConfig.tileSize（adaptive/small/medium/large → 8/4/6/8），
  *    与后端 `_preview_count_for_local_count` 契约保持一致。
@@ -47,7 +49,7 @@ import {
   fetchRecentDownloadsCount,
 } from './useFavoritesConfig'
 import { myFavoritesApi } from '@/api/myFavorites'
-import { randomBrowseApi } from '@/api/randomBrowse'
+import { createRandomSeed, randomBrowseApi } from '@/api/randomBrowse'
 import { recentDownloadsApi } from '@/api/recentDownloads'
 
 // 与后端 src/services/favorites.py:_preview_count_for_local_count 契约对齐
@@ -101,6 +103,8 @@ export function useFavoriteFoldersList(options) {
   const myFavoritesPreviewLoading = ref(false)
   // 随机浏览预览图（独立 ref，与 myFavoritesPreview 独立加载/缓存）
   const randomBrowsePreview = ref([])
+  // 与瀑布流 random_seed 共享；每次重新拉预览时换新，保留「刷新换一批」
+  const randomBrowseSeed = ref(null)
   const randomBrowsePreviewLoading = ref(false)
   // 最近下载预览图（独立 ref，与上面两个独立加载/缓存）
   const recentDownloadsPreview = ref([])
@@ -153,14 +157,19 @@ export function useFavoriteFoldersList(options) {
   // 异步加载随机浏览预览图（每次 tileSize 变化或开关开启时重新抽样）
   const loadRandomBrowsePreview = async () => {
     if (!fetchPreview || !enableRandomBrowse.value) {
-      // 不拉取预览 / 开关关闭 → 清空预览图
+      // 不拉取预览 / 开关关闭 → 清空预览图与 seed
       randomBrowsePreview.value = []
+      randomBrowseSeed.value = null
       return
     }
     const limit = previewLimit.value
+    // 先定 seed 再请求：点击磁贴时通过 preview_seed 传给瀑布流，
+    // 两边后端使用同一套确定性排序，保证预览 = 瀑布流前 N 张。
+    const seed = createRandomSeed()
+    randomBrowseSeed.value = seed
     randomBrowsePreviewLoading.value = true
     try {
-      const res = await randomBrowseApi.getPreview(limit)
+      const res = await randomBrowseApi.getPreview(limit, seed)
       const images = res?.data?.images
       const arr = Array.isArray(images)
         ? images
@@ -252,8 +261,9 @@ export function useFavoriteFoldersList(options) {
         isVirtual: true,
         // 角标 = 本地已下载图片总数（随机浏览的候选池大小）
         local_count: randomBrowseCount.value,
-        // 随机浏览预览图（每次刷新页面会重新抽样；与瀑布流二级页不保证一致）
+        // 每次刷新页面会重新抽样；preview_seed 让瀑布流复用同一顺序
         preview_images: randomBrowsePreview.value,
+        preview_seed: randomBrowseSeed.value,
       })
     }
     if (enableRecentDownloads.value) {
@@ -290,6 +300,8 @@ export function useFavoriteFoldersList(options) {
     myFavoritesPreviewLoading: computed(() => myFavoritesPreviewLoading.value),
     /** 随机浏览预览图数组 */
     randomBrowsePreview,
+    /** 随机浏览预览使用的 seed（点击磁贴进入瀑布流时复用） */
+    randomBrowseSeed,
     /** 当前是否正在异步加载随机浏览预览图 */
     randomBrowsePreviewLoading: computed(() => randomBrowsePreviewLoading.value),
     /** 最近下载预览图数组 */
