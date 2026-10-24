@@ -353,8 +353,12 @@
               :tags="detailTags"
               :height="detailRailHeight"
               :ambient-src="getDetailAmbientUrl(currentImage)"
+              :can-refresh-tags="canRefreshTags"
+              :refreshing-tags="refreshingTags"
+              :post-url="detailPostUrl"
               @close="closeInfoPanel"
-              @copy="copyDetailInfo"
+              @refresh-tags="refreshCurrentImageTags"
+              @copy-link="copyDetailLink"
             />
           </transition>
         </div>
@@ -560,6 +564,7 @@ const previewVisible = ref(false)
 const currentImage = ref(null)
 const previewContainerStyle = ref({})
 const infoPanelExpanded = ref(false)
+const refreshingTags = ref(false)
 // 移动端展开详情时用整体上移给坞让位：--detail-shift 由坞的实际高度算出
 const detailHostRef = ref(null)
 const detailShift = ref(0)
@@ -1437,32 +1442,33 @@ const handleLoadError = async () => {
   isLoadingMore.value = false
 }
 
+// 获取当前图片的 tag 类型（用于标签配色与「作者」推导）。
+// 请求竞态防护：by-names 是异步的，连续快速点开两张图时，先发的响应可能后到，
+// 把后一张图的 tagTypesMap 覆盖成前一张的（tag 配色会串色，新加的「作者」也会
+// 认错人）。用请求瞬间的 image.id 做后到校验，丢弃已过期图片的响应。
+const loadTagTypes = async (image) => {
+  const requestImageId = image.id
+  tagTypesMap.value = {}
+  if (!image.tags || image.tags.length === 0) return
+  try {
+    const response = await tagCacheApi.getTagsByNames(image.tags)
+    if (currentImage.value?.id !== requestImageId) return
+    // 重构后 BaseResponse.data 是 {tag_name: type} 格式的字典
+    if (response?.data && typeof response.data === 'object') {
+      Object.assign(tagTypesMap.value, response.data)
+    }
+  } catch (e) {
+    console.warn('获取 tag 类型失败:', e)
+  }
+}
+
 const handleImageClick = async (image) => {
   currentImage.value = image
   tagsExpanded.value = false
   infoPanelExpanded.value = false
   previewVisible.value = true
   calculatePreviewSize()
-  
-  // 获取 tag 类型信息
-  //
-  // 请求竞态防护：by-names 是异步的，连续快速点开两张图时，先发的响应可能后到，
-  // 把后一张图的 tagTypesMap 覆盖成前一张的（tag 配色会串色，新加的「作者」也会
-  // 认错人）。用点击瞬间的 image.id 做后到校验，丢弃已过期图片的响应。
-  const requestImageId = image.id
-  tagTypesMap.value = {}
-  if (image.tags && image.tags.length > 0) {
-    try {
-      const response = await tagCacheApi.getTagsByNames(image.tags)
-      if (currentImage.value?.id !== requestImageId) return
-      // 重构后 BaseResponse.data 是 {tag_name: type} 格式的字典
-      if (response?.data && typeof response.data === 'object') {
-        Object.assign(tagTypesMap.value, response.data)
-      }
-    } catch (e) {
-      console.warn('获取 tag 类型失败:', e)
-    }
-  }
+  await loadTagTypes(image)
 }
 
 const toggleInfoPanel = () => {
@@ -1709,13 +1715,61 @@ const detailTags = computed(() => (
   })
 ))
 
-const copyDetailInfo = async (text) => {
-  if (!text) return
+// 「更新标签」只对本地库里有 tagme 的图片开放；在线直连视图不保证有本地记录
+const canRefreshTags = computed(() => (
+  querySource.value !== 'yande'
+  && Array.isArray(currentImage.value?.tags)
+  && currentImage.value.tags.includes('tagme')
+))
+
+const detailPostUrl = computed(() => (
+  currentImage.value ? `https://yande.re/post/show/${currentImage.value.id}` : ''
+))
+
+const copyDetailLink = async (url) => {
+  if (!url) return
   try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('详情已复制')
+    await navigator.clipboard.writeText(url)
+    ElMessage.success('链接已复制')
   } catch {
-    ElMessage.error('复制失败，请手动选择文本')
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+const refreshCurrentImageTags = async () => {
+  const image = currentImage.value
+  if (!image || refreshingTags.value) return
+  refreshingTags.value = true
+  try {
+    const response = await api.post(`/gallery/image/${image.id}/refresh-tags`)
+    const data = response?.data || {}
+    if (!Array.isArray(data.tags)) {
+      ElMessage.error('更新失败：响应缺少标签数据')
+      return
+    }
+
+    // currentImage 与瀑布流 images[] 共享同一对象引用；仍按 id 兜底同步
+    image.tags = data.tags
+    const listImage = images.value.find((item) => item.id === image.id)
+    if (listImage && listImage !== image) listImage.tags = data.tags
+    await loadTagTypes(image)
+
+    if (data.changed) {
+      const summary = []
+      if (data.added?.length) summary.push(`新增 ${data.added.length}`)
+      if (data.removed?.length) summary.push(`移除 ${data.removed.length}`)
+      const message = `标签已更新${summary.length ? '：' + summary.join('，') : ''}`
+      if (data.still_tagme) ElMessage.warning(`${message}（远端仍是 tagme）`)
+      else ElMessage.success(message)
+    } else if (data.still_tagme) {
+      ElMessage.warning('yande.re 上仍标记为 tagme，暂无可更新的标签')
+    } else {
+      ElMessage.info('标签已是最新')
+    }
+  } catch (e) {
+    ElMessage.error(e?.message || '更新标签失败')
+  } finally {
+    refreshingTags.value = false
   }
 }
 

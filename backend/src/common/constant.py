@@ -200,6 +200,14 @@ class ErrMsg(BaseMsgEnum):
     LOAD_PREVIEW_DATA_ERROR = ("0011", "Failed to load preview data.", HTTPStatus.NOT_FOUND)
     SAVE_PREVIEW_DATA_ERROR = ("0012", "Failed to save preview data.", HTTPStatus.NOT_FOUND)
     CLEANUP_PREVIEW_ERROR = ("0013", "Failed to cleanup preview cache.", HTTPStatus.INTERNAL_SERVER_ERROR)
+    IMAGE_TAG_REFRESH_NOT_FOUND = ("0014", "Image not found in local database.", HTTPStatus.NOT_FOUND)
+    IMAGE_TAG_REFRESH_NOT_ALLOWED = (
+        "0015",
+        "Only images tagged 'tagme' can refresh tags.",
+        HTTPStatus.BAD_REQUEST,
+    )
+    REMOTE_IMAGE_NOT_FOUND = ("0016", "Image not found on yande.re.", HTTPStatus.NOT_FOUND)
+    REMOTE_IMAGE_TAGS_EMPTY = ("0017", "No tags returned by yande.re.", HTTPStatus.BAD_GATEWAY)
 
     # 配置相关
     CONFIG_UPDATE_ERROR = ("1001", "Config update error.", HTTPStatus.INTERNAL_SERVER_ERROR)

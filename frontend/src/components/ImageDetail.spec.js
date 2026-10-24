@@ -36,6 +36,7 @@ const factory = (props = {}) => mount(ImageDetail, {
     tags,
     height: '600px',
     ambientSrc: '/api/v1/gallery/cache/preview/100',
+    postUrl: 'https://yande.re/post/show/100',
     ...props,
   },
   global: {
@@ -103,19 +104,46 @@ describe('ImageDetail — 窄屏 dock', () => {
 })
 
 describe('ImageDetail — 交互', () => {
-  it('复制按钮 emit 纯文本详情（链接用完整 href）', async () => {
+  it('canRefreshTags=false 时「更新标签」置灰，原帖/复制链接仍可用', async () => {
     const wrapper = factory()
-    await wrapper.find('.detail-copy').trigger('click')
+    const btn = wrapper.find('.detail-refresh')
+    expect(btn.exists()).toBe(true)
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('.detail-action')).toHaveLength(2)
 
-    const events = wrapper.emitted('copy')
-    expect(events).toHaveLength(1)
-    const text = events[0][0]
-    expect(text).toContain('详情')
-    expect(text).toContain('#100 · 1080 × 1920')
-    expect(text).toContain('大小: 15.61 MB')
-    expect(text).toContain('MD5: abc123')
-    expect(text).toContain('来源: https://www.pixiv.net/artworks/1')
-    expect(text).toContain('标签: ass, heels')
+    await btn.trigger('click')
+    expect(wrapper.emitted('refresh-tags')).toBeUndefined()
+  })
+
+  it('canRefreshTags=true 时点击 emit refresh-tags', async () => {
+    const wrapper = factory({ canRefreshTags: true })
+    const btn = wrapper.find('.detail-refresh')
+    expect(btn.text()).toBe('更新标签')
+    expect(btn.attributes('disabled')).toBeUndefined()
+
+    await btn.trigger('click')
+    expect(wrapper.emitted('refresh-tags')).toHaveLength(1)
+  })
+
+  it('refreshingTags=true 时按钮禁用并显示更新中', () => {
+    const wrapper = factory({ canRefreshTags: true, refreshingTags: true })
+    const btn = wrapper.find('.detail-refresh')
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(btn.text()).toContain('更新中')
+  })
+
+  it('原帖是外链，复制链接 emit copy-link(url)', async () => {
+    const wrapper = factory()
+    const link = wrapper.find('a.detail-action')
+    expect(link.attributes('href')).toBe('https://yande.re/post/show/100')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toContain('noopener')
+
+    const copyBtn = wrapper.findAll('button.detail-action')[0]
+    await copyBtn.trigger('click')
+    expect(wrapper.emitted('copy-link')).toEqual([
+      ['https://yande.re/post/show/100'],
+    ])
   })
 
   it('关闭按钮 emit close', async () => {
