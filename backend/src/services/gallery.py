@@ -18,7 +18,8 @@ from src.common.constant import TaskStatus
 from src.common.constant import path_constant
 from src.common.settings import config
 from src.common.utils import get_error_type_from_exception
-from src.dao.yande_data_dao import SortBy, YandeDataRepository
+from src.dao.tag_dao import TagRepository
+from src.dao.yande_data_dao import SortBy, YandeDataRepository, yande_data_repository
 from src.infrastructure.image_cache import ImageCache
 from src.infrastructure.yande_api import YandeApi
 from src.middleware.errors import APIException
@@ -28,6 +29,11 @@ from src.models.database.yande import DownloadTask, YandeData
 from src.models.request.gallery import GalleryLoadRequest
 from src.models.request.yande import YandeSearchTags
 from src.models.response.gallery import ImageDetail
+
+
+def _split_image_tags(tags: Optional[str]) -> List[str]:
+    """yande tags 是空格分隔字符串；去重并保留原始顺序。"""
+    return list(dict.fromkeys(str(tags or "").split()))
 
 
 class GalleryService:
@@ -392,6 +398,57 @@ class GalleryService:
         return ImageDetail.model_validate(yande).model_copy(
             update={"is_favorited": is_favorited}
         )
+
+    @staticmethod
+    def refresh_image_tags(image_id: int) -> dict:
+        """从 yande.re 拉取最新 tags 并覆盖本地记录。
+
+        仅允许本地 tags 含 ``tagme`` 的图片：这是 yande.re 上「等待他人补标签」
+        的标记，也是用户手动触发刷新的唯一入口。远端 tags 是权威值，会整串
+        覆盖本地，而不是合并/追加。
+
+        Raises:
+            APIException: 本地图片不存在 / 不含 tagme / 远端不存在 / 远端无标签
+        """
+        record = yande_data_repository.get_by_id(image_id)
+        if record is None:
+            raise APIException(ErrMsg.IMAGE_TAG_REFRESH_NOT_FOUND)
+
+        local_tags = _split_image_tags(record.tags)
+        if "tagme" not in local_tags:
+            raise APIException(ErrMsg.IMAGE_TAG_REFRESH_NOT_ALLOWED)
+
+        post = YandeApi().get_post_by_id(image_id)
+        if post is None:
+            raise APIException(ErrMsg.REMOTE_IMAGE_NOT_FOUND)
+
+        remote_tags = _split_image_tags(post.tags)
+        if not remote_tags:
+            raise APIException(ErrMsg.REMOTE_IMAGE_TAGS_EMPTY)
+
+        local_set = set(local_tags)
+        remote_set = set(remote_tags)
+        added = sorted(remote_set - local_set)
+        removed = sorted(local_set - remote_set)
+        changed = local_set != remote_set
+
+        if changed:
+            record.tags = " ".join(remote_tags)
+            record.updated_at = post.updated_at
+            # TagLocalStats 只统计已下载图片，未下载的图片不参与本地计数
+            if record.down_flag:
+                TagRepository(
+                    session=yande_data_repository.session
+                ).adjust_local_stats(added, removed)
+
+        return {
+            "image_id": image_id,
+            "tags": remote_tags,
+            "added": added,
+            "removed": removed,
+            "changed": changed,
+            "still_tagme": "tagme" in remote_set,
+        }
 
     @staticmethod
     def get_statistics(source: str = "local") -> dict:

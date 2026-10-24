@@ -136,6 +136,17 @@ async def get_image_detail(
 
 
 @router.post(
+    "/image/{image_id}/refresh-tags",
+    response_model=BaseResponse,
+    summary="从 yande.re 更新图片标签",
+)
+async def refresh_image_tags(image_id: int) -> BaseResponse:
+    """仅允许本地 tags 含 ``tagme`` 的图片；用 yande.re 最新 tags 覆盖本地记录"""
+    result = await asyncio.to_thread(GalleryService.refresh_image_tags, image_id)
+    return BaseResponse(message=ErrMsg.OK.msg, data=result)
+
+
+@router.post(
     "/convert-to-download", response_model=BaseResponse, summary="转换为下载任务"
 )
 async def convert_to_download_task(

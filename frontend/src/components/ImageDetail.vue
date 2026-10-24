@@ -92,14 +92,45 @@
     </div>
 
     <footer class="detail-foot">
-      <button class="detail-copy" type="button" @click="$emit('copy', copyText)">复制信息</button>
+      <div class="detail-actions-row">
+        <span
+          class="detail-refresh-wrap"
+          :title="canRefreshTags
+            ? '从 yande.re 拉取最新标签'
+            : '仅本地库中包含 tagme 的图片可更新标签'"
+        >
+          <button
+            class="detail-refresh"
+            :class="{ 'detail-refresh--loading': refreshingTags }"
+            type="button"
+            :disabled="!canRefreshTags || refreshingTags"
+            @click="$emit('refresh-tags')"
+          >
+            <el-icon v-if="refreshingTags" class="is-loading"><Loading /></el-icon>
+            {{ refreshingTags ? '更新中…' : '更新标签' }}
+          </button>
+        </span>
+        <a
+          v-if="postUrl"
+          class="detail-action"
+          :href="postUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >原帖</a>
+        <button
+          v-if="postUrl"
+          class="detail-action"
+          type="button"
+          @click="$emit('copy-link', postUrl)"
+        >复制链接</button>
+      </div>
     </footer>
   </aside>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { Close } from '@element-plus/icons-vue'
+import { Close, Loading } from '@element-plus/icons-vue'
 
 const props = defineProps({
   layout: {
@@ -114,9 +145,12 @@ const props = defineProps({
   tags: { type: Array, default: () => [] },
   height: { type: String, default: '' },
   ambientSrc: { type: String, default: '' },
+  canRefreshTags: { type: Boolean, default: false },
+  refreshingTags: { type: Boolean, default: false },
+  postUrl: { type: String, default: '' },
 })
 
-defineEmits(['close', 'copy'])
+defineEmits(['close', 'refresh-tags', 'copy-link'])
 
 const flatFields = computed(() => props.sections.flatMap((section) => section.fields || []))
 
@@ -135,15 +169,6 @@ const rootStyle = computed(() => {
   return style
 })
 
-const copyText = computed(() => {
-  const lines = [
-    props.title,
-    props.subtitle,
-    ...flatFields.value.map((field) => `${field.label}: ${field.href || field.value}`),
-    props.tags.length ? `标签: ${props.tags.map((tag) => tag.text).join(', ')}` : '',
-  ]
-  return lines.filter(Boolean).join('\n')
-})
 </script>
 
 <style scoped>
@@ -482,8 +507,25 @@ html.dark-mode .image-detail {
   border-top: 1px solid var(--detail-divider);
 }
 
-.detail-copy {
+.detail-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-refresh-wrap {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-refresh {
+  display: inline-flex;
+  flex: 1;
   width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--detail-chip-border);
@@ -494,8 +536,41 @@ html.dark-mode .image-detail {
   transition: background 0.15s;
 }
 
-.detail-copy:hover {
+.detail-refresh:hover:not(:disabled) {
   background: var(--detail-chip-hover);
+}
+
+.detail-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.detail-refresh--loading:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+/* 底部次级操作：原帖 / 复制链接，保持小尺寸，不与主操作抢空间 */
+.detail-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--detail-chip-border);
+  background: var(--detail-chip-bg);
+  color: var(--detail-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.detail-action:hover {
+  background: var(--detail-chip-hover);
+  color: var(--detail-text);
 }
 
 @media (prefers-contrast: more) {

@@ -134,7 +134,8 @@ beforeEach(async () => {
   favCfg.recentDownloadsCount.value = 0
   setLocalCountMock.mockClear()
   updateLocalCountMock.mockClear()
-  apiMock.post.mockClear()
+  apiMock.post.mockReset()
+  apiMock.post.mockResolvedValue({ data: [], has_more: false })
   apiMock.get.mockClear()
   mockRoute.value.query = {}
   localStorage.clear()
@@ -2638,7 +2639,69 @@ describe('Gallery.vue 详情布局（桌面 rail / 移动 dock）', () => {
     }
   })
 
-  it('T29 复制信息把 ID / 字段 / 标签写入剪贴板', async () => {
+  it('T29 tagme 图片点击「更新标签」→ 调接口并同步本地标签', async () => {
+    const restoreViewport = setViewport(1440, 900)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      apiMock.post.mockImplementation((url) => {
+        if (url.includes('/refresh-tags')) {
+          return Promise.resolve({
+            data: {
+              image_id: 100,
+              tags: ['foo', 'bar'],
+              added: ['bar'],
+              removed: ['tagme'],
+              changed: true,
+              still_tagme: false,
+            },
+          })
+        }
+        return Promise.resolve({ data: [], has_more: false })
+      })
+      await openDetail(wrapper, { tags: ['tagme', 'foo'] })
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+
+      const refreshBtn = document.body.querySelector('.image-detail .detail-refresh')
+      expect(refreshBtn).not.toBeNull()
+      refreshBtn.click()
+      await flushPromises()
+
+      expect(apiMock.post).toHaveBeenCalledWith('/gallery/image/100/refresh-tags')
+      expect(wrapper.vm.currentImage.tags).toEqual(['foo', 'bar'])
+      // tagme 已移除 → 按钮保留但置灰，避免底部操作区突然少一个主按钮
+      const refreshAfter = document.body.querySelector('.image-detail .detail-refresh')
+      expect(refreshAfter).not.toBeNull()
+      expect(refreshAfter.disabled).toBe(true)
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('T29b 非 tagme 图片「更新标签」置灰，底部操作仍保留', async () => {
+    const restoreViewport = setViewport(1440, 900)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper, { tags: ['foo', 'bar'] })
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+
+      const refreshBtn = document.body.querySelector('.image-detail .detail-refresh')
+      expect(refreshBtn).not.toBeNull()
+      expect(refreshBtn.disabled).toBe(true)
+      expect(document.body.querySelectorAll('.image-detail .detail-action')).toHaveLength(2)
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('T29c 复制链接写入 yande.re 原帖地址', async () => {
     const restoreViewport = setViewport(1440, 900)
     const writeText = vi.fn().mockResolvedValue()
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
@@ -2649,33 +2712,19 @@ describe('Gallery.vue 详情布局（桌面 rail / 移动 dock）', () => {
     try {
       const wrapper = factory()
       await flushPromises()
-      await openDetail(wrapper, {
-        width: 1080,
-        height: 1920,
-        tags: ['foo', 'bar'],
-        md5: 'abc123',
-        file_size: 1024,
-        created_at: '2026-01-01T00:00:00',
-        author: 'uploader',
-        source: 'https://www.pixiv.net/artworks/1',
-      })
+      await openDetail(wrapper, { tags: ['foo', 'bar'] })
       wrapper.vm.calculatePreviewSize()
       await flushPromises()
       wrapper.vm.toggleInfoPanel()
       await flushPromises()
 
-      const copyBtn = document.body.querySelector('.image-detail .detail-copy')
-      expect(copyBtn).not.toBeNull()
+      const copyBtn = [...document.body.querySelectorAll('.image-detail button.detail-action')]
+        .find((el) => el.textContent.includes('复制链接'))
+      expect(copyBtn).not.toBeUndefined()
       copyBtn.click()
       await flushPromises()
 
-      expect(writeText).toHaveBeenCalledTimes(1)
-      const text = writeText.mock.calls[0][0]
-      expect(text).toContain('#100')
-      expect(text).toContain('1080 × 1920')
-      expect(text).toContain('MD5: abc123')
-      expect(text).toContain('来源: https://www.pixiv.net/artworks/1')
-      expect(text).toContain('标签: foo, bar')
+      expect(writeText).toHaveBeenCalledWith('https://yande.re/post/show/100')
     } finally {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
       else delete navigator.clipboard

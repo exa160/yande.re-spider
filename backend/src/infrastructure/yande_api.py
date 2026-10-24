@@ -184,6 +184,17 @@ class YandeApi:
         )
         return YandePostData.model_validate_json(resp.content)
 
+    def get_post_by_id(self, image_id: int) -> Optional[YandePostData.YandePostItem]:
+        """按图片 ID 拉取单条 post；远端不存在时返回 None。
+
+        复用 ``get_ranking``（已带重试）而不是另发请求，保证 posts JSON 的
+        解析/重试逻辑只有一份。``id:`` 是 yande.re 的精确 ID 搜索语法。
+        """
+        result = self.get_ranking(
+            self.PostRankQueryParams(tags=f"id:{image_id}", limit=1)
+        )
+        return result.root[0] if result.root else None
+
     @_with_retry
     def get_tags(
         self,

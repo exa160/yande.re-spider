@@ -169,6 +169,62 @@ class TagRepository(BaseDAO):
 
         return len(tag_counter)
 
+    def adjust_local_stats(self, added: List[str], removed: List[str]) -> int:
+        """按单张图片的标签增减量更新本地统计。
+
+        只处理已存在于 ``YandeTag`` 缓存中的标签：缓存里没有的新标签无法拿到
+        tag_id，等下一次标签缓存刷新 + 全量重算时再补。负值钳到 0，避免历史
+        数据不一致时把计数打成负数。
+        """
+        deltas: Counter = Counter()
+        for name in added:
+            deltas[name] += 1
+        for name in removed:
+            deltas[name] -= 1
+        deltas = {name: delta for name, delta in deltas.items() if delta}
+
+        if not deltas:
+            return 0
+
+        tags_stmt = select(YandeTag).filter(YandeTag.name.in_(list(deltas)))
+        tag_by_name = {
+            tag.name: tag
+            for tag in self.session.execute(tags_stmt).scalars().all()
+        }
+        if not tag_by_name:
+            return 0
+
+        stats_stmt = select(TagLocalStats).filter(
+            TagLocalStats.tag_id.in_([tag.id for tag in tag_by_name.values()])
+        )
+        stats_by_id = {
+            stat.tag_id: stat
+            for stat in self.session.execute(stats_stmt).scalars().all()
+        }
+
+        now = datetime.now()
+        updated = 0
+        for name, delta in deltas.items():
+            tag = tag_by_name.get(name)
+            if tag is None:
+                continue
+            stat = stats_by_id.get(tag.id)
+            if stat is not None:
+                stat.local_count = max(0, (stat.local_count or 0) + delta)
+                stat.last_calculated = now
+                updated += 1
+            elif delta > 0:
+                self.session.add(
+                    TagLocalStats(
+                        tag_id=tag.id,
+                        local_count=delta,
+                        last_calculated=now,
+                    )
+                )
+                updated += 1
+
+        return updated
+
     def get_tags_with_stats(
         self,
         tag_type: Optional[int] = None,
