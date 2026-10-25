@@ -4,29 +4,9 @@ import api from './index'
  * 收藏夹 API 封装
  */
 
-// 获取所有收藏夹
+// 获取所有收藏夹（收藏夹一级页一次取全量，前端过滤/切片）
 export function getAllFolders() {
   return api.get('/favorites')
-}
-
-// 获取收藏夹及精简预览元数据（分页 + 关键字搜索 + 预览图顺序 + 是否包含在线图）
-export function getFoldersWithPreview(
-  page = 1,
-  pageSize = 20,
-  tileSize = 'adaptive',
-  keyword = '',
-  previewOrder = 'random',
-  includeOnline = false
-) {
-  const params = new URLSearchParams({
-    page,
-    page_size: pageSize,
-    tile_size: tileSize,
-    preview_order: previewOrder,
-  })
-  if (keyword) params.set('keyword', keyword)
-  if (includeOnline) params.set('include_online', 'true')
-  return api.get(`/favorites/with-preview?${params.toString()}`)
 }
 
 // 获取单个收藏夹详情
@@ -54,9 +34,18 @@ export function reorderFolders(folderIds) {
   return api.post('/favorites/reorder', { folder_ids: folderIds })
 }
 
-// 预览收藏夹查询结果
-export function previewFolder(folderId, limit = 6) {
-  return api.get(`/favorites/${folderId}/preview?limit=${limit}`)
+// 单个收藏夹预览（收藏夹一级页逐 folder 异步加载）
+// total 为该 folder 的本地已下载数量（后端仅在过期时重算）
+export function previewFolder(
+  folderId,
+  { limit = 6, previewOrder = 'random', includeOnline = false } = {}
+) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    preview_order: previewOrder,
+  })
+  if (includeOnline) params.set('include_online', 'true')
+  return api.get(`/favorites/${folderId}/preview?${params.toString()}`)
 }
 
 // 刷新在线数量（打 yande.re XML API 取该 tags 的全站总数）
@@ -105,7 +94,6 @@ export function resetFolderSync(folderId, value = null) {
 
 export default {
   getAllFolders,
-  getFoldersWithPreview,
   getFolder,
   createFolder,
   updateFolder,

@@ -264,41 +264,63 @@ class FavoritesService:
 
     @staticmethod
     def preview_folder(
-        folder_id: int, limit: int = 6, random: bool = False
+        folder_id: int,
+        limit: int = 6,
+        preview_order: str = "random",
+        include_online: bool = False,
     ) -> Optional[dict]:
-        """单文件夹预览。
+        """单文件夹预览（收藏夹一级页逐 folder 异步加载用）。
 
-        Args:
-            folder_id: 收藏夹 ID
-            limit: 预览图数量上限
-            random: True 时随机抽样；False 时按当前 sort 排序取前 N 张
+        计数只在可能过期时重算：``last_refresh`` 早于最近一次 completed 下载
+        （或从未刷新过）才跑一次 COUNT 并落库；否则直接返回缓存 ``local_count``。
+        这样一级页列表接口可以只读缓存，把计数成本挪到预览的异步请求里。
         """
-        folder = favorite_dao.get_by_id(folder_id)
-        if not folder:
-            return None
+        with FavoriteDao() as dao:
+            folder = dao.get_by_id(folder_id)
+            if not folder:
+                return None
 
-        try:
-            search_params = FavoritesService._parse_tags_to_params(folder.tags)
-            search_params.page = 1
-            search_params.page_size = limit
-            with YandeDataRepository() as repo:
-                if random:
-                    images = repo.query_random_for_tags(
-                        tags=folder.tags or "",
+            total = folder.local_count or 0
+            images = []
+            if folder.tags and folder.tags.strip():
+                with DownloadTaskDao() as download_task_dao:
+                    latest_completed = download_task_dao.max_completed_at()
+
+                with YandeDataRepository() as repo:
+                    needs_count_refresh = folder.last_refresh is None or (
+                        latest_completed is not None
+                        and folder.last_refresh < latest_completed
+                    )
+                    if needs_count_refresh:
+                        try:
+                            search_params = FavoritesService._parse_tags_to_params(
+                                folder.tags
+                            )
+                            search_params.page = 1
+                            search_params.page_size = 1
+                            _, total = repo.query(
+                                query_params=search_params,
+                                downloaded_only=True,
+                            )
+                            dao.update(
+                                folder_id,
+                                local_count=total,
+                                last_refresh=datetime.now(),
+                            )
+                        except Exception as e:
+                            # COUNT 失败不应让预览整体失败；继续返回缓存值，下次重试
+                            logger.warning(
+                                f"Refresh local_count failed for folder {folder_id}: {e}"
+                            )
+
+                    images = repo.query_preview_for_tags(
+                        tags=folder.tags,
                         limit=limit,
-                        downloaded_only=True,
+                        downloaded_only=not include_online,
+                        order=preview_order,
                     )
-                    _, total = repo.query(
-                        query_params=search_params, downloaded_only=True
-                    )
-                else:
-                    images, total = repo.query(
-                        query_params=search_params, downloaded_only=True
-                    )
-            FavoritesService._refresh_local_count(folder_id)
+
             return {"total": total, "preview_images": images[:limit]}
-        except Exception:
-            return None
 
     @staticmethod
     def update_local_count(folder_id: int, count: int) -> bool:
