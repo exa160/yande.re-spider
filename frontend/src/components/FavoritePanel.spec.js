@@ -23,6 +23,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { Clock, Timer } from '@element-plus/icons-vue'
 
 // router mock：使用 router 仅用于 useRoute 上下文（FavoritePanel 已不再用 useRouter）
 vi.mock('vue-router', () => ({
@@ -308,5 +309,72 @@ describe('FavoritePanel.vue 收藏夹数量展示口径', () => {
     expect(await countText('my-favorites')).toBe('123')
     expect(await countText('random')).toBe('123')
     expect(await countText('recent-downloads')).toBe('123')
+  })
+})
+
+// =============================================================================
+// 徽章与定时任务开关解绑：
+// - 上次执行时间只要存在就展示（手动执行同样会写入）
+// - 图标区分触发来源：Clock=定时任务，Timer=手动执行
+// - 编辑面板的「同步游标」行不随开关隐藏
+// =============================================================================
+describe('FavoritePanel.vue 调度徽章/游标与 schedule_enabled 解绑', () => {
+  const recent = new Date(Date.now() - 3600 * 1000).toISOString()
+  const baseFolder = {
+    id: 902,
+    name: 'badge_folder',
+    tags: 'badge_tag',
+    local_count: 1,
+    last_synced_id: 4321,
+    last_scheduled_at: recent,
+    last_schedule_status: 'success',
+  }
+
+  it('定时任务关闭时仍展示上次执行时间，并用 Timer 图标', async () => {
+    const wrapper = factory({
+      realFolders: [{ ...baseFolder, schedule_enabled: false }],
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.schedule-badge')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toContain('小时前')
+    expect(badge.findComponent(Timer).exists()).toBe(true)
+    expect(badge.findComponent(Clock).exists()).toBe(false)
+    // 游标徽章同样不依赖开关
+    expect(wrapper.find('.cursor-badge').text()).toContain('#4321')
+  })
+
+  it('定时任务开启时保持 Clock 图标', async () => {
+    const wrapper = factory({
+      realFolders: [{ ...baseFolder, schedule_enabled: true }],
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.schedule-badge')
+    expect(badge.findComponent(Clock).exists()).toBe(true)
+    expect(badge.findComponent(Timer).exists()).toBe(false)
+  })
+
+  it('从未执行过（last_scheduled_at 为空）时不展示时间徽章', async () => {
+    const wrapper = factory({
+      realFolders: [{ ...baseFolder, last_scheduled_at: null }],
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.schedule-badge').exists()).toBe(false)
+  })
+
+  it('编辑面板关闭定时任务时仍展示「同步游标」行', async () => {
+    const folder = { ...baseFolder, schedule_enabled: false }
+    const wrapper = factory({ realFolders: [folder] })
+    await flushPromises()
+
+    wrapper.vm.openEdit(folder)
+    await flushPromises()
+
+    // el-form-item stub 不渲染 label，「上次同步至」即游标行内容
+    expect(wrapper.text()).toContain('上次同步至')
+    expect(wrapper.text()).toContain('#4321')
   })
 })

@@ -666,7 +666,7 @@ def test_pages_fetched_counts_actual_pages(sched_folder):
     assert _cursor_of(folder_id) == 10002
 
 
-def test_tags_change_clears_cursor(sched_folder):
+def test_tags_change_clears_cursor(sched_folder, _active_request_session):
     """换了一批候选 tag → 旧游标必然失效，update_folder 必须把它置 NULL。"""
     folder_id = sched_folder("test_tags_clear_cursor", tags=_TAGS)
     with FavoriteDao() as dao:
@@ -675,6 +675,8 @@ def test_tags_change_clears_cursor(sched_folder):
     updated = FavoritesService.update_folder(
         folder_id, FavoriteFolderUpdate(tags=f"{_TAGS}_changed")
     )
+    # QueuePool 下各 session 独立连接，service 写入需提交后才对新 session 可见
+    _active_request_session.commit()
     assert updated is not None
     assert _cursor_of(folder_id) is None, "tags 变更后必须清游标（下次走全量重扫）"
 
@@ -682,7 +684,33 @@ def test_tags_change_clears_cursor(sched_folder):
     with FavoriteDao() as dao:
         dao.update(folder_id, last_synced_id=12345)
     FavoritesService.update_folder(folder_id, FavoriteFolderUpdate(color="#123456"))
+    _active_request_session.commit()
     assert _cursor_of(folder_id) == 12345, "非 tags 更新不得误清游标"
+
+
+def test_same_tags_does_not_clear_cursor(sched_folder, _active_request_session):
+    """tags 值未变时保存其他字段（开关定时任务 / 改名 / 改颜色）不得清游标。
+
+    前端编辑面板每次保存都回传完整 payload（含未变的 tags），因此不能用
+    「请求里带没带 tags」判断变更，必须与库中现值比较。
+    """
+    folder_id = sched_folder("test_same_tags_keeps_cursor", tags=_TAGS)
+    with FavoriteDao() as dao:
+        dao.update(folder_id, last_synced_id=12345)
+
+    FavoritesService.update_folder(
+        folder_id,
+        FavoriteFolderUpdate(
+            name="renamed",
+            tags=_TAGS,
+            color="#123456",
+            schedule_enabled=False,
+            schedule_cron="0 3 * * *",
+        ),
+    )
+    _active_request_session.commit()
+
+    assert _cursor_of(folder_id) == 12345, "tags 未变时保存其他字段不得清游标"
 
 
 def test_deleted_posts_do_not_break_parsing():
