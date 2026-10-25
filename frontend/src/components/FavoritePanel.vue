@@ -41,10 +41,9 @@
             <div class="folder-tags">{{ folder.tags || '无标签' }}</div>
           </div>
           <div class="folder-meta">
-            <!-- 游标徽章与 schedule_enabled 解绑（理由见编辑面板「同步游标」行的注释）。
-                 与右侧「上次调度时间」徽章相邻并排：两者同属一个 folder 对象、来自
-                 同一个接口，所以永远同时刷新 —— 前者在调度**结束**时写入，后者
-                 在调度**开始**时就写入，但都要等下次 loadFavoriteFolders() 才上屏。 -->
+            <!-- 两个徽章都与 schedule_enabled 解绑：定时任务只是触发方式之一，
+                 游标与上次执行时间属于「同步进度」，手动「立即执行」同样会写入。
+                 时间徽章的图标区分触发来源：Clock = 定时任务，Timer = 手动执行。 -->
             <el-tag
               v-if="folder.last_synced_id != null"
               type="info"
@@ -57,13 +56,16 @@
               #{{ folder.last_synced_id }}
             </el-tag>
             <el-tag
-              v-if="folder.schedule_enabled"
+              v-if="folder.last_scheduled_at != null"
               :type="scheduleStatusType(folder.last_schedule_status)"
               size="small"
               effect="light"
               class="schedule-badge"
             >
-              <el-icon><Clock /></el-icon>
+              <el-icon>
+                <Clock v-if="folder.schedule_enabled" />
+                <Timer v-else />
+              </el-icon>
               {{ formatLastScheduled(folder.last_scheduled_at) }}
             </el-tag>
             <el-button
@@ -205,35 +207,35 @@
               <a href="https://crontab.guru/" target="_blank" rel="noopener">语法参考</a>
             </div>
           </el-form-item>
-          <!-- 游标展示与 schedule_enabled 解绑：本次调度简化后游标语义是「同步进度」
-               （NULL=无起点，下次从最早全量重扫），已与定时任务开关无关 —— 关掉定时
-               任务后游标仍在推进且仍被「立即执行」使用，不该在这里被藏起来。
-               「重置游标」按钮的操作也只对游标生效，与定时任务无关。 -->
-          <el-form-item v-if="currentEditingFolder" label="同步游标" class="sync-cursor-form-item">
-            <div class="sync-cursor-row">
-              <span class="sync-cursor-value">
-                <template v-if="currentEditingFolder.last_synced_id != null">
-                  上次同步至 <strong>#{{ currentEditingFolder.last_synced_id }}</strong>
-                </template>
-                <template v-else>
-                  <em>未初始化</em>
-                </template>
-              </span>
-              <el-popconfirm
-                title="清除后下次同步将从最早图片开始全量重扫，用于补齐历史遗漏。"
-                confirm-button-text="清除游标"
-                cancel-button-text="取消"
-                @confirm="handleResetSync"
-              >
-                <template #reference>
-                  <el-button size="small" type="warning" plain class="sync-cursor-reset">
-                    <el-icon><RefreshRight /></el-icon> 重置游标
-                  </el-button>
-                </template>
-              </el-popconfirm>
-            </div>
-          </el-form-item>
         </template>
+        <!-- 游标展示与 schedule_enabled 解绑：本次调度简化后游标语义是「同步进度」
+             （NULL=无起点，下次从最早全量重扫），已与定时任务开关无关 —— 关掉定时
+             任务后游标仍在推进且仍被「立即执行」使用，不该在这里被藏起来。
+             「重置游标」按钮的操作也只对游标生效，与定时任务无关。 -->
+        <el-form-item v-if="currentEditingFolder" label="同步游标" class="sync-cursor-form-item">
+          <div class="sync-cursor-row">
+            <span class="sync-cursor-value">
+              <template v-if="currentEditingFolder.last_synced_id != null">
+                上次同步至 <strong>#{{ currentEditingFolder.last_synced_id }}</strong>
+              </template>
+              <template v-else>
+                <em>未初始化</em>
+              </template>
+            </span>
+            <el-popconfirm
+              title="清除后下次同步将从最早图片开始全量重扫，用于补齐历史遗漏。"
+              confirm-button-text="清除游标"
+              cancel-button-text="取消"
+              @confirm="handleResetSync"
+            >
+              <template #reference>
+                <el-button size="small" type="warning" plain class="sync-cursor-reset">
+                  <el-icon><RefreshRight /></el-icon> 重置游标
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </div>
+        </el-form-item>
       </el-form>
       <div class="inline-form-footer">
         <el-popconfirm
@@ -262,7 +264,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Aim, ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, VideoPlay } from '@element-plus/icons-vue'
+import { Aim, ArrowLeft, Clock, Delete, Edit, Folder, FolderOpened, RefreshRight, Search, Star, Timer, VideoPlay } from '@element-plus/icons-vue'
 import { triggerFolderSchedule } from '@/api/favorites'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'

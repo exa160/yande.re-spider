@@ -84,6 +84,7 @@
                 @update="handleUpdateFolder"
                 @delete="handleDeleteFolder"
                 @reset-sync="handleResetFolderSync"
+                @triggered="handleFolderTriggered"
                 @mode-change="handleFavoriteModeChange"
                 @virtual-tile-click="handleVirtualTileClick"
                 @virtual-tile-navigate="handleVirtualTileNavigate"
@@ -374,7 +375,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Search, Setting, Minus, Folder, Close, Star, StarFilled, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAllFolders, createFolder, updateFolder, deleteFolder, resetFolderSync } from '@/api/favorites'
+import { getAllFolders, createFolder, updateFolder, deleteFolder, resetFolderSync, getFolderScheduleStatus } from '@/api/favorites'
 import { tagCacheApi } from '@/api/tagCache'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import FavoritePanel from './FavoritePanel.vue'
@@ -734,6 +735,22 @@ const handleResetFolderSync = async (folder) => {
   } catch (error) {
     ElMessage.error('重置同步游标失败')
   }
+}
+
+// 手动执行：触发接口只负责把任务丢进后台，last_scheduled_at / status 是任务
+// 真正启动后才写入的。轮询状态端点等到时间戳变化，再刷新列表让徽章上屏。
+const handleFolderTriggered = async (folder) => {
+  const before = folder.last_scheduled_at || null
+  for (let i = 0; i < 10; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    try {
+      const res = await getFolderScheduleStatus(folder.id)
+      if ((res.data?.last_scheduled_at || null) !== before) break
+    } catch (error) {
+      break
+    }
+  }
+  await loadFavoriteFolders()
 }
 
 const handleClickOutside = (e) => {

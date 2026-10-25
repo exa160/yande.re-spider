@@ -224,15 +224,24 @@ class FavoritesService:
         update_data.pop("schedule_mode", None)
         update_data.pop("schedule_max_images", None)
 
-        # tags 变更 → 游标置 NULL：换了一批候选图，旧游标必然失效
-        if "tags" in update_data:
+        # tags 变更 → 游标置 NULL：换了一批候选图，旧游标必然失效。
+        # 必须与库中现值比较：前端编辑面板每次保存都回传完整 payload（含未变的
+        # tags），只判断字段存在会把开关定时任务 / 改名 / 改色都误判为换标签。
+        existing = favorite_dao.get_by_id(folder_id)
+        if existing is None:
+            return None
+        tags_changed = (
+            "tags" in update_data
+            and (update_data["tags"] or "") != (existing.tags or "")
+        )
+        if tags_changed:
             update_data["last_synced_id"] = None
 
         updated = favorite_dao.update(folder_id, **update_data)
         if not updated:
             return None
 
-        if "tags" in update_data:
+        if tags_changed:
             FavoritesService._refresh_local_count(folder_id)
 
         updated = favorite_dao.get_by_id(folder_id)
