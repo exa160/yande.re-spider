@@ -172,14 +172,27 @@ async def reorder_folders(request: ReorderRequest) -> BaseResponse:
 async def preview_folder(
     folder_id: int,
     limit: int = Query(6, ge=1, le=50, description="预览图数量上限"),
-    random: bool = Query(False, description="True 时随机抽样；默认按当前排序"),
+    preview_order: str = Query(
+        "random",
+        description="预览图顺序：random=随机抽样，desc=按 ID 倒序（最新优先），asc=按 ID 正序（最早优先）",
+        pattern="^(random|asc|desc)$",
+    ),
+    include_online: bool = Query(
+        False,
+        description="True 时预览图包含未下载的在线图片",
+    ),
 ) -> FavoriteFolderPreviewResponse:
-    """单收藏夹预览。返回完整字段（含 preview_url）。
+    """单收藏夹预览（收藏夹一级页逐 folder 异步加载）。
 
-    # TODO: 后续「我的最爱」功能会用到此接口（单 folder 全量预览）
+    ``total`` 为本地已下载数量；仅在 ``last_refresh`` 过期时重算并落库，
+    其余情况直接返回缓存值，避免一级页列表接口承担 COUNT 成本。
     """
-    result = FavoritesService.preview_folder(
-        folder_id=folder_id, limit=limit, random=random
+    result = await asyncio.to_thread(
+        FavoritesService.preview_folder,
+        folder_id=folder_id,
+        limit=limit,
+        preview_order=preview_order,
+        include_online=include_online,
     )
     if not result:
         raise APIException(ErrMsg.FAVORITE_FOLDER_NOT_FOUND)

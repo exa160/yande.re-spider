@@ -416,7 +416,7 @@ import { myFavoritesApi } from '@/api/myFavorites'
 // 本文件的角标写入一律走 setLocalCount（O(1) 的 /local-count）
 // refreshOnlineCount 打的是 yande.re 远程 API —— 后端已加 600s TTL 兜底，
 // 重复调用直接命中缓存，不会真的打远端
-import { setLocalCount, refreshOnlineCount, getFoldersWithPreview } from '@/api/favorites'
+import { setLocalCount, refreshOnlineCount, getAllFolders, previewFolder } from '@/api/favorites'
 import {
   useFavoritesConfig,
   whenFavoritesConfigReady,
@@ -445,9 +445,37 @@ const folderLoading = ref(false)
 const folderHasMore = ref(false)
 const folderPage = ref(1)
 // 收藏夹一级搜索关键字（受 AdvancedQuery 的 favorites-filter emit 驱动）。
-// 服务端按 folder.name / folder.tags 模糊匹配，多 token 之间 OR 关系。
+// 拆分后列表一次取回全量，过滤在客户端完成（复刻后端多 token OR 语义）。
 const folderKeyword = ref('')
 let folderSearchDebounce = null
+// GET /favorites 一次取回的全量收藏夹；null = 尚未加载
+const allFolders = ref(null)
+// 进入二级页时保存的一级页快照（滚动位置 + 配置签名）
+let folderListSnapshot = null
+
+// 页面滚动容器因布局/内嵌浏览器差异可能是 window / html / body，统一取最大值并全部写回
+const getPageScrollTop = () =>
+  Math.max(
+    window.scrollY || 0,
+    document.documentElement?.scrollTop || 0,
+    document.body?.scrollTop || 0
+  )
+const setPageScrollTop = (top) => {
+  if (typeof window.scrollTo === 'function') {
+    window.scrollTo(0, top)
+  }
+  for (const el of [document.scrollingElement, document.documentElement, document.body]) {
+    if (el) el.scrollTop = top
+  }
+}
+
+// 逐 folder 预览：前端限并发，避免 8 个请求同时压 MariaDB
+const PREVIEW_LIMIT_BY_TILE_SIZE = { adaptive: 8, '4': 4, '6': 6, '8': 8 }
+const PREVIEW_MAX_CONCURRENT = 3
+let previewGeneration = 0
+const previewRequested = new Set()
+const previewQueue = []
+let previewActive = 0
 
 // 从 localStorage 读取保存的设置，默认本地模式
 // v2 优先级：route.query.querySource 优先（FavoritePanel 虚拟磁点击中后 router.push 会带 query），
@@ -494,8 +522,8 @@ const virtualSelectedFavorite = computed(() => VIRTUAL_FAVORITES[querySource.val
 // 收藏夹 UI 配置（singleton composable，跨组件共享 + localStorage 持久化）
 // - buttonMode: 'hidden' / 'shown' / 'default'（default → 进首页直接跳 favorites）
 // - tileSize:   'adaptive' / '4' / '6' / '8'
-// - previewOrder: 'random' / 'desc' / 'asc'（控制 with-preview 返回的预览图顺序）
-// - includeOnline: bool（控制 with-preview 是否返回未下载图片；Config.vue 高级功能开关）
+// - previewOrder: 'random' / 'desc' / 'asc'（控制逐 folder 预览图的顺序）
+// - includeOnline: bool（控制逐 folder 预览是否包含未下载图片；Config.vue 高级功能开关）
 // - enableMyFavorites: 我的最爱功能总开关（v2）
 // 持久化 + 旧 key `gallery_tile_size` 向后兼容由 composable 内部处理
 const {
@@ -505,6 +533,8 @@ const {
   includeOnline,
   folderPageSize,
   enableMyFavorites,
+  enableRandomBrowse,
+  enableRecentDownloads,
   myFavoritesCount,
   recentDownloadsCount,
 } = useFavoritesConfig()
@@ -520,20 +550,116 @@ const { displayFolders } = useFavoriteFoldersList({
   fetchPreview: true,
 })
 
+// 虚拟磁贴占用第一页名额：pageSize 是「磁贴总数」，不是「真实 folder 数」。
+// pageSize=8 + 2 个虚拟磁贴 → 第一页 6 个真实 folder，第二页起每页 8 个。
+const enabledVirtualCount = computed(() => {
+  let count = 0
+  if (enableMyFavorites.value) count += 1
+  if (enableRandomBrowse.value) count += 1
+  if (enableRecentDownloads.value) count += 1
+  return count
+})
+
+const filterFoldersByKeyword = (folders, keyword) => {
+  const tokens = String(keyword || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!tokens.length) return folders
+  return folders.filter((folder) => {
+    const name = String(folder.name || '').toLowerCase()
+    const tags = String(folder.tags || '').toLowerCase()
+    return tokens.some((token) => name.includes(token) || tags.includes(token))
+  })
+}
+
+const sliceFoldersForPage = (filtered, page) => {
+  const pageSize = folderPageSize.value
+  const firstPageSize = Math.max(1, pageSize - enabledVirtualCount.value)
+  if (page === 1) {
+    return {
+      items: filtered.slice(0, firstPageSize),
+      end: Math.min(firstPageSize, filtered.length),
+    }
+  }
+  const start = firstPageSize + (page - 2) * pageSize
+  const end = start + pageSize
+  return { items: filtered.slice(start, end), end: Math.min(end, filtered.length) }
+}
+
+const previewLimit = computed(
+  () => PREVIEW_LIMIT_BY_TILE_SIZE[tileSize.value] ?? 8
+)
+
+const resetFolderPreviews = () => {
+  previewGeneration += 1
+  previewQueue.length = 0
+  previewRequested.clear()
+  for (const folder of allFolders.value || []) {
+    folder.preview_images = []
+  }
+}
+
+const fetchFolderPreview = async ({ folder, gen }) => {
+  const startCount = folder.local_count
+  try {
+    const res = await previewFolder(folder.id, {
+      limit: previewLimit.value,
+      previewOrder: previewOrder.value,
+      includeOnline: includeOnline.value,
+    })
+    // 切 tab / 改预览配置后迟到的响应直接丢弃
+    if (gen !== previewGeneration) return
+    const data = res?.data || {}
+    folder.preview_images = Array.isArray(data.preview_images)
+      ? data.preview_images
+      : []
+    // compare-and-set：期间若二级页下载完成已 +N，不用旧 total 覆盖
+    if (typeof data.total === 'number' && folder.local_count === startCount) {
+      folder.local_count = data.total
+    }
+  } catch (e) {
+    if (gen === previewGeneration) {
+      folder.preview_images = []
+      // 失败不缓存 key，下次进入该页/重新加载时重试
+      previewRequested.delete(`${gen}|${folder.id}`)
+    }
+  }
+}
+
+const pumpPreviewQueue = () => {
+  while (previewActive < PREVIEW_MAX_CONCURRENT && previewQueue.length) {
+    const task = previewQueue.shift()
+    if (task.gen !== previewGeneration) continue
+    previewActive += 1
+    fetchFolderPreview(task).finally(() => {
+      previewActive -= 1
+      pumpPreviewQueue()
+    })
+  }
+}
+
+const enqueueFolderPreviews = (folders) => {
+  for (const folder of folders || []) {
+    if (!folder || folder.isVirtual || !String(folder.tags || '').trim()) continue
+    const key = `${previewGeneration}|${folder.id}`
+    if (previewRequested.has(key)) continue
+    previewRequested.add(key)
+    previewQueue.push({ folder, gen: previewGeneration })
+  }
+  pumpPreviewQueue()
+}
+
+const folderListConfigSignature = () =>
+  `${previewOrder.value}|${includeOnline.value}|${folderPageSize.value}|${tileSize.value}`
+
 // v2 我的最爱 / 随机浏览：是否在 WaterfallGallery 显示 HeartOverlay
 //   - showHeart=true → 渲染 HeartOverlay，并在 showHeart && enableMyFavorites 时调 /gallery/load 加 include_favorite_status
 //   - showHeart=false → 不渲染 HeartOverlay，也不加参数（保持旧 querySource 行为不变）
 const showHeart = computed(() => {
   return enableMyFavorites.value === true
 })
-
-// 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
-// 'adaptive' 透传；其它值 fallback 到原值（防御性）
-const API_TILE_SIZE = {
-  '4': 'small',
-  '6': 'medium',
-  '8': 'large',
-}
 
 // AdvancedQuery mode 计算属性
 //   querySource='favorites' → favorites-folders / favorites-folder-detail
@@ -932,37 +1058,23 @@ watch(buttonMode, (newMode, oldMode) => {
   }
 })
 
-// previewOrder 改变时，在收藏夹列表视图重新加载第一页（用户切换顺序后立即生效）
-watch(previewOrder, () => {
-  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
-    folderPage.value = 1
-    currentFolders.value = []
-    folderHasMore.value = false
-    loadFolders(1)
-  }
-})
+const reloadFolderList = ({ resetPreviews = false } = {}) => {
+  if (querySource.value !== 'favorites' || favoritesView.value !== 'folders') return
+  if (resetPreviews) resetFolderPreviews()
+  folderPage.value = 1
+  currentFolders.value = []
+  folderHasMore.value = false
+  loadFolders(1)
+}
 
-// includeOnline 改变时，在收藏夹列表视图重新加载第一页（用户在 Config.vue 高级功能切换后立即生效）
-// 注意：folder-detail 视图（搜索主图）由 AdvancedQuery 内 handleSearch 走 /gallery/load 触发，
-// 本 watch 只负责 folder-list（favorites-folders 模式）的预览图元数据刷新。
-watch(includeOnline, () => {
-  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
-    folderPage.value = 1
-    currentFolders.value = []
-    folderHasMore.value = false
-    loadFolders(1)
-  }
-})
+// 预览顺序 / 是否含在线图 / 磁贴尺寸变化 → 已加载预览失效，重取第一页
+watch(previewOrder, () => reloadFolderList({ resetPreviews: true }))
+watch(includeOnline, () => reloadFolderList({ resetPreviews: true }))
+watch(tileSize, () => reloadFolderList({ resetPreviews: true }))
 
-// folderPageSize 改变时重新加载第一页（与 previewOrder / includeOnline 一致：用户切换立即生效）
-watch(folderPageSize, () => {
-  if (querySource.value === 'favorites' && favoritesView.value === 'folders') {
-    folderPage.value = 1
-    currentFolders.value = []
-    folderHasMore.value = false
-    loadFolders(1)
-  }
-})
+// 分页大小 / 虚拟磁贴数量变化 → 第一页真实 folder 名额变化，重新切片（预览仍可复用）
+watch(folderPageSize, () => reloadFolderList())
+watch(enabledVirtualCount, () => reloadFolderList())
 
 // 图片预览
 
@@ -1070,48 +1182,45 @@ const handleSearch = async (searchData) => {
   await loadImages()
 }
 
-const loadFolders = async (page) => {
-  // isFirstPage 守卫：仅在加载第一页时切换 loading 状态以触发 skeleton
-  // page>1 时通过 loadMoreFolders → isLoadingMore 通道管理「加载中…」按钮，
-  // 避免 set folderLoading=true 触发 WaterfallGallery 顶层 v-if 卸载整个瀑布流 DOM
-  const isFirstPage = page === 1 || folderPage.value === 1
-  if (isFirstPage) {
+const loadFolders = async (page, options = {}) => {
+  const { refresh = false } = options
+  // 仅「首次/强制刷新」需要拉 GET /favorites；后续过滤、翻页都在内存完成
+  const showLoading = page === 1 && (refresh || allFolders.value === null)
+  if (showLoading) {
     folderLoading.value = true
   }
   try {
-    // 前端 radio 用 4/6/8 直觉数字，契约要 small/medium/large（spec §3.2）
-    const apiTileSize = API_TILE_SIZE[tileSize.value] || tileSize.value
-    // previewOrder / includeOnline 从 useFavoritesConfig composable 取
-    // （用户在 Config.vue 高级功能设置）
-    const previewOrderVal = previewOrder.value || 'random'
-    const includeOnlineVal = includeOnline.value === true
-    const res = await getFoldersWithPreview(
-      page,
-      folderPageSize.value,
-      apiTileSize,
-      folderKeyword.value,
-      previewOrderVal,
-      includeOnlineVal
+    if (refresh || allFolders.value === null) {
+      if (refresh) resetFolderPreviews()
+      const res = await getAllFolders()
+      allFolders.value = Array.isArray(res?.data) ? res.data : []
+    }
+
+    const filtered = filterFoldersByKeyword(
+      allFolders.value || [],
+      folderKeyword.value
     )
-    const { items, has_more } = res.data
+    const { items, end } = sliceFoldersForPage(filtered, page)
     if (page === 1) {
       currentFolders.value = items
     } else {
       currentFolders.value.push(...items)
     }
-    folderHasMore.value = has_more
+    folderHasMore.value = end < filtered.length
     folderPage.value = page
+    // 预览异步加载，不阻塞列表首屏
+    enqueueFolderPreviews(items)
   } catch (e) {
     ElMessage.error('加载收藏夹失败：' + (e?.message || '未知错误'))
     throw e  // 让 loadMoreFolders 能 catch 回退 folderPage
   } finally {
-    if (isFirstPage) {
+    if (showLoading) {
       folderLoading.value = false
     }
   }
 }
 
-// 收藏夹加载更多：folderHasMore 在 server 端控制（基于 total + page_size）
+// 收藏夹加载更多：folderHasMore 由客户端切片计算（已加载真实 folder 数 < 过滤后总数）
 const handleFolderScrollBottom = () => {
   if (folderHasMore.value && !folderLoading.value) {
     loadMoreFolders()
@@ -1134,7 +1243,7 @@ const loadMoreFolders = async () => {
 }
 
 // AdvancedQuery 在 mode='favorites-folders' 输入框变化时 emit 'favorites-filter'
-// 200ms debounce 后回调查后端，重置分页到第 1 页。
+// 200ms debounce 后在客户端过滤已加载的全量列表，重置分页到第 1 页。
 const handleFavoritesFilter = (value) => {
   const keyword = (value || '').trim()
   if (folderSearchDebounce) clearTimeout(folderSearchDebounce)
@@ -1229,6 +1338,15 @@ const handleFolderClick = (folder) => {
  * BackButton 不出现——与入口 1 不一致（本次修复点）。
  */
 const enterFavoriteFolderDetail = (folder) => {
+  // 只有从一级页进入才保存快照；从下拉面板进入通常也位于一级页。
+  if (favoritesView.value === 'folders') {
+    folderListSnapshot = {
+      scrollTop: getPageScrollTop(),
+      configSig: folderListConfigSignature(),
+      page: folderPage.value,
+      hasMore: folderHasMore.value,
+    }
+  }
   selectedFavoriteFolder.value = folder
   favoritesView.value = 'folder-detail'
 }
@@ -1252,10 +1370,34 @@ const handleBackToFolders = () => {
   queryRef.value?.resetAdvancedPanel()
   queryRef.value?._clearSelectedFavoriteNoSearch?.()
   images.value = []
-  // 用户在 folder-detail 可能改过 includeOnline，返回时刷新 folder-list 让新设置生效
+
+  const snapshot = folderListSnapshot
+  folderListSnapshot = null
+  const canRestore =
+    snapshot &&
+    snapshot.configSig === folderListConfigSignature() &&
+    allFolders.value !== null
+
+  if (canRestore) {
+    // 保留已加载页与预览，不重新请求；只恢复滚动位置
+    folderPage.value = snapshot.page
+    folderHasMore.value = snapshot.hasMore
+    nextTick(() => {
+      setPageScrollTop(snapshot.scrollTop)
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          setPageScrollTop(snapshot.scrollTop)
+        })
+      }
+    })
+    return
+  }
+
+  // 配置在二级页期间变化 / 没有快照 → 回退为重新加载第一页
   folderPage.value = 1
   currentFolders.value = []
   folderHasMore.value = false
+  resetFolderPreviews()
   loadFolders(1)
 }
 
@@ -1303,9 +1445,19 @@ const handleSourceChange = (newSource, seed) => {
   selectAll.value = false
   isIndeterminate.value = false
 
+  if (newSource !== 'favorites') {
+    // 切走收藏夹：丢弃快照、全量列表与进行中的预览请求
+    folderListSnapshot = null
+    resetFolderPreviews()
+    allFolders.value = null
+  }
+
   if (newSource === 'favorites') {
     favoritesView.value = 'folders'
-    loadFolders(1)
+    folderPage.value = 1
+    folderHasMore.value = false
+    allFolders.value = null
+    loadFolders(1, { refresh: true })
     return
   }
 
@@ -1879,7 +2031,7 @@ onMounted(async () => {
   await whenFavoritesConfigReady()
   if (startedInFavorites) {
     favoritesView.value = 'folders'
-    loadFolders(1)
+    loadFolders(1, { refresh: true })
   } else if (querySource.value === 'favorites') {
     // 等待配置期间 watch(buttonMode='default') 已切到 favorites 并触发过 loadFolders，
     // 不再重复加载；回滚预置的 loading（favorites 视图用的是 folderLoading）

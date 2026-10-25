@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { nextTick } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import Gallery from './Gallery.vue'
 
@@ -21,9 +22,10 @@ vi.mock('vue-router', () => ({
   createWebHistory: vi.fn(),
 }))
 
-// 监听 getFoldersWithPreview 调用
-const getFoldersWithPreviewMock = vi.fn().mockResolvedValue({
-  data: { items: [], total: 0, has_more: false },
+// 拆分后：一级页列表复用 GET /favorites，预览逐 folder 走 /favorites/{id}/preview
+const getAllFoldersMock = vi.fn().mockResolvedValue({ data: [] })
+const previewFolderMock = vi.fn().mockResolvedValue({
+  data: { total: 0, preview_images: [] },
 })
 
 // 默认 gallery/load 返回空列表，避免 onMounted 时真实请求
@@ -50,7 +52,8 @@ const { setLocalCountMock, updateLocalCountMock, refreshOnlineCountMock } = vi.h
 }))
 
 vi.mock('@/api/favorites', () => ({
-  getFoldersWithPreview: (...args) => getFoldersWithPreviewMock(...args),
+  getAllFolders: (...args) => getAllFoldersMock(...args),
+  previewFolder: (...args) => previewFolderMock(...args),
   updateLocalCount: updateLocalCountMock,
   setLocalCount: setLocalCountMock,
   refreshOnlineCount: refreshOnlineCountMock,
@@ -121,7 +124,10 @@ beforeEach(async () => {
   // 仍然存活，但后者只写 gallery_favorites_* key，不影响 querySource 持久化测试。
   mountedWrappers.forEach((w) => w.unmount())
   mountedWrappers.length = 0
-  getFoldersWithPreviewMock.mockClear()
+  getAllFoldersMock.mockClear()
+  previewFolderMock.mockClear()
+  getAllFoldersMock.mockResolvedValue({ data: [] })
+  previewFolderMock.mockResolvedValue({ data: { total: 0, preview_images: [] } })
   Object.values(myFavoritesApiMock).forEach((m) => m.mockClear && m.mockClear())
   Object.values(recentDownloadsApiMock).forEach((m) => m.mockReset && m.mockReset())
   recentDownloadsApiMock.getCount.mockResolvedValue({ data: { count: 0 } })
@@ -131,7 +137,13 @@ beforeEach(async () => {
   elMessageBoxConfirmMock.mockResolvedValue(undefined)
   // 复位最近下载总开关（模块级 singleton ref，跨用例会残留）
   const favCfg = useFavoritesConfig()
+  favCfg.enableMyFavorites.value = false
+  favCfg.enableRandomBrowse.value = false
   favCfg.enableRecentDownloads.value = false
+  favCfg.folderPageSize.value = 20
+  favCfg.previewOrder.value = 'random'
+  favCfg.includeOnline.value = false
+  favCfg.tileSize.value = 'adaptive'
   favCfg.recentDownloadsCount.value = 0
   favCfg.myFavoritesCount.value = 0
   setLocalCountMock.mockClear()
@@ -246,19 +258,18 @@ const factory = () => {
 }
 
 describe('Gallery.vue 收藏夹模式状态机', () => {
-  it('handleSourceChange("favorites") → favoritesView="folders" 且触发 getFoldersWithPreview(1, 20)', async () => {
+  it('handleSourceChange("favorites") → favoritesView="folders" 且调用 GET /favorites', async () => {
     const wrapper = factory()
     await flushPromises()
     // 初始 onMounted 会调一次 handleSearch({})（gallery/load mock）
-    getFoldersWithPreviewMock.mockClear()
+    getAllFoldersMock.mockClear()
 
     wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
 
     expect(wrapper.vm.favoritesView).toBe('folders')
     expect(wrapper.vm.querySource).toBe('favorites')
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'adaptive', '', 'random', false)
+    expect(getAllFoldersMock).toHaveBeenCalledTimes(1)
   })
 
   it('点击 FolderTile → favoritesView="folder-detail" 且调用 queryRef.selectFavorite(folder)', async () => {
@@ -345,15 +356,15 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     localStorage.setItem('gallery_source', 'favorites')
     localStorage.setItem('gallery_tile_size', '6')
 
-    getFoldersWithPreviewMock.mockClear()
+    getAllFoldersMock.mockClear()
+    getAllFoldersMock.mockClear()
     const wrapper = factory()
     await flushPromises()
 
     expect(wrapper.vm.querySource).toBe('favorites')
     expect(wrapper.vm.favoritesView).toBe('folders')
     expect(wrapper.vm.tileSize).toBe('6')
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'medium', '', 'random', false)
+    expect(getAllFoldersMock).toHaveBeenCalledTimes(1)
   })
 
   it('handleSourceChange(yande) 离开 favorites 时调用 queryRef.reset + resetAdvancedPanel', async () => {
@@ -381,56 +392,33 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(resetAdvancedPanelSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('loadFolders 把 radio label (4/6/8) 映射为契约值 (small/medium/large) 传给 getFoldersWithPreview', async () => {
+  it('tileSize (4/6/8/adaptive) 映射为逐 folder 预览的 limit (4/6/8/8)', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: [{ id: 1, name: 'f', tags: 't', local_count: 1, preview_images: [] }],
+    })
     const wrapper = factory()
     await flushPromises()
-    getFoldersWithPreviewMock.mockClear()
 
-    // 设置 tileSize='8' 后触发 loadFolders → 契约应为 'large'
     wrapper.vm.tileSize = '8'
     wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
+    expect(previewFolderMock).toHaveBeenLastCalledWith(1, {
+      limit: 8,
+      previewOrder: 'random',
+      includeOnline: false,
+    })
 
-    expect(wrapper.vm.tileSize).toBe('8')
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'large', '', 'random', false)
-
-    // 切换 tileSize='4' 并重新加载（page=2）→ 契约应为 'small'
-    getFoldersWithPreviewMock.mockClear()
-    wrapper.vm.tileSize = '4'
-    await wrapper.vm.loadFolders(2)
-    await flushPromises()
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(2, 20, 'small', '', 'random', false)
-
-    // tileSize='6' → 契约应为 'medium'
-    getFoldersWithPreviewMock.mockClear()
-    wrapper.vm.tileSize = '6'
-    await wrapper.vm.loadFolders(1)
-    await flushPromises()
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'medium', '', 'random', false)
-
-    // 'adaptive' 透传（不在映射表中，原样传递）
-    getFoldersWithPreviewMock.mockClear()
-    wrapper.vm.tileSize = 'adaptive'
-    await wrapper.vm.loadFolders(1)
-    await flushPromises()
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledWith(1, 20, 'adaptive', '', 'random', false)
-  })
-
-  it('regression: radio label="4" 不会原样传给 API（修复前会发 "4" 触发 422）', async () => {
-    const wrapper = factory()
-    await flushPromises()
-    getFoldersWithPreviewMock.mockClear()
-
-    wrapper.vm.tileSize = '4'
-    wrapper.vm.handleSourceChange('favorites')
-    await flushPromises()
-
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    const callArgs = getFoldersWithPreviewMock.mock.calls[0]
-    // 第三参数（tileSize）必须是契约值 'small'，不能是 raw label '4'
-    expect(callArgs[2]).toBe('small')
-    expect(callArgs[2]).not.toBe('4')
+    for (const [size, limit] of [['4', 4], ['6', 6], ['adaptive', 8]]) {
+      previewFolderMock.mockClear()
+      wrapper.vm.tileSize = size
+      await flushPromises()
+      expect(previewFolderMock).toHaveBeenLastCalledWith(1, {
+        limit,
+        previewOrder: 'random',
+        includeOnline: false,
+      })
+      expect(typeof previewFolderMock.mock.lastCall[1].limit).toBe('number')
+    }
   })
 
   it('regression: 切走 favorites → local 时清空 Gallery 自己的 queryParams（避免 stale favorite tags 传给 local 搜索）', async () => {
@@ -660,58 +648,72 @@ describe('Gallery buttonMode (Task 4)', () => {
     expect(wrapper.vm.favoritesView).toBe('folders')
   })
 
-  it('favorites-filter emit → debounce 后调 getFoldersWithPreview 传 keyword', async () => {
+  it('favorites-filter emit → debounce 后在客户端过滤（不再请求列表接口）', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: [
+        { id: 1, name: '桃矢姐妹', tags: 'touka_kawai', local_count: 1, preview_images: [] },
+        { id: 2, name: '其它', tags: 'other_tag', local_count: 1, preview_images: [] },
+      ],
+    })
     const wrapper = factory()
     await wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
-    getFoldersWithPreviewMock.mockClear()
+    getAllFoldersMock.mockClear()
 
     // 触发搜索：先清空再输入关键字
     await wrapper.vm.handleFavoritesFilter('')
     await wrapper.vm.handleFavoritesFilter('桃')
     await wrapper.vm.handleFavoritesFilter('桃矢')
 
-    // 200ms debounce 内不应触发
-    expect(getFoldersWithPreviewMock).not.toHaveBeenCalled()
+    // 200ms debounce 内不应触发过滤
+    expect(wrapper.vm.currentFolders).toHaveLength(2)
 
     // 推进 200ms+
     await new Promise((r) => setTimeout(r, 250))
     await flushPromises()
 
-    // 应只调一次（debounce 合并多次输入），keyword='桃矢'
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    const callArgs = getFoldersWithPreviewMock.mock.calls[0]
-    expect(callArgs[3]).toBe('桃矢')  // 第 4 参数 = keyword
+    expect(getAllFoldersMock).not.toHaveBeenCalled()
+    expect(wrapper.vm.currentFolders.map((f) => f.id)).toEqual([1])
+    expect(wrapper.vm.folderKeyword).toBe('桃矢')
   })
 
-  it('favorites-filter keyword 为空字符串时重置分页且传空字符串', async () => {
+  it('favorites-filter keyword 为空字符串时恢复全量并重置分页', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: [
+        { id: 1, name: 'alpha', tags: 'tag_a', local_count: 1, preview_images: [] },
+        { id: 2, name: 'beta', tags: 'tag_b', local_count: 1, preview_images: [] },
+      ],
+    })
     const wrapper = factory()
     await wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
-    getFoldersWithPreviewMock.mockClear()
+    getAllFoldersMock.mockClear()
 
     // 先设置一个非空 keyword
-    await wrapper.vm.handleFavoritesFilter('test')
+    await wrapper.vm.handleFavoritesFilter('alpha')
     await new Promise((r) => setTimeout(r, 250))
     await flushPromises()
+    expect(wrapper.vm.currentFolders.map((f) => f.id)).toEqual([1])
 
     // 再清空（用户删完输入框）
-    getFoldersWithPreviewMock.mockClear()
     await wrapper.vm.handleFavoritesFilter('')
     await new Promise((r) => setTimeout(r, 250))
     await flushPromises()
 
-    expect(getFoldersWithPreviewMock).toHaveBeenCalledTimes(1)
-    expect(getFoldersWithPreviewMock.mock.calls[0][3]).toBe('')
+    expect(getAllFoldersMock).not.toHaveBeenCalled()
+    expect(wrapper.vm.currentFolders).toHaveLength(2)
     expect(wrapper.vm.folderPage).toBe(1)
   })
 
-  it('useFavoritesConfig previewOrder 改变 → Gallery 自动 reload folder list', async () => {
+  it('useFavoritesConfig previewOrder 改变 → Gallery 按新顺序重新取预览', async () => {
     localStorage.clear()
+    getAllFoldersMock.mockResolvedValue({
+      data: [{ id: 1, name: 'f', tags: 't', local_count: 1, preview_images: [] }],
+    })
     const wrapper = factory()
     await wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
-    getFoldersWithPreviewMock.mockClear()
+    previewFolderMock.mockClear()
 
     const { useFavoritesConfig } = await import('@/composables/useFavoritesConfig')
     const { previewOrder } = useFavoritesConfig()
@@ -719,11 +721,11 @@ describe('Gallery buttonMode (Task 4)', () => {
     previewOrder.value = 'desc'
     await flushPromises()
 
-    // 应触发 loadFolders(1) → getFoldersWithPreview(..., previewOrder='desc')
-    // 注意：useFavoritesConfig 是 module singleton，前面测试注册的 watch 也会被触发，
-    // 所以只能断言「至少调用一次」+ 「至少一次带 desc」。
-    expect(getFoldersWithPreviewMock).toHaveBeenCalled()
-    const descCalls = getFoldersWithPreviewMock.mock.calls.filter((c) => c[4] === 'desc')
+    // 应重新拉预览（previewOrder='desc'）
+    expect(previewFolderMock).toHaveBeenCalled()
+    const descCalls = previewFolderMock.mock.calls.filter(
+      (c) => c[1].previewOrder === 'desc'
+    )
     expect(descCalls.length).toBeGreaterThanOrEqual(1)
     // previewOrder 自身值同步
     expect(wrapper.vm.previewOrder).toBe('desc')
@@ -874,71 +876,37 @@ describe('Gallery.vue waterfallSourceMode（本地化虚拟视图走统一缩略
 //   - folder 模式 page>1 加载时 WaterfallGallery 的 :loading 必须保持 false（不应
 //     触发 skeleton 全屏卸载），只有 page=1 才置 loading=true。
 // =============================================================================
-describe('Gallery.vue 收藏夹一级浏览加载更多契约（B1/B2 回归）', () => {
+describe('Gallery.vue 收藏夹一级浏览加载更多契约（客户端切片）', () => {
   const enterFoldersView = async (wrapper) => {
     wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
   }
 
-  it('B1 folder 模式 loadFolders 执行期间 WaterfallGallery 的 isLoadingMore 必须为 true', async () => {
-    const wrapper = factory()
-    await flushPromises()
-    await enterFoldersView(wrapper)
-
-    wrapper.vm.folderPage = 1
-    wrapper.vm.folderHasMore = true
-
-    let resolvePromise
-    getFoldersWithPreviewMock.mockImplementationOnce(
-      () => new Promise((r) => { resolvePromise = r })
-    )
-
-    wrapper.vm.handleFolderScrollBottom()
-    await flushPromises()
-
-    const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
-    expect(wfg.props('isLoadingMore')).toBe(true)
-
-    resolvePromise({
-      data: {
-        items: [{ id: 1, name: 'f1', local_count: 0, preview_images: [] }],
-        total: 10,
-        has_more: true,
-      },
+  it('page>1 追加切片，不触发 skeleton、不重新请求列表', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: Array.from({ length: 60 }, (_, i) => ({
+        id: i + 1,
+        name: `f${i + 1}`,
+        tags: `tag_${i + 1}`,
+        local_count: 0,
+        preview_images: [],
+      })),
     })
-    await flushPromises()
-
-    const wfgAfter = wrapper.findComponent({ name: 'WaterfallGallery' })
-    expect(wfgAfter.props('isLoadingMore')).toBe(false)
-  })
-
-  it('B2 folder 模式 page>1 加载时 WaterfallGallery 的 loading prop 必须保持 false（不触发 skeleton 全刷）', async () => {
     const wrapper = factory()
     await flushPromises()
     await enterFoldersView(wrapper)
+    getAllFoldersMock.mockClear()
 
-    wrapper.vm.folderPage = 1
-    wrapper.vm.folderHasMore = true
-
-    let resolvePromise
-    getFoldersWithPreviewMock.mockImplementationOnce(
-      () => new Promise((r) => { resolvePromise = r })
-    )
-
+    expect(wrapper.vm.folderHasMore).toBe(true)
     wrapper.vm.handleFolderScrollBottom()
     await flushPromises()
 
     const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
     expect(wfg.props('loading')).toBe(false)
-
-    resolvePromise({
-      data: {
-        items: [{ id: 1, name: 'f1', local_count: 0, preview_images: [] }],
-        total: 10,
-        has_more: false,
-      },
-    })
-    await flushPromises()
+    expect(wfg.props('isLoadingMore')).toBe(false)
+    expect(wrapper.vm.currentFolders).toHaveLength(40)
+    expect(wrapper.vm.folderPage).toBe(2)
+    expect(getAllFoldersMock).not.toHaveBeenCalled()
   })
 })
 
@@ -2274,7 +2242,7 @@ describe('Gallery.vue BackButton 可见性 + 收藏夹 tab 焦点（修复问题
 
     expect(wrapper.vm.querySource).toBe('favorites')
     expect(wrapper.vm.favoritesView).toBe('folders')
-    expect(getFoldersWithPreviewMock).toHaveBeenCalled()
+    expect(getAllFoldersMock).toHaveBeenCalled()
   })
 
   it('handleBackClick 在虚拟视图（random）→ handleSourceChange("favorites")', async () => {
@@ -2896,5 +2864,224 @@ describe('Gallery.vue 磁贴角标刷新', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// =============================================================================
+// 收藏夹列表 / 预览拆分 + 返回一级页恢复位置
+//
+// 契约：
+//   - 一级页列表复用 GET /favorites（一次取全量，前端切片）
+//   - 预览逐 folder 调 GET /favorites/{id}/preview（前端限并发）
+//   - 虚拟磁贴占用第一页名额（pageSize 包含虚拟磁贴）
+//   - 二级页返回一级页不重新请求、恢复滚动位置
+// =============================================================================
+describe('Gallery.vue 收藏夹列表/预览拆分', () => {
+  const mkFolders = (n = 12) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: i + 1,
+      name: `folder_${i + 1}`,
+      tags: `tag_${i + 1}`,
+      local_count: 100 + i,
+      preview_images: [],
+    }))
+
+  const enterFavorites = async (wrapper) => {
+    await wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+  }
+
+  it('一级页列表复用 GET /favorites，不再调用 with-preview', async () => {
+    getAllFoldersMock.mockResolvedValue({ data: mkFolders(5) })
+    const wrapper = factory()
+    await flushPromises()
+
+    getAllFoldersMock.mockClear()
+    await enterFavorites(wrapper)
+
+    expect(getAllFoldersMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.currentFolders).toHaveLength(5)
+  })
+
+  it('虚拟磁贴占用第一页名额：pageSize=8 + 2 虚拟 → 首页 6 真实，第二页 8 真实', async () => {
+    getAllFoldersMock.mockResolvedValue({ data: mkFolders(30) })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+
+    const cfg = useFavoritesConfig()
+    cfg.folderPageSize.value = 8
+    cfg.enableMyFavorites.value = true
+    cfg.enableRandomBrowse.value = true
+    await flushPromises()
+
+    expect(wrapper.vm.currentFolders).toHaveLength(6)
+    expect(wrapper.vm.displayFolders).toHaveLength(8) // 2 虚拟 + 6 真实
+
+    await wrapper.vm.loadFolders(2)
+    await flushPromises()
+    expect(wrapper.vm.folderPage).toBe(2)
+    expect(wrapper.vm.currentFolders).toHaveLength(14)
+    expect(wrapper.vm.displayFolders).toHaveLength(16) // 2 虚拟 + 14 真实
+  })
+
+  it('关键字过滤在客户端完成，不重复请求收藏夹列表', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: [
+        { id: 1, name: '桃矢姐妹', tags: 'touka_kawai', local_count: 1, preview_images: [] },
+        { id: 2, name: '其它', tags: 'other_tag', local_count: 1, preview_images: [] },
+      ],
+    })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    getAllFoldersMock.mockClear()
+
+    wrapper.vm.handleFavoritesFilter('touka')
+    await new Promise((r) => setTimeout(r, 260))
+    await flushPromises()
+
+    expect(getAllFoldersMock).not.toHaveBeenCalled()
+    expect(wrapper.vm.currentFolders.map((f) => f.id)).toEqual([1])
+    expect(wrapper.vm.folderPage).toBe(1)
+  })
+
+  it('每个 folder 调 /preview，带 order/include_online/limit，并合并预览与数量', async () => {
+    const folders = mkFolders(2)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+    previewFolderMock.mockImplementation(async (id) => ({
+      data: {
+        total: 999,
+        preview_images: [{ id: id * 10, width: 1, height: 1, rating: 'Safe' }],
+      },
+    }))
+
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    expect(previewFolderMock).toHaveBeenCalledTimes(2)
+    expect(previewFolderMock).toHaveBeenCalledWith(1, {
+      limit: 8,
+      previewOrder: 'random',
+      includeOnline: false,
+    })
+    expect(folders[0].preview_images[0].id).toBe(10)
+    expect(folders[0].local_count).toBe(999)
+  })
+
+  it('预览返回的 total 不覆盖期间已 +N 的 local_count', async () => {
+    let resolvePreview
+    previewFolderMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePreview = resolve })
+    )
+    getAllFoldersMock.mockResolvedValue({ data: mkFolders(1) })
+
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    const folder = wrapper.vm.currentFolders[0]
+    folder.local_count = 101
+
+    resolvePreview({ data: { total: 100, preview_images: [] } })
+    await flushPromises()
+
+    expect(folder.local_count).toBe(101)
+  })
+
+  it('切走收藏夹后，迟到的预览响应被丢弃', async () => {
+    let resolvePreview
+    previewFolderMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePreview = resolve })
+    )
+    const folders = mkFolders(1)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    await wrapper.vm.handleSourceChange('local')
+    await flushPromises()
+
+    resolvePreview({ data: { total: 1, preview_images: [{ id: 777 }] } })
+    await flushPromises()
+
+    expect(folders[0].preview_images).toEqual([])
+  })
+
+  it('二级页返回一级页：不重新请求列表、保留分页、恢复 window 滚动位置', async () => {
+    const folders = mkFolders(60)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await wrapper.vm.loadFolders(2)
+    await flushPromises()
+
+    // 实际滚动容器是 window（.gallery-content 被内容撑高）
+    const originalScrollY = window.scrollY
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 420 })
+    const scrollToSpy = vi
+      .spyOn(window, 'scrollTo')
+      .mockImplementation((_x, y) => {
+        Object.defineProperty(window, 'scrollY', {
+          configurable: true,
+          value: y,
+        })
+      })
+
+    try {
+      getAllFoldersMock.mockClear()
+      wrapper.vm.handleFolderClick(folders[3])
+      await flushPromises()
+      expect(wrapper.vm.favoritesView).toBe('folder-detail')
+
+      wrapper.vm.handleBackToFolders()
+      await flushPromises()
+      await nextTick()
+      await new Promise((r) => setTimeout(r, 30))
+
+      expect(getAllFoldersMock).not.toHaveBeenCalled()
+      expect(wrapper.vm.folderPage).toBe(2)
+      expect(wrapper.vm.currentFolders).toHaveLength(40)
+      expect(scrollToSpy).toHaveBeenCalledWith(0, 420)
+    } finally {
+      scrollToSpy.mockRestore()
+      Object.defineProperty(window, 'scrollY', {
+        configurable: true,
+        value: originalScrollY,
+      })
+    }
+  })
+
+  it('离开期间预览配置变化 → 返回时按新配置刷新预览（不丢页面）', async () => {
+    getAllFoldersMock.mockResolvedValue({ data: mkFolders(3) })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    wrapper.vm.handleFolderClick(wrapper.vm.currentFolders[0])
+    await flushPromises()
+
+    const cfg = useFavoritesConfig()
+    cfg.previewOrder.value = 'desc'
+    await flushPromises()
+    previewFolderMock.mockClear()
+
+    wrapper.vm.handleBackToFolders()
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.vm.favoritesView).toBe('folders')
+    expect(previewFolderMock).toHaveBeenCalled()
+    const orders = previewFolderMock.mock.calls.map((c) => c[1].previewOrder)
+    expect(orders.every((o) => o === 'desc')).toBe(true)
   })
 })
