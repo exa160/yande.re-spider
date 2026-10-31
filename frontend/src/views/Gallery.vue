@@ -1,5 +1,5 @@
 <template>
-  <div class="gallery-page">
+  <div ref="pageRootRef" class="gallery-page">
     <!-- 顶部工具栏 -->
     <div class="top-toolbar">
       <!-- 搜索框 + 模式按钮 -->
@@ -133,7 +133,10 @@
               :tile-size="tileSize"
               :save-data-mode="saveDataMode"
               :safe-mode="safeMode"
+              :preview-epoch="previewGeneration"
+              observe-visibility
               @click="handleFolderClick"
+              @visible="handleFolderTileVisible"
             />
           </template>
         </WaterfallGallery>
@@ -472,7 +475,9 @@ const setPageScrollTop = (top) => {
 // 逐 folder 预览：前端限并发，避免 8 个请求同时压 MariaDB
 const PREVIEW_LIMIT_BY_TILE_SIZE = { adaptive: 8, '4': 4, '6': 6, '8': 8 }
 const PREVIEW_MAX_CONCURRENT = 3
-let previewGeneration = 0
+// 预览缓存代际（ref：同时透传给 FolderTile 的 preview-epoch，让仍在视口内的磁贴在
+// 预览被重置后重新上报 visible）
+const previewGeneration = ref(0)
 const previewRequested = new Set()
 const previewQueue = []
 let previewActive = 0
@@ -593,7 +598,7 @@ const previewLimit = computed(
 )
 
 const resetFolderPreviews = () => {
-  previewGeneration += 1
+  previewGeneration.value += 1
   previewQueue.length = 0
   previewRequested.clear()
   for (const folder of allFolders.value || []) {
@@ -610,7 +615,7 @@ const fetchFolderPreview = async ({ folder, gen }) => {
       includeOnline: includeOnline.value,
     })
     // 切 tab / 改预览配置后迟到的响应直接丢弃
-    if (gen !== previewGeneration) return
+    if (gen !== previewGeneration.value) return
     const data = res?.data || {}
     folder.preview_images = Array.isArray(data.preview_images)
       ? data.preview_images
@@ -620,7 +625,7 @@ const fetchFolderPreview = async ({ folder, gen }) => {
       folder.local_count = data.total
     }
   } catch (e) {
-    if (gen === previewGeneration) {
+    if (gen === previewGeneration.value) {
       folder.preview_images = []
       // 失败不缓存 key，下次进入该页/重新加载时重试
       previewRequested.delete(`${gen}|${folder.id}`)
@@ -631,7 +636,7 @@ const fetchFolderPreview = async ({ folder, gen }) => {
 const pumpPreviewQueue = () => {
   while (previewActive < PREVIEW_MAX_CONCURRENT && previewQueue.length) {
     const task = previewQueue.shift()
-    if (task.gen !== previewGeneration) continue
+    if (task.gen !== previewGeneration.value) continue
     previewActive += 1
     fetchFolderPreview(task).finally(() => {
       previewActive -= 1
@@ -640,15 +645,20 @@ const pumpPreviewQueue = () => {
   }
 }
 
-const enqueueFolderPreviews = (folders) => {
-  for (const folder of folders || []) {
-    if (!folder || folder.isVirtual || !String(folder.tags || '').trim()) continue
-    const key = `${previewGeneration}|${folder.id}`
-    if (previewRequested.has(key)) continue
-    previewRequested.add(key)
-    previewQueue.push({ folder, gen: previewGeneration })
-  }
+// 只给「进入视口」的磁贴入队。按页全量入队会让列表跳到/恢复到靠后页时，
+// 可见磁贴的请求排在第一个 folder 之后（表现为从头开始请求预览）。
+const enqueueFolderPreview = (folder) => {
+  if (!folder || folder.isVirtual || !String(folder.tags || '').trim()) return
+  const key = `${previewGeneration.value}|${folder.id}`
+  if (previewRequested.has(key)) return
+  previewRequested.add(key)
+  previewQueue.push({ folder, gen: previewGeneration.value })
   pumpPreviewQueue()
+}
+
+// FolderTile 的 @visible：磁贴进入视口附近 → 请求该 folder 的预览元数据
+const handleFolderTileVisible = (folder) => {
+  enqueueFolderPreview(folder)
 }
 
 const folderListConfigSignature = () =>
@@ -1208,8 +1218,7 @@ const loadFolders = async (page, options = {}) => {
     }
     folderHasMore.value = end < filtered.length
     folderPage.value = page
-    // 预览异步加载，不阻塞列表首屏
-    enqueueFolderPreviews(items)
+    // 预览由 FolderTile 进入视口时按需触发（handleFolderTileVisible）
   } catch (e) {
     ElMessage.error('加载收藏夹失败：' + (e?.message || '未知错误'))
     throw e  // 让 loadMoreFolders 能 catch 回退 folderPage
@@ -1361,7 +1370,61 @@ const handleEnterFavoriteFolderDetail = (folder) => {
   enterFavoriteFolderDetail(folder)
 }
 
+// ---- 返回一级页时定位到「刚才进入的 folder」 ----
+// 仅靠恢复 scrollTop 只对已渲染的磁贴有效；从收藏夹弹窗直接进入靠后的 folder 时，
+// 一级页可能从未翻到它所在页 → 需要先补齐页再滚动过去。
+const folderIndexInFilteredList = (folder) => {
+  const filtered = filterFoldersByKeyword(allFolders.value || [], folderKeyword.value)
+  return filtered.findIndex((f) => String(f.id) === String(folder?.id))
+}
+
+const pageOfFolderIndex = (index) => {
+  const pageSize = folderPageSize.value
+  const firstPageSize = Math.max(1, pageSize - enabledVirtualCount.value)
+  if (index < firstPageSize) return 1
+  return 2 + Math.floor((index - firstPageSize) / pageSize)
+}
+
+// 客户端切片，补页不发列表请求；逐页追加保证 currentFolders 顺序完整
+const ensureFolderPageLoaded = async (folder) => {
+  const index = folderIndexInFilteredList(folder)
+  if (index < 0) return false
+  const targetPage = pageOfFolderIndex(index)
+  try {
+    while (folderPage.value < targetPage) {
+      await loadFolders(folderPage.value + 1)
+    }
+  } catch {
+    return false
+  }
+  return true
+}
+
+const pageRootRef = ref(null)
+
+const scrollToFolderTile = async (folder) => {
+  await nextTick()
+  const root = pageRootRef.value
+  if (!root) return false
+  const id = String(folder?.id)
+  const tile = Array.from(root.querySelectorAll('[data-folder-id]'))
+    .find((el) => el.dataset.folderId === id)
+  if (!tile) return false
+  if (typeof tile.scrollIntoView === 'function') {
+    tile.scrollIntoView({ block: 'center', behavior: 'auto' })
+  }
+  return true
+}
+
+const locateFolderInList = async (folder) => {
+  if (!folder) return false
+  const loaded = await ensureFolderPageLoaded(folder)
+  if (!loaded) return false
+  return scrollToFolderTile(folder)
+}
+
 const handleBackToFolders = () => {
+  const returnFolder = selectedFavoriteFolder.value
   selectedFavoriteFolder.value = null
   favoritesView.value = 'folders'
   // 不调 reset()（reset 会清 searchText/selectedTags/queryParams，进入 folder-list 不需要这些）
@@ -1379,17 +1442,26 @@ const handleBackToFolders = () => {
     allFolders.value !== null
 
   if (canRestore) {
-    // 保留已加载页与预览，不重新请求；只恢复滚动位置
+    // 保留已加载页与预览，不重新请求
     folderPage.value = snapshot.page
     folderHasMore.value = snapshot.hasMore
-    nextTick(() => {
-      setPageScrollTop(snapshot.scrollTop)
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => {
-          setPageScrollTop(snapshot.scrollTop)
-        })
-      }
-    })
+    const folderRendered = currentFolders.value.some(
+      (f) => String(f.id) === String(returnFolder?.id)
+    )
+    if (folderRendered) {
+      // 目标磁贴已渲染：保持原有行为，只恢复滚动位置
+      nextTick(() => {
+        setPageScrollTop(snapshot.scrollTop)
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            setPageScrollTop(snapshot.scrollTop)
+          })
+        }
+      })
+      return
+    }
+    // 一级页尚未翻到该 folder 所在页：补齐页并定位
+    void locateFolderInList(returnFolder)
     return
   }
 
@@ -1399,6 +1471,8 @@ const handleBackToFolders = () => {
   folderHasMore.value = false
   resetFolderPreviews()
   loadFolders(1)
+    .then(() => locateFolderInList(returnFolder))
+    .catch(() => {})
 }
 
 // 收藏夹配置现由 useFavoritesConfig composable 全局共享，
@@ -1408,6 +1482,13 @@ const handleBackToFolders = () => {
 // 其它入口进入 random 时生成新 seed。离开 random 清空，保证下次进入换一批。
 const handleSourceChange = (newSource, seed) => {
   const prevSource = querySource.value
+  // 从二级页点顶部「收藏夹」tab 返回一级页时，记下刚才进入的 folder；列表加载后定位过去
+  const returnFolder =
+    newSource === 'favorites' &&
+    prevSource === 'favorites' &&
+    favoritesView.value === 'folder-detail'
+      ? selectedFavoriteFolder.value
+      : null
   randomSeed.value = newSource === 'random'
     ? (Number.isInteger(seed) ? seed : createRandomSeed())
     : null
@@ -1458,6 +1539,8 @@ const handleSourceChange = (newSource, seed) => {
     folderHasMore.value = false
     allFolders.value = null
     loadFolders(1, { refresh: true })
+      .then(() => locateFolderInList(returnFolder))
+      .catch(() => {})
     return
   }
 

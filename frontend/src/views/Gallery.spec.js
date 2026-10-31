@@ -202,9 +202,14 @@ const factory = () => {
           name: 'WaterfallGallery',
           props: ['images', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'itemType', 'sourceMode', 'selectable', 'selectedImages', 'saveDataMode', 'safeMode', 'showHeart'],
           emits: ['load-more', 'load-error', 'image-click', 'image-select', 'multi-select-start', 'favorite-toggled'],
-          template: '<div class="waterfall-stub"><slot/></div>',
+          // 与真实 WaterfallGallery 的 folder 模式一致：每个磁贴外层带 data-folder-id，
+          // 供 Gallery 返回一级页时按 folder 定位滚动
+          template: '<div class="waterfall-stub"><div v-for="img in images" :key="img.id" :data-folder-id="img.id"><slot :folder="img" /></div></div>',
         },
         FolderTile: {
+          name: 'FolderTile',
+          props: ['folder', 'tileSize', 'saveDataMode', 'safeMode', 'observeVisibility', 'previewEpoch'],
+          emits: ['click', 'visible'],
           template: '<div class="folder-tile-stub" @click="$emit(\'click\', { id: 1, name: \'stub_folder\', tags: \'foo\' })">stub_tile</div>',
         },
         DownloadManager: { template: '<div></div>' },
@@ -393,14 +398,15 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
   })
 
   it('tileSize (4/6/8/adaptive) 映射为逐 folder 预览的 limit (4/6/8/8)', async () => {
-    getAllFoldersMock.mockResolvedValue({
-      data: [{ id: 1, name: 'f', tags: 't', local_count: 1, preview_images: [] }],
-    })
+    const folder = { id: 1, name: 'f', tags: 't', local_count: 1, preview_images: [] }
+    getAllFoldersMock.mockResolvedValue({ data: [folder] })
     const wrapper = factory()
     await flushPromises()
 
     wrapper.vm.tileSize = '8'
     wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    wrapper.vm.handleFolderTileVisible(folder)
     await flushPromises()
     expect(previewFolderMock).toHaveBeenLastCalledWith(1, {
       limit: 8,
@@ -411,6 +417,9 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     for (const [size, limit] of [['4', 4], ['6', 6], ['adaptive', 8]]) {
       previewFolderMock.mockClear()
       wrapper.vm.tileSize = size
+      await flushPromises()
+      // 配置变化会重置预览缓存 → 磁贴重新进入视口时按新 limit 请求
+      wrapper.vm.handleFolderTileVisible(folder)
       await flushPromises()
       expect(previewFolderMock).toHaveBeenLastCalledWith(1, {
         limit,
@@ -719,6 +728,11 @@ describe('Gallery buttonMode (Task 4)', () => {
     const { previewOrder } = useFavoritesConfig()
 
     previewOrder.value = 'desc'
+    await flushPromises()
+    previewFolderMock.mockClear()
+
+    // 配置变化只重置预览缓存；磁贴重新进入视口时才按新顺序请求
+    wrapper.vm.handleFolderTileVisible(wrapper.vm.currentFolders[0])
     await flushPromises()
 
     // 应重新拉预览（previewOrder='desc'）
@@ -2903,6 +2917,75 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     expect(wrapper.vm.currentFolders).toHaveLength(5)
   })
 
+  it('进入一级页不主动请求 preview：等磁贴进入视口才按需请求', async () => {
+    getAllFoldersMock.mockResolvedValue({ data: mkFolders(6) })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    expect(previewFolderMock).not.toHaveBeenCalled()
+  })
+
+  it('磁贴进入视口 → 只请求该 folder 的 preview，并合并预览与数量', async () => {
+    const folders = mkFolders(2)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+    previewFolderMock.mockImplementation(async (id) => ({
+      data: {
+        total: 999,
+        preview_images: [{ id: id * 10, width: 1, height: 1, rating: 'Safe' }],
+      },
+    }))
+
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    wrapper.vm.handleFolderTileVisible(folders[1])
+    await flushPromises()
+
+    expect(previewFolderMock).toHaveBeenCalledTimes(1)
+    expect(previewFolderMock).toHaveBeenCalledWith(2, {
+      limit: 8,
+      previewOrder: 'random',
+      includeOnline: false,
+    })
+    expect(folders[1].preview_images[0].id).toBe(20)
+    expect(folders[1].local_count).toBe(999)
+    expect(folders[0].preview_images).toEqual([])
+  })
+
+  it('预览配置变化 → preview-epoch 自增（通知仍在视口内的磁贴重新上报）', async () => {
+    getAllFoldersMock.mockResolvedValue({ data: mkFolders(1) })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    const before = wrapper.findComponent({ name: 'FolderTile' }).props('previewEpoch')
+    wrapper.vm.tileSize = '4'
+    await flushPromises()
+
+    const after = wrapper.findComponent({ name: 'FolderTile' }).props('previewEpoch')
+    expect(after).toBeGreaterThan(before)
+  })
+
+  it('同一 folder 重复进入视口只请求一次 preview', async () => {
+    const folders = mkFolders(1)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFavorites(wrapper)
+    await flushPromises()
+
+    wrapper.vm.handleFolderTileVisible(folders[0])
+    wrapper.vm.handleFolderTileVisible(folders[0])
+    await flushPromises()
+
+    expect(previewFolderMock).toHaveBeenCalledTimes(1)
+  })
+
   it('虚拟磁贴占用第一页名额：pageSize=8 + 2 虚拟 → 首页 6 真实，第二页 8 真实', async () => {
     getAllFoldersMock.mockResolvedValue({ data: mkFolders(30) })
     const wrapper = factory()
@@ -2946,7 +3029,7 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     expect(wrapper.vm.folderPage).toBe(1)
   })
 
-  it('每个 folder 调 /preview，带 order/include_online/limit，并合并预览与数量', async () => {
+  it('可见磁贴按 order/include_online/limit 请求 /preview，并合并预览与数量', async () => {
     const folders = mkFolders(2)
     getAllFoldersMock.mockResolvedValue({ data: folders })
     previewFolderMock.mockImplementation(async (id) => ({
@@ -2959,6 +3042,10 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     const wrapper = factory()
     await flushPromises()
     await enterFavorites(wrapper)
+    await flushPromises()
+
+    wrapper.vm.handleFolderTileVisible(folders[0])
+    wrapper.vm.handleFolderTileVisible(folders[1])
     await flushPromises()
 
     expect(previewFolderMock).toHaveBeenCalledTimes(2)
@@ -2984,6 +3071,9 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     await flushPromises()
 
     const folder = wrapper.vm.currentFolders[0]
+    wrapper.vm.handleFolderTileVisible(folder)
+    await flushPromises()
+
     folder.local_count = 101
 
     resolvePreview({ data: { total: 100, preview_images: [] } })
@@ -3003,6 +3093,9 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     const wrapper = factory()
     await flushPromises()
     await enterFavorites(wrapper)
+    await flushPromises()
+
+    wrapper.vm.handleFolderTileVisible(folders[0])
     await flushPromises()
 
     await wrapper.vm.handleSourceChange('local')
@@ -3079,9 +3172,126 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     await flushPromises()
     await nextTick()
 
+    wrapper.vm.handleFolderTileVisible(wrapper.vm.currentFolders[0])
+    await flushPromises()
+
     expect(wrapper.vm.favoritesView).toBe('folders')
     expect(previewFolderMock).toHaveBeenCalled()
     const orders = previewFolderMock.mock.calls.map((c) => c[1].previewOrder)
     expect(orders.every((o) => o === 'desc')).toBe(true)
+  })
+})
+
+// =============================================================================
+// 返回一级页时定位到「刚才进入的 folder」
+//
+// 背景：从收藏夹弹窗直接进入靠后的 folder 时，一级页可能从未翻到它所在页。
+// 仅恢复 scrollTop 无法定位（目标磁贴根本没渲染），需要先补齐到它所在页再滚动过去。
+// =============================================================================
+describe('Gallery.vue 返回一级页定位到当前 folder', () => {
+  const mkManyFolders = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: i + 1,
+      name: `f${i + 1}`,
+      tags: `t${i + 1}`,
+      local_count: 1,
+      preview_images: [],
+    }))
+
+  const stubScrollIntoView = () => {
+    const spy = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = spy
+    return {
+      spy,
+      restore: () => { Element.prototype.scrollIntoView = original },
+    }
+  }
+
+  it('一级页未翻页时，从收藏夹弹窗进入最后一个 folder → 点收藏夹 tab 返回会补齐页并定位', async () => {
+    const folders = mkManyFolders(45) // pageSize=20 → 第 45 个在第 3 页
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+    const wrapper = factory()
+    await flushPromises()
+    await wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    expect(wrapper.vm.folderPage).toBe(1)
+    expect(wrapper.vm.currentFolders).toHaveLength(20)
+
+    wrapper.vm.handleEnterFavoriteFolderDetail(folders[44])
+    await flushPromises()
+    expect(wrapper.vm.favoritesView).toBe('folder-detail')
+
+    const { spy, restore } = stubScrollIntoView()
+    try {
+      wrapper.vm.handleSourceChange('favorites')
+      await flushPromises()
+      await flushPromises()
+      await nextTick()
+
+      expect(wrapper.vm.favoritesView).toBe('folders')
+      expect(wrapper.vm.folderPage).toBe(3)
+      expect(wrapper.vm.currentFolders).toHaveLength(45)
+      expect(wrapper.find('[data-folder-id="45"]').exists()).toBe(true)
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
+  it('悬浮返回：folder 不在已加载页内 → 补齐页并定位（首次未翻页也能回去）', async () => {
+    const folders = mkManyFolders(45)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+    const wrapper = factory()
+    await flushPromises()
+    await wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+
+    wrapper.vm.handleEnterFavoriteFolderDetail(folders[44])
+    await flushPromises()
+
+    const { spy, restore } = stubScrollIntoView()
+    try {
+      wrapper.vm.handleBackToFolders()
+      await flushPromises()
+      await nextTick()
+
+      expect(wrapper.vm.favoritesView).toBe('folders')
+      expect(wrapper.vm.folderPage).toBe(3)
+      expect(wrapper.vm.currentFolders).toHaveLength(45)
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
+  it('悬浮返回：folder 已在已加载页内 → 保持原有滚动恢复，不补页、不额外定位', async () => {
+    const folders = mkManyFolders(45)
+    getAllFoldersMock.mockResolvedValue({ data: folders })
+    const wrapper = factory()
+    await flushPromises()
+    await wrapper.vm.handleSourceChange('favorites')
+    await flushPromises()
+    await wrapper.vm.loadFolders(2)
+    await flushPromises()
+    expect(wrapper.vm.folderPage).toBe(2)
+
+    const target = wrapper.vm.currentFolders[25]
+    wrapper.vm.handleFolderClick(target)
+    await flushPromises()
+
+    const { spy, restore } = stubScrollIntoView()
+    try {
+      wrapper.vm.handleBackToFolders()
+      await flushPromises()
+      await nextTick()
+
+      expect(wrapper.vm.favoritesView).toBe('folders')
+      expect(wrapper.vm.folderPage).toBe(2)
+      expect(wrapper.vm.currentFolders).toHaveLength(40)
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
   })
 })
