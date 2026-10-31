@@ -520,3 +520,91 @@ describe('FolderTile', () => {
     })
   })
 })
+// =============================================================================
+// 视口可见回调：收藏夹一级页的预览元数据（/favorites/{id}/preview）按磁贴可见性懒加载
+// =============================================================================
+describe('FolderTile 视口可见回调', () => {
+  const mkBareFolder = (id) => ({
+    id,
+    name: `folder_${id}`,
+    local_count: 0,
+    preview_images: [],
+  })
+
+  const findRootObserver = (wrapper) => {
+    const root = wrapper.element
+    return observerInstances.find((o) =>
+      o.observe.mock.calls.some(([el]) => el === root)
+    )
+  }
+
+  it('observeVisibility=true 时磁贴进入视口 emit visible（携带 folder）', async () => {
+    const folder = mkBareFolder(7)
+    const wrapper = factory({ folder, observeVisibility: true })
+    await flushPromises()
+
+    const observer = findRootObserver(wrapper)
+    expect(observer).toBeTruthy()
+
+    observer.cb([{ isIntersecting: true, target: wrapper.element }])
+    await flushPromises()
+
+    expect(wrapper.emitted('visible')).toHaveLength(1)
+    expect(wrapper.emitted('visible')[0][0]).toMatchObject({ id: 7 })
+  })
+
+  it('observeVisibility=false 时不监听磁贴本身，也不 emit visible', async () => {
+    const wrapper = factory({ folder: mkBareFolder(8) })
+    await flushPromises()
+
+    expect(findRootObserver(wrapper)).toBeUndefined()
+    expect(wrapper.emitted('visible')).toBeUndefined()
+  })
+
+  it('previewEpoch 变化且磁贴仍在视口 → 重新 emit visible（配置重置后重取预览）', async () => {
+    const folder = mkBareFolder(10)
+    const wrapper = factory({ folder, observeVisibility: true, previewEpoch: 0 })
+    await flushPromises()
+
+    const observer = findRootObserver(wrapper)
+    observer.cb([{ isIntersecting: true, target: wrapper.element }])
+    await flushPromises()
+    expect(wrapper.emitted('visible')).toHaveLength(1)
+
+    await wrapper.setProps({ previewEpoch: 1 })
+    await flushPromises()
+
+    expect(wrapper.emitted('visible')).toHaveLength(2)
+  })
+
+  it('磁贴已离开视口 → previewEpoch 变化不重新 emit visible', async () => {
+    const folder = mkBareFolder(11)
+    const wrapper = factory({ folder, observeVisibility: true, previewEpoch: 0 })
+    await flushPromises()
+
+    const observer = findRootObserver(wrapper)
+    observer.cb([{ isIntersecting: true, target: wrapper.element }])
+    observer.cb([{ isIntersecting: false, target: wrapper.element }])
+    await flushPromises()
+    expect(wrapper.emitted('visible')).toHaveLength(1)
+
+    await wrapper.setProps({ previewEpoch: 1 })
+    await flushPromises()
+
+    expect(wrapper.emitted('visible')).toHaveLength(1)
+  })
+
+  it('无 IntersectionObserver 且 observeVisibility=true → 挂载即 emit visible（降级）', async () => {
+    const originalIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = undefined
+    try {
+      const wrapper = factory({ folder: mkBareFolder(9), observeVisibility: true })
+      await flushPromises()
+
+      expect(wrapper.emitted('visible')).toHaveLength(1)
+      expect(wrapper.emitted('visible')[0][0]).toMatchObject({ id: 9 })
+    } finally {
+      globalThis.IntersectionObserver = originalIO
+    }
+  })
+})

@@ -130,7 +130,12 @@
           :key="`col-${colIndex}`"
           class="waterfall-column"
         >
-          <div v-for="item in column" :key="item.id" class="folder-slot-wrapper">
+          <div
+            v-for="item in column"
+            :key="item.id"
+            class="folder-slot-wrapper"
+            :data-folder-id="item.id"
+          >
             <slot :folder="item" :safe-mode="safeMode" />
           </div>
         </div>
@@ -895,6 +900,9 @@ onMounted(() => {
   nextTick(() => {
     observeNewImages()
     processQueue()
+    // hasMore 在挂载时已为 true（例如收藏夹一级页恢复快照返回）不会被
+    // watch(hasMore/loading) 捕获，必须在挂载时补挂，否则滚动到底不会自动翻页
+    if (props.hasMore && !props.loading) setupLoadMoreObserver()
   })
 })
 

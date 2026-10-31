@@ -83,9 +83,16 @@ const props = defineProps({
   // 后端 tile_size：adaptive / 4 / 6 / 8。
   // adaptive 时按 tile 实际宽度裁剪；显式 4/6/8 时严格显示该张数。
   tileSize: { type: String, default: 'adaptive' },
+  // 磁贴进入视口时 emit('visible', folder)，供收藏夹一级页按需请求
+  // /favorites/{id}/preview（视口懒加载）。FavoritePanel 等不需要预览元数据的
+  // 调用方保持默认 false，避免多余观察器。
+  observeVisibility: { type: Boolean, default: false },
+  // 预览缓存代际：父组件重置预览（切顺序/尺寸/含在线）时自增。
+  // 磁贴仍在视口内时 IntersectionObserver 不会再次回调，需要靠这里重新上报可见。
+  previewEpoch: { type: Number, default: 0 },
 })
 
-const emit = defineEmits(['click', 'long-press'])
+const emit = defineEmits(['click', 'long-press', 'visible'])
 
 // 虚拟磁贴（我的最爱 / 随机浏览）不弹编辑菜单：
 // 转发父组件事件之前先 short-circuit，让上层 @long-press handler 走 no-op。
@@ -255,10 +262,41 @@ const setupObserver = () => {
   )
 }
 
+// 磁贴级观察器：只关心「这个 folder 的磁贴是否进入视口」，用于父组件按需请求
+// 预览元数据。必须单独于 cell 观察器（cell 观察器只在已有 preview_images 时才有目标）。
+let visibilityObserver = null
+const isVisible = ref(false)
+
+const setupVisibilityObserver = () => {
+  if (!props.observeVisibility) return
+  if (typeof IntersectionObserver === 'undefined') {
+    // 无 IntersectionObserver：退化为挂载即视为可见，保证预览与数量仍能加载
+    isVisible.value = true
+    emit('visible', props.folder)
+    return
+  }
+  visibilityObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        isVisible.value = entry.isIntersecting
+        if (entry.isIntersecting) emit('visible', props.folder)
+      })
+    },
+    { rootMargin: '200px' }
+  )
+  if (tileRef.value) visibilityObserver.observe(tileRef.value)
+}
+
+// 预览重置后磁贴可能仍在视口内（observer 不会再回调），按代际重新上报可见
+watch(() => props.previewEpoch, () => {
+  if (isVisible.value) emit('visible', props.folder)
+})
+
 onMounted(() => {
   measureTileWidth()
   setupObserver()
   observeCells()
+  setupVisibilityObserver()
 
   // ResizeObserver 监听 tile 宽度变化，触发重新裁剪
   if (typeof ResizeObserver !== 'undefined' && tileRef.value) {
@@ -270,6 +308,8 @@ onMounted(() => {
 onUnmounted(() => {
   observer?.disconnect()
   observer = null
+  visibilityObserver?.disconnect()
+  visibilityObserver = null
   resizeObserver?.disconnect()
   resizeObserver = null
 })

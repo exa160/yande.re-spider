@@ -254,6 +254,32 @@ describe('WaterfallGallery itemType=folder', () => {
     expect(wrapper.text()).toContain('f1')
     expect(wrapper.text()).toContain('f2')
   })
+
+  it('itemType=folder 时每个 slot 外层带 data-folder-id（返回一级页定位用）', async () => {
+    const folders = [mkFolder(1), mkFolder(2)]
+    const wrapper = mount(WaterfallGallery, {
+      props: {
+        images: folders,
+        itemType: 'folder',
+        loading: false,
+        hasMore: false,
+        selectable: false,
+        selectedImages: [],
+        sourceMode: 'local',
+        saveDataMode: false,
+        isLoadingMore: false,
+        loadError: false,
+        safeMode: false,
+      },
+      slots: {
+        default: '<div class="test-folder-slot">{{ params.folder.name }}</div>',
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-folder-id="1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-folder-id="2"]').exists()).toBe(true)
+  })
 })
 
 // =============================================================================
@@ -578,5 +604,43 @@ describe('WaterfallGallery - 下载态标识（下载中 / 已下载）', () => 
 
     const heart = wrapper.findComponent({ name: 'HeartOverlay' })
     expect(heart.element.parentElement.className).toContain('info-group-right')
+  })
+})
+
+// =============================================================================
+// load-more 观察器的挂载时机
+//
+// 回归：WaterfallGallery 只在 hasMore/loading/loadingMore 变化时 setupLoadMoreObserver，
+// onMounted 不挂。组件以 hasMore=true 状态重新挂载时（例如收藏夹一级页恢复快照返回），
+// 滚动到底不会自动加载更多，必须先点一次按钮。
+// =============================================================================
+describe('WaterfallGallery - load-more 观察器挂载时机', () => {
+  const findLoadMoreObserver = (wrapper) => {
+    const loadMoreEl = wrapper.find('.load-more').element
+    return observerInstances.find((o) =>
+      o.observe.mock.calls.some(([el]) => el === loadMoreEl)
+    )
+  }
+
+  it('首次挂载 hasMore=true → 立刻监听加载更多元素，进入视口 emit load-more', async () => {
+    const wrapper = factory({ hasMore: true })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const observer = findLoadMoreObserver(wrapper)
+    expect(observer).toBeTruthy()
+
+    observer.cb([{ isIntersecting: true, target: wrapper.find('.load-more').element }])
+    await flushPromises()
+
+    expect(wrapper.emitted('load-more')).toHaveLength(1)
+  })
+
+  it('首次挂载 hasMore=false → 不监听加载更多元素', async () => {
+    const wrapper = factory({ hasMore: false })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(findLoadMoreObserver(wrapper)).toBeUndefined()
   })
 })
