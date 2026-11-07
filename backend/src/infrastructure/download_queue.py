@@ -520,7 +520,13 @@ async def run_download_async(task_id: str):
         error_message = None
         db_updated = False
         need_download = True
-        if original_path.exists() and expected_md5:
+        if original_path.exists() and expected_md5 and not config.downloader.verify_md5:
+            # 关闭 MD5 校验时，已存在的原图直接判定为「已下载」，不再比对也不再重下
+            logger.info(
+                f"Original exists, md5 check skipped (verify_md5 disabled) for {image_id}"
+            )
+            need_download = False
+        elif original_path.exists() and expected_md5:
             # 整文件 MD5 计算移出事件循环（大文件会冻主线程）
             file_md5 = await asyncio.to_thread(_compute_file_md5, original_path)
             if file_md5 is None:
