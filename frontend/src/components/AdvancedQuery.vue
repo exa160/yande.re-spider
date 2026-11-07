@@ -1372,6 +1372,15 @@ defineExpose({
     resetParams()
     showAdvanced.value = false
   },
+  // 只重置 queryParams，**不关闭** advanced-panel —— 返回收藏夹一级页时用。
+  //
+  // 为什么需要它：关闭 advanced-panel 会走 <el-collapse-transition>（约 300ms 高度动画），
+  // 面板下方的整个列表在这段时间里持续上移 → 用户看到"文件夹有上下位移"，
+  // 而返回时的滚动定位也会被这段动画带偏。保持面板原来的开合状态（用户自己开的）
+  // 则没有任何高度动画，返回后的定位一次到位。
+  _resetAdvancedParamsNoClose: () => {
+    resetParams()
+  },
   // 静默清空 selectedFavorite —— handleBackToFolders 专用，避免触发空搜索请求
   // （普通 clearSelectedFavorite 会 handleSearch()，但返回 folder-list 时不需要再搜一次）
   _clearSelectedFavoriteNoSearch: () => {

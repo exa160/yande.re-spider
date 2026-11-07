@@ -175,7 +175,8 @@ const AdvancedQueryStub = {
   props: ['sourceMode', 'mode', 'lockFavoriteChip', 'virtualFavorite'],
   emits: ['search', 'favorites-filter', 'virtual-tile-navigate', 'virtual-favorite-remove'],
   template: '<div class="advanced-query-stub"><slot/></div>',
-  // 暴露 selectFavorite / reset / resetAdvancedPanel / _clearSelectedFavoriteNoSearch 给父组件
+  // 暴露 selectFavorite / reset / resetAdvancedPanel / _resetAdvancedParamsNoClose /
+  // _clearSelectedFavoriteNoSearch 给父组件
   methods: {
     selectFavorite(folder) {
       this.__selectFavorite?.(folder)
@@ -186,11 +187,22 @@ const AdvancedQueryStub = {
     resetAdvancedPanel() {
       this.__resetAdvancedPanel?.()
     },
+    _resetAdvancedParamsNoClose() {
+      this.__resetAdvancedParamsNoClose?.()
+    },
     _clearSelectedFavoriteNoSearch() {
       this.__clearSelectedFavoriteNoSearch?.()
     },
   },
 }
+
+// 收藏夹一级列表（folder 模式）与图片瀑布流是两个 WaterfallGallery 实例，
+// 且现在会同时挂载（列表页用 v-show 保持挂载，避免返回时整棵 DOM 重建）。
+// 需要断言"图片瀑布流"时必须按 itemType 区分，否则会拿到 folder 那个实例。
+const findImageGallery = (wrapper) =>
+  wrapper
+    .findAllComponents({ name: 'WaterfallGallery' })
+    .find((w) => w.props('itemType') !== 'folder')
 
 const factory = () => {
   const wrapper = mount(Gallery, {
@@ -301,7 +313,7 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     expect(selectFavoriteSpy).toHaveBeenCalledWith(folder)
   })
 
-  it('handleBackToFolders → favoritesView 重置为 "folders" 且调用 resetAdvancedPanel + _clearSelectedFavoriteNoSearch（不再调 reset()）', async () => {
+  it('handleBackToFolders → favoritesView 重置为 "folders" 且调用 _resetAdvancedParamsNoClose + _clearSelectedFavoriteNoSearch（不再调 reset()）', async () => {
     const wrapper = factory()
     await flushPromises()
     // 进入 favorites + 进入 folder-detail
@@ -311,11 +323,11 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
     await flushPromises()
     expect(wrapper.vm.favoritesView).toBe('folder-detail')
 
-    // 替换 queryRef 的两个新方法为 spy（resetAdvancedPanel + _clearSelectedFavoriteNoSearch）
-    const resetAdvancedPanelSpy = vi.fn()
+    // 替换 queryRef 的两个新方法为 spy（_resetAdvancedParamsNoClose + _clearSelectedFavoriteNoSearch）
+    const resetAdvancedParamsSpy = vi.fn()
     const clearSelectedFavoriteSpy = vi.fn()
     const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
-    advInstance.vm.__resetAdvancedPanel = resetAdvancedPanelSpy
+    advInstance.vm.__resetAdvancedParamsNoClose = resetAdvancedParamsSpy
     advInstance.vm.__clearSelectedFavoriteNoSearch = clearSelectedFavoriteSpy
 
     wrapper.vm.handleBackToFolders()
@@ -323,7 +335,7 @@ describe('Gallery.vue 收藏夹模式状态机', () => {
 
     expect(wrapper.vm.favoritesView).toBe('folders')
     expect(wrapper.vm.selectedFavoriteFolder).toBeNull()
-    expect(resetAdvancedPanelSpy).toHaveBeenCalledTimes(1)
+    expect(resetAdvancedParamsSpy).toHaveBeenCalledTimes(1)
     expect(clearSelectedFavoriteSpy).toHaveBeenCalledTimes(1)
   })
 
@@ -1016,8 +1028,8 @@ describe('Gallery.vue querySource 扩展 v2（我的最爱 / 随机浏览）', (
     expect(wrapper.vm.querySource).toBe('my-favorites')
     expect(wrapper.vm.showHeart).toBe(true)
 
-    const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
-    expect(wfg.exists()).toBe(true)
+    const wfg = findImageGallery(wrapper)
+    expect(wfg).toBeTruthy()
     expect(wfg.props('showHeart')).toBe(true)
 
     expect(localStorage.getItem('gallery_source')).toBe('my-favorites')
@@ -1973,7 +1985,7 @@ describe('Gallery.vue 卡片收藏事件接线（favorite-toggled）', () => {
   const { downStateOf, _resetForTest } = useDownloadState()
 
   const emitCardFavorite = async (wrapper, payload) => {
-    wrapper.findComponent({ name: 'WaterfallGallery' }).vm.$emit('favorite-toggled', payload)
+    findImageGallery(wrapper).vm.$emit('favorite-toggled', payload)
     await flushPromises()
   }
 
@@ -2284,17 +2296,17 @@ describe('Gallery.vue BackButton 可见性 + 收藏夹 tab 焦点（修复问题
     expect(wrapper.vm.favoritesView).toBe('folder-detail')
 
     // Spy 替换 queryRef 的清理方法
-    const resetAdvancedPanelSpy = vi.fn()
+    const resetAdvancedParamsSpy = vi.fn()
     const clearSelectedFavoriteSpy = vi.fn()
     const advInstance = wrapper.findComponent({ name: 'AdvancedQuery' })
-    advInstance.vm.__resetAdvancedPanel = resetAdvancedPanelSpy
+    advInstance.vm.__resetAdvancedParamsNoClose = resetAdvancedParamsSpy
     advInstance.vm.__clearSelectedFavoriteNoSearch = clearSelectedFavoriteSpy
 
     wrapper.vm.handleBackClick()
     await flushPromises()
 
     expect(wrapper.vm.favoritesView).toBe('folders')
-    expect(resetAdvancedPanelSpy).toHaveBeenCalled()
+    expect(resetAdvancedParamsSpy).toHaveBeenCalled()
     expect(clearSelectedFavoriteSpy).toHaveBeenCalled()
   })
 

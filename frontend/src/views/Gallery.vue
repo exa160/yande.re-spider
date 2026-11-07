@@ -111,59 +111,64 @@
 
     <!-- 瀑布流图库组件 -->
     <div class="gallery-content">
-      <!-- 收藏夹文件夹列表 -->
-      <template v-if="querySource === 'favorites' && favoritesView === 'folders'">
-        <WaterfallGallery
-          item-type="folder"
-          :images="displayFolders"
-          :loading="folderLoading"
-          :has-more="folderHasMore"
-          :is-loading-more="isLoadingMore"
-          :load-error="false"
-          :selected-images="[]"
-          :selectable="false"
-          :source-mode="'favorites'"
-          :save-data-mode="saveDataMode"
-          :safe-mode="safeMode"
-          @load-more="loadMoreFolders"
-        >
-          <template #default="{ folder }">
-            <FolderTile
-              :folder="folder"
-              :tile-size="tileSize"
-              :save-data-mode="saveDataMode"
-              :safe-mode="safeMode"
-              :preview-epoch="previewGeneration"
-              observe-visibility
-              @click="handleFolderClick"
-              @visible="handleFolderTileVisible"
-            />
-          </template>
-        </WaterfallGallery>
-      </template>
+      <!--
+        收藏夹文件夹列表：用 v-show 保持挂载（进入二级页时只是隐藏，不销毁）。
+        原因：返回一级页时若整棵 DOM 被销毁重建 →
+          1) 每个 FolderTile 重新创建，组件内 srcEnabled 清空 → 预览图全部丢 src
+             → 磁贴先空白再逐批重新出现 = "闪一下"；
+          2) 列分布/高度全部重算 → 恢复位置时出现上下位移。
+        保持挂载后 DOM / 图片 src / 列分布原样保留 → 既不闪也不位移。
+      -->
+      <WaterfallGallery
+        v-show="querySource === 'favorites' && favoritesView === 'folders'"
+        item-type="folder"
+        :images="displayFolders"
+        :loading="folderLoading"
+        :has-more="folderHasMore"
+        :is-loading-more="isLoadingMore"
+        :load-error="false"
+        :selected-images="[]"
+        :selectable="false"
+        :source-mode="'favorites'"
+        :save-data-mode="saveDataMode"
+        :safe-mode="safeMode"
+        @load-more="loadMoreFolders"
+      >
+        <template #default="{ folder }">
+          <FolderTile
+            :folder="folder"
+            :tile-size="tileSize"
+            :save-data-mode="saveDataMode"
+            :safe-mode="safeMode"
+            :preview-epoch="previewGeneration"
+            observe-visibility
+            @click="handleFolderClick"
+            @visible="handleFolderTileVisible"
+          />
+        </template>
+      </WaterfallGallery>
 
       <!-- 普通瀑布流（在线 / 本地 / 文件夹图片） -->
-      <template v-else>
-        <WaterfallGallery
-          :images="images"
-          :loading="loading"
-          :has-more="hasMore"
-          :is-loading-more="isLoadingMore"
-          :load-error="loadError"
-          :selected-images="selectedImages"
-          :selectable="querySource === 'yande'"
-          :source-mode="waterfallSourceMode"
-          :save-data-mode="saveDataMode"
-          :safe-mode="safeMode"
-          :show-heart="showHeart"
-          @image-click="handleImageClick"
-          @image-select="handleImageSelect"
-          @load-more="loadMore"
-          @load-error="handleLoadError"
-          @multi-select-start="handleMultiSelectStart"
-          @favorite-toggled="onFavoriteChanged"
-        />
-      </template>
+      <WaterfallGallery
+        v-show="!(querySource === 'favorites' && favoritesView === 'folders')"
+        :images="images"
+        :loading="loading"
+        :has-more="hasMore"
+        :is-loading-more="isLoadingMore"
+        :load-error="loadError"
+        :selected-images="selectedImages"
+        :selectable="querySource === 'yande'"
+        :source-mode="waterfallSourceMode"
+        :save-data-mode="saveDataMode"
+        :safe-mode="safeMode"
+        :show-heart="showHeart"
+        @image-click="handleImageClick"
+        @image-select="handleImageSelect"
+        @load-more="loadMore"
+        @load-error="handleLoadError"
+        @multi-select-start="handleMultiSelectStart"
+        @favorite-toggled="onFavoriteChanged"
+      />
     </div>
 
     <!-- 左下角多选操作栏 -->
@@ -470,6 +475,149 @@ const setPageScrollTop = (top) => {
   for (const el of [document.scrollingElement, document.documentElement, document.body]) {
     if (el) el.scrollTop = top
   }
+}
+
+// ---- 滚动位置策略（统一入口）----
+// 收藏夹一级列表 / 收藏夹二级瀑布流 / 普通瀑布流共用同一个 window 滚动条，
+// 所以任何视图切换都必须显式复位，否则会沿用上一个视图的 scrollY
+// —— 表现为"点开收藏夹不在顶端 / 切页面不在顶端"。
+//
+// 统一策略：
+//   1) 进入新视图（二级页 / 切 source / 新搜索 / 切路由）→ 回到顶部
+//   2) 从二级页返回收藏夹一级页 → 恢复进入前的位置（唯一保留的"位置记忆"）
+//   3) 自动定位过程中用户主动滚动 → 立即停止干预
+//
+// 定位方式（applyScrollPosition）：
+//   - **一次性写入**：定位在 nextTick 里同步完成 → 浏览器首帧就是目标位置，
+//     不会出现"先错位再纠正"的可见跳动。
+//   - **偏差补写**：之后只在"实际位置偏离目标"时补写（且目标可达时），
+//     用于吸收高级面板收起动画、列数重算等布局变化；
+//     锚点可用时按锚点重算目标 → 同一批磁贴始终停在视口同一位置。
+//   - 用户一旦自己滚动（isTrusted 事件或位置被外部改动）→ 立即停止干预。
+
+// 定位意图令牌：新的定位会作废上一次未完成的定位，避免"回顶"与"定位"互相打架
+let scrollIntentId = 0
+// 用户滚动序号：用户每滚动一次 +1。用来判断"用户是否已经接管滚动"以及
+// "这次定位是不是已经过期"（触发定位之后用户又滚过 → 不该再写回）。
+let userScrollSeq = 0
+const handleWindowScroll = (e) => {
+  // isTrusted === true 表示用户真实滚动了（程序化滚动派发的事件为 false）。
+  // 注意：部分内嵌浏览器（WebView / 应用内浏览器）合成的事件可能不带 isTrusted，
+  // 因此下面还有一层"位置被外部改动"的兜底判据，不单靠 isTrusted。
+  if (e && e.isTrusted) userScrollSeq += 1
+}
+
+// 定位保护标记：在触发定位的那一刻取当前序号
+const captureScrollGuard = () => userScrollSeq
+// 标记是否还有效：用户之后没有自己滚动过
+const isScrollGuardValid = (guard) =>
+  guard === null || guard === undefined || guard === userScrollSeq
+
+// 目标位置当前是否可达（可达 = 文档够高，不会被浏览器钳制）
+const isScrollTargetReachable = (target) => {
+  if (typeof document === 'undefined') return false
+  const doc = document.documentElement || document.body
+  const maxScroll = Math.max(0, (doc?.scrollHeight || 0) - (window.innerHeight || 0))
+  return target <= maxScroll + 1
+}
+
+// 计算目标滚动位置：
+//   有锚点 → 让锚点磁贴停在进入时相同的视口偏移（免疫列表高度/列分布变化）
+//   无锚点 → 回退到进入时记录的像素位置
+const getScrollTarget = (anchor, pixelTarget) => {
+  if (anchor) {
+    const tile = findFolderTileEl({ id: anchor.id })
+    if (tile) {
+      const rect = tile.getBoundingClientRect()
+      // 没有布局信息（高度恒为 0，如测试环境）→ 锚点不可用
+      if (rect && rect.height) {
+        return getPageScrollTop() + (rect.top - anchor.offset)
+      }
+    }
+  }
+  return Math.max(0, Number(pixelTarget) || 0)
+}
+
+/**
+ * 统一定位执行器。
+ * @param {object|null} anchor      锚点磁贴（进入时记录的视口偏移）
+ * @param {number}      pixelTarget  锚点不可用时的像素目标
+ * @param {number|null} guard        定位保护标记（用户滚动过 → 放弃定位）
+ * @param {number}      duration     偏差补写窗口时长（ms）
+ * @param {number}      interval     补写检查间隔（ms）
+ * @param {number}      threshold    偏差阈值（px），小于它不补写，避免抖动
+ */
+const applyScrollPosition = ({
+  anchor = null,
+  pixelTarget = 0,
+  guard = null,
+  duration = 1500,
+  interval = 100,
+  threshold = 2,
+} = {}) => {
+  // 过期保护：触发这次定位之后用户已经自己滚过 → 不再写回，
+  // 否则会出现"迟到的回顶把用户从当前位置拽回顶部"。
+  if (!isScrollGuardValid(guard)) return
+  const intent = ++scrollIntentId
+  const seqAtStart = userScrollSeq
+  const write = (target) => {
+    // 组件已卸载 / 环境销毁 → 停止（避免测试卸载后仍写 DOM）
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    setPageScrollTop(target)
+  }
+  // 一次性写入：首帧即为目标位置
+  const initialTarget = getScrollTarget(anchor, pixelTarget)
+  write(initialTarget)
+  // 首次写入是否被浏览器钳制（文档太短，目标位置够不到）
+  // → 用于区分"位置偏低是因为钳制"和"位置被外部改动（用户自己滚了）"
+  let wasClamped = !isScrollTargetReachable(initialTarget)
+  if (typeof requestAnimationFrame !== 'function' || duration <= 0) return
+  const start = Date.now()
+  let lastCheck = start
+  const step = () => {
+    // 已被新的定位取代 → 停止
+    if (intent !== scrollIntentId) return
+    // 用户接管了滚动 → 立即停止（不能只看"最近 300ms"，用户滚完停下后
+    // 循环若继续写回就会把页面拽回顶部）
+    if (userScrollSeq !== seqAtStart) return
+    const now = Date.now()
+    if (now - lastCheck >= interval) {
+      lastCheck = now
+      // 目标按锚点重算 → 布局变化时同一批磁贴仍应停在视口同一位置
+      const target = getScrollTarget(anchor, pixelTarget)
+      const current = getPageScrollTop()
+      const deviated = Math.abs(current - target) > threshold
+      if (deviated) {
+        if (isScrollTargetReachable(target)) {
+          if (wasClamped) {
+            // 之前是浏览器钳制导致位置偏低，现在目标可达了（内容长高了）→ 补写一次
+            write(target)
+            wasClamped = false
+          } else {
+            // 目标可达却已经偏离 → 位置被外部改动（用户自己滚了，
+            // 或 WebView 里 isTrusted 不可靠）→ 停止干预，不跟用户抢滚动条
+            return
+          }
+        } else {
+          // 目标不可达 → 是浏览器钳制（文档太短）→ 记下来，等内容长高后补写
+          wasClamped = true
+        }
+      }
+    }
+    if (now - start < duration) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
+// 作废进行中的自动定位（改用其它方式定位时调用）
+const cancelScrollIntent = () => {
+  scrollIntentId += 1
+}
+
+// 进入新视图 → 回到顶部
+// guard：触发这次回顶时捕获的保护标记，过期则跳过（见 applyScrollPosition）
+const resetPageScrollToTop = ({ guard = null } = {}) => {
+  applyScrollPosition({ pixelTarget: 0, guard })
 }
 
 // 逐 folder 预览：前端限并发，避免 8 个请求同时压 MariaDB
@@ -1036,6 +1184,7 @@ const stopSourceWatch = watch(querySource, (val) => {
 // 用户手动切 source 按钮时不写入路由（避免污染浏览器历史）。
 watch(() => route?.query?.querySource, (val) => {
   if (typeof val === 'string' && val && val !== querySource.value) {
+    const guard = captureScrollGuard()
     querySource.value = val
     // 路由入口没有磁贴 provider 的 seed，随机视图这里新开一批
     randomSeed.value = val === 'random' ? createRandomSeed() : null
@@ -1049,6 +1198,8 @@ watch(() => route?.query?.querySource, (val) => {
       currentFavorite.value = null
     }
     loadImages()
+    // 路由入口换了视图 → 回到顶部
+    resetPageScrollToTop({ guard })
   }
 })
 
@@ -1074,6 +1225,8 @@ const reloadFolderList = ({ resetPreviews = false } = {}) => {
   folderPage.value = 1
   currentFolders.value = []
   folderHasMore.value = false
+  // 磁贴尺寸/预览配置变了 → 列表整体重排，旧滚动位置失效，回到顶部
+  resetPageScrollToTop({ guard: captureScrollGuard() })
   loadFolders(1)
 }
 
@@ -1138,6 +1291,9 @@ onUnmounted(() => {
 })
 
 const handleSearch = async (searchData) => {
+  // 定位保护标记：在触发这一刻捕获。若本次搜索期间用户自己滚动过，
+  // 由此触发的回顶就作废（否则迟到的回顶会把用户拽回顶部）。
+  const guard = captureScrollGuard()
   // 防御性解析 favorite_id：仅当是合法正整数才注入，避免后端 Pydantic int 校验失败（422）。
   // v2 路径里 searchData.favorite?.id 可能是 undefined（mode 路径）/ 整数 / 字符串占位符
   // （如虚拟磁贴点击经 handleSearch({favorite:{id:'random'}, ...}) 等场景）。
@@ -1189,6 +1345,16 @@ const handleSearch = async (searchData) => {
   selectedImages.value = []
   selectAll.value = false
   currentFavorite.value = searchData.favorite || null
+  // 新结果集 → 回到顶部。
+  //
+  // 必须在 await loadImages() **之前**复位：
+  //   放在之后的话，本次搜索的网络延迟会让"回顶"迟到执行 ——
+  //   用户可能已经滚动了、甚至已经退出并进入了另一个收藏夹，
+  //   这时迟到的回顶会把当前视图从当前位置硬拽回顶部
+  //   （现象："反复进出不同收藏夹，第二次进入某个收藏夹时向下滚动一点突然回顶"）。
+  //
+  // guard：复位意图在触发这一刻就已确定；期间用户自己滚过 → 这次复位作废。
+  resetPageScrollToTop({ guard })
   await loadImages()
 }
 
@@ -1255,12 +1421,17 @@ const loadMoreFolders = async () => {
 // 200ms debounce 后在客户端过滤已加载的全量列表，重置分页到第 1 页。
 const handleFavoritesFilter = (value) => {
   const keyword = (value || '').trim()
+  // 过滤是用户主动输入触发的 → 这一刻捕获保护标记
+  const guard = captureScrollGuard()
   if (folderSearchDebounce) clearTimeout(folderSearchDebounce)
   folderSearchDebounce = setTimeout(() => {
     folderKeyword.value = keyword
     folderPage.value = 1
     currentFolders.value = []
     folderHasMore.value = false
+    // 过滤后的列表整体换了内容 → 旧滚动位置失效，回到顶部
+    // （否则浏览器会把 scrollTop 钳制到新列表的最大值，落在随机位置）
+    resetPageScrollToTop({ guard })
     loadFolders(1)
   }, 200)
 }
@@ -1347,10 +1518,15 @@ const handleFolderClick = (folder) => {
  * BackButton 不出现——与入口 1 不一致（本次修复点）。
  */
 const enterFavoriteFolderDetail = (folder) => {
+  // 定位保护标记：进入二级页这一刻捕获。若用户随后自己滚动过，
+  // 由这次进入触发的回顶就作废（避免把用户从新位置拽回顶部）。
+  const guard = captureScrollGuard()
   // 只有从一级页进入才保存快照；从下拉面板进入通常也位于一级页。
   if (favoritesView.value === 'folders') {
     folderListSnapshot = {
       scrollTop: getPageScrollTop(),
+      // 锚点：进入时该磁贴在视口中的偏移，返回时恢复到同一偏移（抗预览懒加载的高度漂移）
+      anchor: captureScrollAnchor(folder),
       configSig: folderListConfigSignature(),
       page: folderPage.value,
       hasMore: folderHasMore.value,
@@ -1358,6 +1534,10 @@ const enterFavoriteFolderDetail = (folder) => {
   }
   selectedFavoriteFolder.value = folder
   favoritesView.value = 'folder-detail'
+  // 进入二级页 → 回到顶部。
+  // 原来这里什么都不做，一级页的 scrollY 被二级页沿用（文档高度塌缩后还会被浏览器钳制），
+  // 表现为"点开收藏夹后不在最顶端"。
+  resetPageScrollToTop({ guard })
 }
 
 /**
@@ -1402,35 +1582,69 @@ const ensureFolderPageLoaded = async (folder) => {
 
 const pageRootRef = ref(null)
 
-const scrollToFolderTile = async (folder) => {
-  await nextTick()
+// 在一级页 DOM 中找到某个 folder 对应的磁贴元素
+const findFolderTileEl = (folder) => {
   const root = pageRootRef.value
-  if (!root) return false
+  if (!root) return null
   const id = String(folder?.id)
-  const tile = Array.from(root.querySelectorAll('[data-folder-id]'))
-    .find((el) => el.dataset.folderId === id)
+  return (
+    Array.from(root.querySelectorAll('[data-folder-id]'))
+      .find((el) => el.dataset.folderId === id) || null
+  )
+}
+
+// ---- 锚点式位置记忆 ----
+// 只记 scrollTop 像素值是不够的：收藏夹磁贴的预览图是懒加载的，
+// 回来时整体高度可能变了 → 像素落点会漂。
+// 改为记录「进入时该 folder 磁贴在视口中的偏移」，返回时把同一个磁贴恢复到同一偏移，
+// 对高度变化免疫；磁贴找不到时回退到像素恢复。
+const captureScrollAnchor = (folder) => {
+  const tile = findFolderTileEl(folder)
+  if (!tile) return null
+  const rect = tile.getBoundingClientRect()
+  // 没有布局信息（高度恒为 0）→ 锚点无意义，返回 null 走像素恢复
+  if (!rect || !rect.height) return null
+  return {
+    id: String(folder?.id),
+    offset: rect.top,
+  }
+}
+
+const scrollToFolderTile = async (folder, guard = null) => {
+  await nextTick()
+  // 用户在补页/等待期间已经自己滚过 → 放弃定位，别把人拽回目标磁贴
+  if (!isScrollGuardValid(guard)) return false
+  const tile = findFolderTileEl(folder)
   if (!tile) return false
+  // 定位磁贴前作废进行中的"回顶"意图，否则两者会互相拉扯
+  cancelScrollIntent()
   if (typeof tile.scrollIntoView === 'function') {
     tile.scrollIntoView({ block: 'center', behavior: 'auto' })
   }
   return true
 }
 
-const locateFolderInList = async (folder) => {
+const locateFolderInList = async (folder, guard = null) => {
   if (!folder) return false
   const loaded = await ensureFolderPageLoaded(folder)
   if (!loaded) return false
-  return scrollToFolderTile(folder)
+  return scrollToFolderTile(folder, guard)
 }
 
 const handleBackToFolders = () => {
+  // 定位保护标记：返回这一刻捕获。用户在补页/等待期间自己滚动过 → 放弃自动定位
+  const guard = captureScrollGuard()
   const returnFolder = selectedFavoriteFolder.value
   selectedFavoriteFolder.value = null
   favoritesView.value = 'folders'
   // 不调 reset()（reset 会清 searchText/selectedTags/queryParams，进入 folder-list 不需要这些）
-  // 改用更精细的清理：resetAdvancedPanel 仅清 queryParams + 关闭面板，再用静默方法清 selectedFavorite
-  // 这样 includeOnline 等全局偏好保留（composable 持久化），且不触发空搜索请求
-  queryRef.value?.resetAdvancedPanel()
+  // 改用更精细的清理：只重置 queryParams（不关闭高级面板），再用静默方法清 selectedFavorite
+  // 这样 includeOnline 等全局偏好保留（composable 持久化），且不触发空搜索请求。
+  //
+  // 关键：不关闭 advanced-panel —— 关闭会触发 <el-collapse-transition> 的高度动画，
+  // 面板下方整个列表在 ~300ms 内持续上移 = 用户看到的"文件夹有上下位移"，
+  // 也会把刚恢复的滚动位置带偏。保持用户原本的面板开合状态则无动画，定位一次到位。
+  queryRef.value?._resetAdvancedParamsNoClose?.()
   queryRef.value?._clearSelectedFavoriteNoSearch?.()
   images.value = []
 
@@ -1449,19 +1663,22 @@ const handleBackToFolders = () => {
       (f) => String(f.id) === String(returnFolder?.id)
     )
     if (folderRendered) {
-      // 目标磁贴已渲染：保持原有行为，只恢复滚动位置
+      // 目标磁贴已渲染：恢复进入前的位置。
+      //   锚点优先（同一磁贴回到同一视口偏移，抗列表高度/列分布变化）
+      //   锚点不可用时回退像素恢复
+      // 定位在 nextTick 里一次性写入 → 浏览器首帧就是目标位置，不会有"先错位再纠正"。
+      // 之后只在位置被外部改动（面板收起动画 / scroll anchoring）时按锚点补写。
       nextTick(() => {
-        setPageScrollTop(snapshot.scrollTop)
-        if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(() => {
-            setPageScrollTop(snapshot.scrollTop)
-          })
-        }
+        applyScrollPosition({
+          anchor: snapshot.anchor,
+          pixelTarget: snapshot.scrollTop,
+          guard,
+        })
       })
       return
     }
     // 一级页尚未翻到该 folder 所在页：补齐页并定位
-    void locateFolderInList(returnFolder)
+    void locateFolderInList(returnFolder, guard)
     return
   }
 
@@ -1471,7 +1688,7 @@ const handleBackToFolders = () => {
   folderHasMore.value = false
   resetFolderPreviews()
   loadFolders(1)
-    .then(() => locateFolderInList(returnFolder))
+    .then(() => locateFolderInList(returnFolder, guard))
     .catch(() => {})
 }
 
@@ -1482,6 +1699,15 @@ const handleBackToFolders = () => {
 // 其它入口进入 random 时生成新 seed。离开 random 清空，保证下次进入换一批。
 const handleSourceChange = (newSource, seed) => {
   const prevSource = querySource.value
+  // 定位保护标记：切换这一刻捕获。
+  // 用户在列表加载/补页期间自己滚动过 → 本次回顶与"定位到刚进入的收藏夹"都作废，
+  // 避免迟到的自动定位把用户从当前位置拽走。
+  const guard = captureScrollGuard()
+  // 切换视图 → 回到顶部。
+  // 各视图共用同一个 window 滚动条，原来切换时完全不复位，
+  // 结果从"本地"滚到中段再切"收藏夹"，新列表仍然停在旧位置。
+  // （返回二级页的路径随后会由 locateFolderInList 定位到目标磁贴并作废这里的回顶意图。）
+  resetPageScrollToTop({ guard })
   // 从二级页点顶部「收藏夹」tab 返回一级页时，记下刚才进入的 folder；列表加载后定位过去
   const returnFolder =
     newSource === 'favorites' &&
@@ -1539,7 +1765,7 @@ const handleSourceChange = (newSource, seed) => {
     folderHasMore.value = false
     allFolders.value = null
     loadFolders(1, { refresh: true })
-      .then(() => locateFolderInList(returnFolder))
+      .then(() => locateFolderInList(returnFolder, guard))
       .catch(() => {})
     return
   }
@@ -2124,6 +2350,8 @@ onMounted(async () => {
   }
   // 窗口尺寸变化时重新计算预览尺寸
   window.addEventListener('resize', handleWindowResize)
+  // 记录用户主动滚动：自动定位过程中用户一旦自己滚动就停止干预
+  window.addEventListener('scroll', handleWindowScroll, { passive: true })
   // 键盘左右箭头切换图片
   window.addEventListener('keydown', handleKeydown)
   // 启动下载状态轮询（单例，引用计数）：既对账本前端下的任务，
@@ -2134,6 +2362,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('scroll', handleWindowScroll)
+  // 作废进行中的自动定位，避免卸载后仍在写滚动位置
+  cancelScrollIntent()
   window.removeEventListener('keydown', handleKeydown)
   stopDownloadSync()
   unsubscribeDownloadCompleted?.()
