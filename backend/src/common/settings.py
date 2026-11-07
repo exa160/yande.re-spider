@@ -58,6 +58,14 @@ class DownloaderConfig(ConfigModel):
     chunk_size: int = Field(10 * 1024, ge=1024, description='最大同时下载数')
     split_size: int = Field(50 * 1024 * 1024, ge=5 * 1024 * 1024, description='最大同时下载数')
     retry_times: int = Field(default=3, ge=0, le=50, description='最大重试次数')
+    verify_md5: bool = Field(
+        default=True,
+        description=(
+            '是否校验下载文件的 MD5。yande.re 少数 post 的 md5 字段与实际下发的文件'
+            '不一致（如 1207570：下发文件底部被改动，md5 永久对不上），'
+            '这类图片会无限重试直至失败；关闭后跳过校验，直接采纳下载到的文件。'
+        ),
+    )
 
 
 class SchedulerConfig(ConfigModel):

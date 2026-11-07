@@ -102,6 +102,10 @@
           <el-form-item label="重试次数">
             <el-input-number v-model="downloaderConfig.retry_times" :min="0" :max="500" />
           </el-form-item>
+          <el-form-item label="校验 MD5">
+            <el-switch v-model="downloaderConfig.verify_md5" />
+            <span class="param-tip" style="margin-left: 8px;">关闭后跳过文件 MD5 校验（用于 yande 源文件被改动、MD5 永久对不上的图片）</span>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="saveDownloaderConfig" :loading="saving" size="small">
               保存
@@ -531,7 +535,8 @@ const downloaderConfig = ref({
   max_concurrent_tasks: 3,
   chunk_size: 10,
   split_size: 200,
-  retry_times: 3
+  retry_times: 3,
+  verify_md5: true
 })
 
 const databaseConfig = ref({
@@ -1111,7 +1116,8 @@ const loadConfig = async () => {
       max_concurrent_tasks: config.downloader.max_concurrent_tasks,
       chunk_size: Math.round(config.downloader.chunk_size / 1024),  // 字节 -> KB
       split_size: Math.round(config.downloader.split_size / (1024 * 1024)),  // 字节 -> MB
-      retry_times: config.downloader.retry_times
+      retry_times: config.downloader.retry_times,
+      verify_md5: config.downloader.verify_md5 ?? true
     }
     databaseConfig.value = config.database
   } catch (error) {
@@ -1171,7 +1177,8 @@ const saveDownloaderConfig = async () => {
       max_concurrent_tasks: downloaderConfig.value.max_concurrent_tasks,
       chunk_size: downloaderConfig.value.chunk_size * 1024,  // KB -> 字节
       split_size: downloaderConfig.value.split_size * 1024 * 1024,  // MB -> 字节
-      retry_times: downloaderConfig.value.retry_times
+      retry_times: downloaderConfig.value.retry_times,
+      verify_md5: downloaderConfig.value.verify_md5
     }
     await api.put('/config/downloader', payload)
     ElMessage.success('下载器配置保存成功')

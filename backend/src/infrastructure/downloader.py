@@ -253,7 +253,14 @@ class MultiDown:
                             file.write(data)
 
             # MD5验证
-            if file_info.md5:
+            if file_info.md5 and not config.downloader.verify_md5:
+                # 显式关闭校验：yande 少数 post 下发的文件与 md5 字段不一致，
+                # 严格校验会导致该图永远重试失败；此时按下载到的文件原样保留。
+                logger.warning(
+                    f"md5 check skipped (verify_md5 disabled): {f_path}, "
+                    f"expected {file_info.md5}"
+                )
+            elif file_info.md5:
                 with open(f_path, "rb") as f:
                     file_md5 = md5(f.read()).hexdigest()
                 if file_info.md5 != file_md5:
