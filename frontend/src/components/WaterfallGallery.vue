@@ -299,6 +299,7 @@ const LONG_PRESS_DURATION_PC = 400 // PC端长按时长
 const visibleImages = ref(new Set())
 let observer = null
 let loadMoreObserver = null
+let galleryResizeObserver = null
 
 const containerRef = ref(null)
 const galleryRef = ref(null)
@@ -338,8 +339,11 @@ watch(() => props.loading, (isLoading) => {
     // 骨架屏显示时，使用 galleryRef 获取实际宽度
     nextTick(() => {
       if (galleryRef.value) {
-        containerWidth.value = galleryRef.value.offsetWidth
-        columnCount.value = getColumnCount(containerWidth.value)
+        // 隐藏时（v-show）宽度为 0 → 保留旧值，避免列数被误判成 1 列
+        const width = galleryRef.value.offsetWidth
+        if (!width) return
+        containerWidth.value = width
+        columnCount.value = getColumnCount(width)
       }
     })
   }
@@ -485,6 +489,9 @@ const processQueue = () => {
 const updateColumnCount = () => {
   if (containerRef.value) {
     const width = containerRef.value.offsetWidth
+    // 被 v-show 隐藏时宽度为 0 → 必须保留上一次的测量值。
+    // 否则列数会被误判成 1 列，重新显示时整列重新分布（可见的上下位移）。
+    if (!width) return
     const newCount = getColumnCount(width)
     if (newCount !== columnCount.value) {
       columnCount.value = newCount
@@ -897,6 +904,13 @@ watch(loadingMore, (loading) => {
 onMounted(() => {
   updateColumnCount()
   window.addEventListener('resize', updateColumnCount)
+  // 组件可能在隐藏状态（v-show）下挂载 → 挂载时量不到宽度，列数保持默认值；
+  // 用 ResizeObserver 监听容器尺寸，从隐藏变为可见时补测一次。
+  // ResizeObserver 在绘制前触发 → 补测后同帧重排，用户看不到列数跳变。
+  if (typeof ResizeObserver !== 'undefined' && galleryRef.value) {
+    galleryResizeObserver = new ResizeObserver(() => updateColumnCount())
+    galleryResizeObserver.observe(galleryRef.value)
+  }
   nextTick(() => {
     observeNewImages()
     processQueue()
@@ -908,6 +922,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateColumnCount)
+  if (galleryResizeObserver) {
+    galleryResizeObserver.disconnect()
+    galleryResizeObserver = null
+  }
   if (observer) {
     observer.disconnect()
     observer = null
