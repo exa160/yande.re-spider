@@ -211,12 +211,13 @@ describe('Config.vue 收藏夹分页（3 个新开关 + saveFavoritesConfig）',
     expect(text).toContain('收藏夹大小')              // tileSize
     expect(text).toContain('收藏夹预览图顺序')        // previewOrder
     expect(text).toContain('收藏夹预览包含未下载图片') // includeOnline
-    expect(text).toContain('每页收藏夹个数')          // folderPageSize
+    // 「每页收藏夹个数」已移除：每页条数改为按列数自动推导
 
-    // 5 个 radio group
+    // 4 个 radio group
     const radioGroups = favSection.findAll('.radio-group-stub')
-    // buttonMode + tileSize + previewOrder + includeOnline + folderPageSize = 5
-    expect(radioGroups.length).toBeGreaterThanOrEqual(5)
+    // buttonMode + tileSize + previewOrder + includeOnline = 4
+    expect(radioGroups.length).toBeGreaterThanOrEqual(4)
+    expect(text).not.toContain('每页收藏夹个数')
 
     // 保存按钮
     const buttons = favSection.findAll('button')
@@ -239,7 +240,7 @@ describe('Config.vue 收藏夹分页（3 个新开关 + saveFavoritesConfig）',
     expect(groups[2].attributes('data-disabled')).toBe('false')
   })
 
-  it('点击「保存收藏夹配置」→ PUT /config/favorites 带 8 个 snake_case 字段（不含 enable_favorite_folder）', async () => {
+  it('点击「保存收藏夹配置」→ PUT /config/favorites 带 7 个 snake_case 字段（不含 enable_favorite_folder / folder_page_size）', async () => {
     const { default: api } = await import('@/api')
     const wrapper = factory()
     await flushPromises()
@@ -262,11 +263,12 @@ describe('Config.vue 收藏夹分页（3 个新开关 + saveFavoritesConfig）',
       tile_size: '8',
       preview_order: expect.any(String),
       include_online: expect.any(Boolean),
-      folder_page_size: expect.any(Number),
     }))
     // 冗余字段 enable_favorite_folder 不再随保存发送
     const sent = api.put.mock.calls.find((c) => c[0] === '/config/favorites')?.[1]
     expect(sent).not.toHaveProperty('enable_favorite_folder')
+    // 「每页收藏夹个数」已移除：不再随保存发送
+    expect(sent).not.toHaveProperty('folder_page_size')
   })
 
   it('收藏夹分页渲染「最近下载」开关，且位于「随机浏览」之后（设计文档 §4.6）', async () => {
@@ -419,16 +421,15 @@ describe('Config.vue 收藏夹分页 — radio 选项完整性', () => {
     expect(labels).toContain('asc')
   })
 
-  it('folderPageSize 选项：8 / 12 / 20', async () => {
+  it('「每页收藏夹个数」已移除：设置区不再出现该条目', async () => {
     const wrapper = factory()
     await flushPromises()
     await clickMenuItem(wrapper, '收藏夹配置')
 
     const favSection = wrapper.find('.favorites-section')
-    const labels = favSection.findAll('.radio-button-stub').map((b) => b.attributes('data-label'))
-    expect(labels).toContain('8')
-    expect(labels).toContain('12')
-    expect(labels).toContain('20')
+    expect(favSection.text()).not.toContain('每页收藏夹个数')
+    // 说明：设置区里还有若干开关型 radio-group，不便按个数断言；
+    // 「不再发送 folder_page_size」由下面的 payload 用例保证
   })
 })
 

@@ -117,7 +117,6 @@ beforeEach(async () => {
   favCfg.enableMyFavorites.value = false
   favCfg.enableRandomBrowse.value = false
   favCfg.enableRecentDownloads.value = false
-  favCfg.folderPageSize.value = 20
   favCfg.previewOrder.value = 'random'
   favCfg.includeOnline.value = false
   favCfg.tileSize.value = 'adaptive'

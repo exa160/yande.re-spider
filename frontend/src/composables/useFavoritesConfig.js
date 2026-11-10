@@ -11,7 +11,7 @@
  *   fetchRecentDownloadsCount() 在 enable_recent_downloads=true 时拉取去重图片数
  *
  * 后端字段（snake_case）：
- *   button_mode | tile_size | preview_order | include_online | folder_page_size
+ *   button_mode | tile_size | preview_order | include_online
  *   enable_my_favorites | enable_random_browse | enable_favorite_folder | enable_favorite_autodownload
  *   enable_recent_downloads
  *
@@ -20,7 +20,6 @@
  *   gallery_favorites_tile_size      : 'adaptive' | '4' | '6' | '8'
  *   gallery_favorites_preview_order  : 'random' | 'asc' | 'desc'
  *   gallery_favorites_include_online : 'true' | 'false'
- *   favorites_folder_page_size       : 数字字符串
  */
 import { ref, watch } from 'vue'
 import api from '@/api'
@@ -36,7 +35,6 @@ import { recentDownloadsApi } from '@/api/recentDownloads'
 const VALID_BUTTON_MODES = ['hidden', 'shown', 'default']
 const VALID_TILE_SIZES = ['adaptive', '4', '6', '8']
 const VALID_PREVIEW_ORDERS = ['random', 'asc', 'desc']
-const VALID_FOLDER_PAGE_SIZES = [8, 12, 20]
 
 // 模块级状态（singleton）：所有调用共享同一组 ref
 const state = {
@@ -45,7 +43,6 @@ const state = {
   tileSize: ref('adaptive'),
   previewOrder: ref('random'),
   includeOnline: ref(false),
-  folderPageSize: ref(20),
   // 4 个新开关（我的最爱 / 随机浏览 / 收藏文件夹 / 收藏自动下载）
   enableMyFavorites: ref(false),
   enableRandomBrowse: ref(false),
@@ -129,12 +126,9 @@ function loadLegacyLocalStorage() {
     state.includeOnline.value = true
   }
 
-  state.folderPageSize.value = 20
-  const savedFolderPageSize = window.localStorage.getItem('favorites_folder_page_size')
-  const parsed = savedFolderPageSize !== null ? parseInt(savedFolderPageSize, 10) : NaN
-  if (VALID_FOLDER_PAGE_SIZES.includes(parsed)) {
-    state.folderPageSize.value = parsed
-  }
+  // 旧版遗留 key（每页收藏夹个数）：功能已移除（每页条数改为按列数自动推导），
+  // 读一次即删，避免 localStorage 里留垃圾
+  window.localStorage.removeItem('favorites_folder_page_size')
 }
 
 /**
@@ -148,7 +142,6 @@ function writeLegacyLocalStorage() {
   window.localStorage.setItem(
     'gallery_favorites_include_online', state.includeOnline.value ? 'true' : 'false'
   )
-  window.localStorage.setItem('favorites_folder_page_size', String(state.folderPageSize.value))
 }
 
 /**
@@ -244,7 +237,7 @@ export async function clearRecentDownloads(payload) {
  * 把部分配置变更同步写回后端，并同步本地 state。
  *
  * @param {Record<string, any>} updates - snake_case 键值对（与后端契约一致）
- *        合法键：button_mode / tile_size / preview_order / include_online / folder_page_size
+ *        合法键：button_mode / tile_size / preview_order / include_online
  *               enable_my_favorites / enable_random_browse / enable_favorite_folder / enable_favorite_autodownload
  *               enable_recent_downloads
  * @returns {Promise<void>}
@@ -285,7 +278,6 @@ export async function saveFavoritesConfig(updates) {
  *   tileSize: Ref<string>,
  *   previewOrder: Ref<string>,
  *   includeOnline: Ref<boolean>,
- *   folderPageSize: Ref<number>,
  *   enableMyFavorites: Ref<boolean>,
  *   enableRandomBrowse: Ref<boolean>,
  *   enableFavoriteFolder: Ref<boolean>,
@@ -320,10 +312,6 @@ export function useFavoritesConfig() {
       }
       if ('include_online' in c) {
         state.includeOnline.value = !!c.include_online
-      }
-      if ('folder_page_size' in c) {
-        const ps = Number(c.folder_page_size)
-        if (VALID_FOLDER_PAGE_SIZES.includes(ps)) state.folderPageSize.value = ps
       }
       if ('enable_my_favorites' in c) {
         state.enableMyFavorites.value = !!c.enable_my_favorites
@@ -365,7 +353,6 @@ export function useFavoritesConfig() {
     watch(state.tileSize, writeLegacyLocalStorage)
     watch(state.previewOrder, writeLegacyLocalStorage)
     watch(state.includeOnline, writeLegacyLocalStorage)
-    watch(state.folderPageSize, writeLegacyLocalStorage)
   }
 
   return state

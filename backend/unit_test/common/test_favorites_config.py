@@ -12,7 +12,6 @@ def test_default_values():
     assert c.tile_size == "adaptive"
     assert c.preview_order == "random"
     assert c.include_online is False
-    assert c.folder_page_size == 20
     assert c.enable_my_favorites is False
     assert c.enable_random_browse is False
     assert c.enable_favorite_folder is True
@@ -37,12 +36,6 @@ def test_invalid_preview_order_raises():
         FavoritesConfig(preview_order="ascending")
 
 
-def test_invalid_folder_page_size_raises():
-    """Verify invalid folder_page_size is rejected."""
-    with pytest.raises(ValidationError):
-        FavoritesConfig(folder_page_size=10)
-
-
 def test_valid_button_modes():
     """Verify all valid button_mode values accepted."""
     for v in ("hidden", "shown", "default"):
@@ -57,8 +50,14 @@ def test_valid_tile_sizes():
         assert c.tile_size == v
 
 
-def test_valid_folder_page_sizes():
-    """Verify all valid folder_page_size values accepted."""
-    for v in (8, 12, 20):
-        c = FavoritesConfig(folder_page_size=v)
-        assert c.folder_page_size == v
+
+def test_folder_page_size_field_removed():
+    """收藏夹「每页个数」已移除：每页条数由前端按列数自动推导。
+
+    后端不再持有该字段（配置里的残留 key 由 pydantic extra='ignore' 静默丢弃）。
+    """
+    c = FavoritesConfig()
+    assert not hasattr(c, "folder_page_size")
+    # 旧配置文件里的残留键不应导致校验失败
+    c2 = FavoritesConfig(**{"folder_page_size": 20})
+    assert not hasattr(c2, "folder_page_size")

@@ -184,40 +184,36 @@ describe('columnLayout - 瀑布流列数计算', () => {
   })
 
   describe('P0 - 收藏夹分页条数按列数对齐（每页填满行）', () => {
-    it('T21 列数整除 pageSize 时，与改造前完全一致', () => {
-      // 4 列 + pageSize 20 → 仍是 20 / 20（虚拟磁贴 3 个时首页 17）
-      expect(getFolderPageSizes(20, 4, 0)).toEqual({ block: 20, firstPage: 20, laterPage: 20 })
-      expect(getFolderPageSizes(20, 4, 3)).toEqual({ block: 20, firstPage: 17, laterPage: 20 })
-      expect(getFolderPageSizes(8, 4, 0)).toEqual({ block: 8, firstPage: 8, laterPage: 8 })
-      expect(getFolderPageSizes(12, 4, 3)).toEqual({ block: 12, firstPage: 9, laterPage: 12 })
+    it('T21 每页条数由列数推导（列数 × 3 行，窄屏至少 8 个）', () => {
+      // 4 列 → 12；8 列 → 24；1 列 → 8（最小值）；2 列 → 8；3 列 → 9
+      expect(getFolderPageSizes(4, 0)).toEqual({ block: 12, firstPage: 12, laterPage: 12 })
+      expect(getFolderPageSizes(8, 0)).toEqual({ block: 24, firstPage: 24, laterPage: 24 })
+      expect(getFolderPageSizes(1, 0)).toEqual({ block: 8, firstPage: 8, laterPage: 8 })
+      expect(getFolderPageSizes(2, 0)).toEqual({ block: 8, firstPage: 8, laterPage: 8 })
+      expect(getFolderPageSizes(3, 0)).toEqual({ block: 9, firstPage: 9, laterPage: 9 })
     })
 
-    it('T22 列数不整除 pageSize 时向下取整到列数整数倍', () => {
-      // 6 列 + pageSize 20 → 18（3 行）
-      expect(getFolderPageSizes(20, 6, 0)).toEqual({ block: 18, firstPage: 18, laterPage: 18 })
-      expect(getFolderPageSizes(20, 6, 3)).toEqual({ block: 18, firstPage: 15, laterPage: 18 })
-      // 3 列 + pageSize 20 → 18（6 行）
-      expect(getFolderPageSizes(20, 3, 3)).toEqual({ block: 18, firstPage: 15, laterPage: 18 })
+    it('T22 第 1 页扣掉置顶的虚拟磁贴，后续页为整块', () => {
+      expect(getFolderPageSizes(4, 3)).toEqual({ block: 12, firstPage: 9, laterPage: 12 })
+      expect(getFolderPageSizes(6, 2)).toEqual({ block: 18, firstPage: 16, laterPage: 18 })
     })
 
     it('T23 累计显示总数恒为列数的整数倍（每页最后一行都填满）', () => {
-      for (const cols of [3, 4, 5, 6]) {
-        for (const pageSize of [8, 12, 20]) {
-          for (const v of [0, 1, 2, 3]) {
-            const { block, firstPage, laterPage } = getFolderPageSizes(pageSize, cols, v)
-            expect(v + firstPage).toBe(block)
-            for (const page of [2, 3, 4]) {
-              const total = v + firstPage + (page - 1) * laterPage
-              expect(total % cols).toBe(0)
-              expect(total).toBe(page * block)
-            }
+      for (const cols of [1, 2, 3, 4, 5, 6, 8, 10]) {
+        for (const v of [0, 1, 2, 3]) {
+          const { block, firstPage, laterPage } = getFolderPageSizes(cols, v)
+          expect(v + firstPage).toBe(block)
+          for (const page of [2, 3, 4]) {
+            const total = v + firstPage + (page - 1) * laterPage
+            expect(total % cols).toBe(0)
+            expect(total).toBe(page * block)
           }
         }
       }
     })
 
     it('T24 非法输入兜底：至少 1 个磁贴、至少 1 列', () => {
-      const r = getFolderPageSizes(0, 0, 0)
+      const r = getFolderPageSizes(0, 0)
       expect(r.block).toBeGreaterThanOrEqual(1)
       expect(r.firstPage).toBeGreaterThanOrEqual(1)
       expect(r.laterPage).toBeGreaterThanOrEqual(1)

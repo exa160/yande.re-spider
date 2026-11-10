@@ -467,19 +467,6 @@
               </div>
             </div>
 
-            <div class="refresh-item">
-              <div class="refresh-info">
-                <div class="refresh-name">每页收藏夹个数</div>
-                <div class="refresh-params">
-                  <el-radio-group v-model="favoritesForm.folderPageSize" size="small">
-                    <el-radio-button :value="8">8</el-radio-button>
-                    <el-radio-button :value="12">12</el-radio-button>
-                    <el-radio-button :value="20">20</el-radio-button>
-                  </el-radio-group>
-                </div>
-              </div>
-            </div>
-
             <div class="favorites-save-row">
               <el-button
                 type="primary"
@@ -557,7 +544,6 @@ const {
   tileSize,
   previewOrder,
   includeOnline,
-  folderPageSize,
   enableMyFavorites,
   enableRandomBrowse,
   enableFavoriteAutodownload,
@@ -570,7 +556,6 @@ const favoritesForm = reactive({
   tileSize: tileSize.value,
   previewOrder: previewOrder.value,
   includeOnline: includeOnline.value,
-  folderPageSize: folderPageSize.value,
   enableMyFavorites: enableMyFavorites.value,
   enableRandomBrowse: enableRandomBrowse.value,
   enableFavoriteAutodownload: enableFavoriteAutodownload.value,
@@ -588,9 +573,6 @@ watch(favoritesForm, (val) => {
   }
   if (includeOnline.value !== val.includeOnline) {
     includeOnline.value = val.includeOnline
-  }
-  if (folderPageSize.value !== val.folderPageSize) {
-    folderPageSize.value = val.folderPageSize
   }
   if (enableMyFavorites.value !== val.enableMyFavorites) {
     enableMyFavorites.value = val.enableMyFavorites
@@ -619,7 +601,6 @@ async function saveFavorites() {
       tile_size: favoritesForm.tileSize,
       preview_order: favoritesForm.previewOrder,
       include_online: favoritesForm.includeOnline,
-      folder_page_size: favoritesForm.folderPageSize,
     })
     ElMessage.success('收藏夹配置已保存')
   } catch (error) {

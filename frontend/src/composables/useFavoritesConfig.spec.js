@@ -277,7 +277,7 @@ describe('useFavoritesConfig — enable_recent_downloads / recentDownloadsCount'
 // 向后兼容：保留 5 个原有 ref（Config.spec.js / Gallery.spec.js 依赖）
 // =============================================================================
 describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => {
-  it('exposes 5 legacy refs + 5 new refs + myFavoritesCount + recentDownloadsCount + loaded', async () => {
+  it('exposes 4 legacy refs + 5 new refs + myFavoritesCount + recentDownloadsCount + loaded', async () => {
     const { useFavoritesConfig } = await import('./useFavoritesConfig')
     const s = useFavoritesConfig()
 
@@ -285,7 +285,6 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
     expect(s).toHaveProperty('tileSize')
     expect(s).toHaveProperty('previewOrder')
     expect(s).toHaveProperty('includeOnline')
-    expect(s).toHaveProperty('folderPageSize')
     expect(s).toHaveProperty('enableMyFavorites')
     expect(s).toHaveProperty('enableRandomBrowse')
     expect(s).toHaveProperty('enableFavoriteFolder')
@@ -301,7 +300,6 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
     localStorage.setItem('gallery_favorites_tile_size', '8')
     localStorage.setItem('gallery_favorites_preview_order', 'desc')
     localStorage.setItem('gallery_favorites_include_online', 'true')
-    localStorage.setItem('favorites_folder_page_size', '12')
 
     const { useFavoritesConfig } = await import('./useFavoritesConfig')
     const s = useFavoritesConfig()
@@ -313,7 +311,6 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
     expect(s.tileSize.value).toBe('8')
     expect(s.previewOrder.value).toBe('desc')
     expect(s.includeOnline.value).toBe(true)
-    expect(s.folderPageSize.value).toBe(12)
   })
 
   it('writes back to localStorage on ref mutation (backward compat for Config.spec.js)', async () => {
@@ -326,7 +323,6 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
     s.buttonMode.value = 'default'
     s.tileSize.value = '6'
     s.includeOnline.value = true
-    s.folderPageSize.value = 8
 
     // watch 是异步 flush（默认 flush: 'pre'），等 microtask
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -334,7 +330,14 @@ describe('useFavoritesConfig — backward compatibility (5 legacy refs)', () => 
     expect(localStorage.getItem('gallery_favorites_button_mode')).toBe('default')
     expect(localStorage.getItem('gallery_favorites_tile_size')).toBe('6')
     expect(localStorage.getItem('gallery_favorites_include_online')).toBe('true')
-    expect(localStorage.getItem('favorites_folder_page_size')).toBe('8')
+  })
+
+  it('「每页收藏夹个数」已移除：旧 localStorage key 被清理', async () => {
+    localStorage.setItem('favorites_folder_page_size', '12')
+    const { useFavoritesConfig } = await import('./useFavoritesConfig')
+    const s = useFavoritesConfig()
+    expect(s).not.toHaveProperty('folderPageSize')
+    expect(localStorage.getItem('favorites_folder_page_size')).toBeNull()
   })
 
   it('singleton pattern: same refs across multiple calls', async () => {

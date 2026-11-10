@@ -90,14 +90,19 @@ export const getEffectiveColumnCount = (cols, itemCount) =>
  *
  * 背景：收藏夹磁贴高度固定（预览区 4:3 + 固定信息栏），瀑布流的「最短列优先」
  * 退化为严格轮流分配 → 只要总数不是列数的整数倍，就一定会出现「最后一行缺几块」。
- * 分页条数（8/12/20）与列数（宽度推导）原本互不相关，所以这个缺口每翻一页都会出现。
+ * 分页条数与列数（宽度推导）如果各自独立，就必然对不齐 → 每翻一页都缺几块。
  *
- * 对齐后：
- *   - 第 1 页显示总数 = block（列数整数倍）—— 虚拟磁贴置顶占用其中 V 个位置
- *   - 第 n 页显示总数 = n * block —— 每一行都填满
- *   - 只有整个列表真正取完时（最后一页不满）才会缺，属于必然结果
+ * 现在每页条数完全由列数推导（列数 × FOLDER_PAGE_ROWS 行），**不再有用户可调的
+ * 「每页个数」**：屏幕越宽列数越多，每页自动带更多行，且始终填满。
  *
- * @param {number} pageSize 用户配置的「每页收藏夹个数」（8/12/20）
+ * 只有整个列表真正取完时（最后一页不满）才会缺，属于必然结果。
+ */
+export const FOLDER_PAGE_ROWS = 3
+export const FOLDER_PAGE_MIN = 8
+
+/**
+ * 收藏夹一级页分页切片尺寸
+ *
  * @param {number} cols 当前列数
  * @param {number} virtualCount 虚拟磁贴数量（0~3）
  * @returns {{block: number, firstPage: number, laterPage: number}}
@@ -105,13 +110,13 @@ export const getEffectiveColumnCount = (cols, itemCount) =>
  *   firstPage —— 第 1 页真实收藏夹条数（block 扣掉置顶的虚拟磁贴）
  *   laterPage —— 第 2 页起每页真实收藏夹条数
  */
-export const getFolderPageSizes = (pageSize, cols, virtualCount) => {
+export const getFolderPageSizes = (cols, virtualCount) => {
   const c = Math.max(1, cols || 1)
-  const rows = Math.max(1, Math.floor((pageSize || 1) / c))
-  const block = rows * c
-  const firstPage = Math.max(1, block - (virtualCount || 0))
-  const laterPage = block
-  return { block, firstPage, laterPage }
+  // 每页 = 列数 × 3 行；窄屏（1~2 列）时至少 8 个，避免每次滚动只加两三个
+  const block = Math.max(c * FOLDER_PAGE_ROWS, FOLDER_PAGE_MIN)
+  const aligned = Math.ceil(block / c) * c // 对齐到列数整数倍 → 每行都填满
+  const firstPage = Math.max(1, aligned - (virtualCount || 0))
+  return { block: aligned, firstPage, laterPage: aligned }
 }
 
 /**
