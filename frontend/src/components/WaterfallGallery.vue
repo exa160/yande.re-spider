@@ -171,7 +171,7 @@ import api from '@/api'
 import HeartOverlay from '@/components/HeartOverlay.vue'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import { useDownloadState } from '@/composables/useDownloadState'
-import { COLUMN_GAP, getColumnCount as calcColumnCount, getEffectiveColumnCount as calcEffectiveColumnCount } from '@/composables/columnLayout'
+import { COLUMN_GAP, getColumnCount as calcColumnCount } from '@/composables/columnLayout'
 
 const props = defineProps({
   images: {
@@ -365,10 +365,6 @@ const getColumnCount = (width) => {
   return calcColumnCount(width, props.itemType)
 }
 
-// 实际渲染列数：列数上限受「内容数量」约束（见 @/composables/columnLayout）
-const getEffectiveColumnCount = (cols, itemCount) =>
-  calcEffectiveColumnCount(cols, itemCount)
-
 const estimateImageHeight = (image, cols = columnCount.value) => {
   if (image.width && image.height) {
     // image 模式：按比例估算（基准宽度 200）
@@ -387,15 +383,20 @@ const estimateImageHeight = (image, cols = columnCount.value) => {
 const getPlaceholderHeight = (image) => {
   if (image.width && image.height) {
     const galleryWidth = galleryRef.value?.offsetWidth || containerWidth.value
-    const cols = getEffectiveColumnCount(getColumnCount(galleryWidth), props.images.length)
+    const cols = getColumnCount(galleryWidth)
     const columnWidth = (galleryWidth - COLUMN_GAP * (cols - 1)) / cols
     return (columnWidth / image.width) * image.height
   }
   return 200
 }
 
+// 注意：**列数只由容器宽度决定，不随图片数量变化**。
+// 早前试过「图片不足一行时折叠空列」（列数 = min(列数上限, 图片数)），
+// 副作用是：图片少时每列被拉宽（整图被放大），加载更多后列数一变又整体缩回去 ——
+// 瀑布流在加载过程中反复改变缩放，观感很差。
+// 现在保持列宽固定，末行不满就是不满（右侧留白），与主流瀑布流一致。
 const reorderedColumns = computed(() => {
-  const cols = getEffectiveColumnCount(columnCount.value, props.images.length)
+  const cols = columnCount.value
   const colHeights = Array(cols).fill(0)
   const colArrays = Array.from({ length: cols }, () => [])
 
@@ -414,8 +415,11 @@ const reorderedColumns = computed(() => {
 
   // 方案 A：返回二维数组（每列一维），由模板按列渲染（flex 分列）。
   // 算法分列 = 渲染分列，消除之前 flat 后交给 CSS column-count 的"双重分列"矛盾。
-  // 末尾再过滤空列：packing 后仍可能残留空列（高度差较大时），空列不应占宽度。
-  return colArrays.filter(col => col.length > 0)
+  //
+  // 注意：**空列也要渲染**（内容为空但占 1/N 宽度）。
+  // 若把空列从 DOM 里去掉，剩下的列会被 flex 平分宽度 → 图片被整体放大；
+  // 图片不足一行时尤其明显（3 张图 / 5 列 → 3 列各占 1/3，图片涨到 1.7 倍）。
+  return colArrays
 })
 
 watch(() => props.images.length, () => {

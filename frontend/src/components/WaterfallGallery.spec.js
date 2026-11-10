@@ -93,6 +93,44 @@ const factory = (props = {}) => mount(WaterfallGallery, {
 const elImageAt = (wrapper, i) =>
   wrapper.findAllComponents({ name: 'ElImage' }).at(i)
 
+// =============================================================================
+// 回归：列数只由容器宽度决定，**不随图片数量变化**
+//
+// 背景：早前试过「图片不足一行时折叠空列」（列数 = min(列数上限, 图片数)），
+// 副作用是图片少时每列被拉宽（整图被放大），加载更多后列数一变又整体缩回去 ——
+// 瀑布流在加载过程中反复改变缩放，观感很差。
+// 现在列宽固定，末行不满就是不满（右侧留白）。
+// =============================================================================
+describe('WaterfallGallery - 列数固定（不随图片数量变化）', () => {
+  const countColumns = (wrapper) =>
+    wrapper.findAll('.waterfall-column').length
+
+  it('图片数少于列数上限时，列数仍按宽度推导（不被折叠）', async () => {
+    const wrapper = factory({ images: [mkImage(1), mkImage(2), mkImage(3)] })
+    await flushPromises()
+    // happy-dom 下量不到宽度 → columnCount 保持默认 4
+    expect(wrapper.vm.columnCount).toBe(4)
+    expect(countColumns(wrapper)).toBe(4)
+  })
+
+  it('图片数多于列数时，列数不变', async () => {
+    const wrapper = factory({
+      images: Array.from({ length: 12 }, (_, i) => mkImage(i + 1)),
+    })
+    await flushPromises()
+    expect(wrapper.vm.columnCount).toBe(4)
+    expect(countColumns(wrapper)).toBe(4)
+  })
+
+  it('图片清空后列数仍保持（不塌成 1 列）', async () => {
+    const wrapper = factory({ images: [mkImage(1), mkImage(2)] })
+    await flushPromises()
+    await wrapper.setProps({ images: [] })
+    await flushPromises()
+    expect(wrapper.vm.columnCount).toBe(4)
+  })
+})
+
 describe('WaterfallGallery - 预览图加载状态机', () => {
   describe('P0 - 基础状态转换', () => {
     it('T1 入列后默认 LOADING：所有图片占位', async () => {

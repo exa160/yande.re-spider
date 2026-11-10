@@ -73,19 +73,6 @@ export const getColumnWidth = (width, cols) => {
 }
 
 /**
- * 实际渲染列数：列数上限受「内容数量」约束。
- *
- * 磁贴数少于列数时不再保留空列 —— 空列同样是 flex: 1 1 0 的项目，会占掉 1/N 宽度，
- * 导致磁贴被摊薄（收藏夹一级页只有 8/12/20 个磁贴时最明显）+ 右侧留大片空白。
- *
- * @param {number} cols 宽度推导出的列数
- * @param {number} itemCount 当前内容条数
- * @returns {number} 实际渲染列数
- */
-export const getEffectiveColumnCount = (cols, itemCount) =>
-  Math.max(1, Math.min(cols, itemCount || 1))
-
-/**
  * 收藏夹一级页的分页切片尺寸：让「每页磁贴总数」永远是列数的整数倍。
  *
  * 背景：收藏夹磁贴高度固定（预览区 4:3 + 固定信息栏），瀑布流的「最短列优先」
