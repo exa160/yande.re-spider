@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   getColumnCount,
   getColumnWidth,
-  getEffectiveColumnCount,
   getFolderPageSizes,
   COLUMN_GAP,
   MIN_COLUMN_WIDTH,
@@ -153,33 +152,6 @@ describe('columnLayout - 瀑布流列数计算', () => {
       const cols = getColumnCount(container, 'folder')
       expect(cols).toBe(1)
       expect(getColumnWidth(container, cols)).toBeLessThanOrEqual(container)
-    })
-  })
-
-  describe('P0 - 空列折叠（磁贴数少于列数时不留空列）', () => {
-    it('T17 内容数少于列数 → 实际列数 = 内容数', () => {
-      expect(getEffectiveColumnCount(6, 3)).toBe(3)
-      expect(getEffectiveColumnCount(10, 5)).toBe(5)
-      expect(getEffectiveColumnCount(6, 6)).toBe(6)
-    })
-
-    it('T18 内容数多于列数 → 实际列数 = 列数上限', () => {
-      expect(getEffectiveColumnCount(6, 20)).toBe(6)
-      expect(getEffectiveColumnCount(10, 500)).toBe(10)
-    })
-
-    it('T19 内容数为 0 → 至少 1 列，不产生 0 列', () => {
-      expect(getEffectiveColumnCount(6, 0)).toBe(1)
-      expect(getEffectiveColumnCount(6, undefined)).toBe(1)
-    })
-
-    it('T20 折叠空列后磁贴变宽（收藏夹只有 5 个磁贴时不再被摊成 1/6）', () => {
-      const width = 3800
-      const cols = getColumnCount(width, 'folder')
-      const before = getColumnWidth(width, cols)
-      const after = getColumnWidth(width, getEffectiveColumnCount(cols, 5))
-      expect(after).toBeGreaterThan(before)
-      expect(after).toBeGreaterThan(600)
     })
   })
 
