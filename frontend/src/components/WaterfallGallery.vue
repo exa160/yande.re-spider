@@ -171,6 +171,7 @@ import api from '@/api'
 import HeartOverlay from '@/components/HeartOverlay.vue'
 import { useFavoritesConfig } from '@/composables/useFavoritesConfig'
 import { useDownloadState } from '@/composables/useDownloadState'
+import { COLUMN_GAP, getColumnCount as calcColumnCount, getEffectiveColumnCount as calcEffectiveColumnCount } from '@/composables/columnLayout'
 
 const props = defineProps({
   images: {
@@ -234,7 +235,9 @@ const emit = defineEmits([
   'load-error',
   'multi-select-start',
   // v2 我的最爱：HeartOverlay @changed → 重新向上抛出（父级 Gallery.vue 可同步本地状态）
-  'favorite-toggled'
+  'favorite-toggled',
+  // 列数变化通知（收藏夹一级页按列数对齐分页条数用）
+  'columns-change'
 ])
 
 // v2 我的最爱 / 随机浏览总开关：singleton ref，跨组件共享
@@ -309,7 +312,8 @@ const columnHeights = ref([])
 const containerWidth = ref(1200)
 
 // 骨架屏数量和宽高比（模拟真实图片比例分布）
-const skeletonCount = 20
+// 数量随列数增长：超宽屏 10 列时，20 个骨架只能铺 2 行 → 视觉上过于稀疏
+const skeletonCount = computed(() => Math.max(20, columnCount.value * 3))
 // 宽高比数组（height/width），模拟不同比例的图片
 const skeletonRatios = [
   0.75, 1.2, 0.6, 1.5, 0.8,
@@ -320,17 +324,20 @@ const skeletonRatios = [
 
 // 根据容器宽度和比例计算骨架屏高度
 const getSkeletonWidth = () => {
-  const gap = 15
   // 使用 galleryRef 获取实际容器宽度
   if (galleryRef.value) {
     containerWidth.value = galleryRef.value.offsetWidth
   }
-  return (containerWidth.value - gap * (columnCount.value - 1)) / columnCount.value
+  return (containerWidth.value - COLUMN_GAP * (columnCount.value - 1)) / columnCount.value
 }
 
 const skeletonHeights = computed(() => {
   const width = getSkeletonWidth()
-  return skeletonRatios.map(ratio => Math.round(width * ratio))
+  // 循环取比例，保证骨架屏数量 > skeletonRatios.length 时也有有效高度
+  return Array.from(
+    { length: skeletonCount.value },
+    (_, i) => Math.round(width * skeletonRatios[i % skeletonRatios.length])
+  )
 })
 
 // 监听 loading 状态变化，确保骨架屏显示时宽度正确
@@ -349,15 +356,20 @@ watch(() => props.loading, (isLoading) => {
   }
 }, { immediate: true })
 
+// 列数计算（纯逻辑见 @/composables/columnLayout）
+// image 模式：<480→1，<768→2，<1200→3，≥1200 按最小列宽 289px 反推（4~10 列，上限 10）
+// folder 模式（收藏夹一级页磁贴）：最小列宽 380px、上限 6 列 —— 磁贴内还嵌了一层预览网格，
+//            列宽过窄会让预览格小到看不清；且该页每页只有 8/12/20 个磁贴，过密会把磁贴摊薄。
 const getColumnCount = (width) => {
   containerWidth.value = width
-  if (width >= 1200) return 4
-  if (width >= 768) return 3
-  if (width >= 480) return 2
-  return 1
+  return calcColumnCount(width, props.itemType)
 }
 
-const estimateImageHeight = (image) => {
+// 实际渲染列数：列数上限受「内容数量」约束（见 @/composables/columnLayout）
+const getEffectiveColumnCount = (cols, itemCount) =>
+  calcEffectiveColumnCount(cols, itemCount)
+
+const estimateImageHeight = (image, cols = columnCount.value) => {
   if (image.width && image.height) {
     // image 模式：按比例估算（基准宽度 200）
     // 绝对高度差一个常数倍（200 vs 实际列宽）不影响最短列比较，packing 顺序仍正确
@@ -366,8 +378,7 @@ const estimateImageHeight = (image) => {
   // folder 模式：FolderTile 实际用固定 aspect-ratio 4/3 + object-fit cover 渲染预览图，
   // 图片区高度 = 列宽 × 0.75，与 preview 图本身宽高比无关。
   // 之前用 preview 宽高比估算产生虚假高度差异 → 短列优先 packing 决策失真 → 各列底部参差。
-  const gap = 15
-  const columnWidth = (containerWidth.value - gap * (columnCount.value - 1)) / columnCount.value
+  const columnWidth = (containerWidth.value - COLUMN_GAP * (cols - 1)) / cols
   // 图片区（4:3）+ 文字区（padding 16 + 单行内容约 20，取 36 留余量）
   return columnWidth * 0.75 + 36
 }
@@ -375,17 +386,16 @@ const estimateImageHeight = (image) => {
 // 计算骨架屏占位图高度（基于图片宽高比和列宽）
 const getPlaceholderHeight = (image) => {
   if (image.width && image.height) {
-    const gap = 15
     const galleryWidth = galleryRef.value?.offsetWidth || containerWidth.value
-    const cols = getColumnCount(galleryWidth)
-    const columnWidth = (galleryWidth - gap * (cols - 1)) / cols
+    const cols = getEffectiveColumnCount(getColumnCount(galleryWidth), props.images.length)
+    const columnWidth = (galleryWidth - COLUMN_GAP * (cols - 1)) / cols
     return (columnWidth / image.width) * image.height
   }
   return 200
 }
 
 const reorderedColumns = computed(() => {
-  const cols = columnCount.value
+  const cols = getEffectiveColumnCount(columnCount.value, props.images.length)
   const colHeights = Array(cols).fill(0)
   const colArrays = Array.from({ length: cols }, () => [])
 
@@ -399,12 +409,13 @@ const reorderedColumns = computed(() => {
       }
     }
     colArrays[shortestCol].push(img)
-    colHeights[shortestCol] += estimateImageHeight(img) + 15
+    colHeights[shortestCol] += estimateImageHeight(img, cols) + COLUMN_GAP
   })
 
   // 方案 A：返回二维数组（每列一维），由模板按列渲染（flex 分列）。
   // 算法分列 = 渲染分列，消除之前 flat 后交给 CSS column-count 的"双重分列"矛盾。
-  return colArrays
+  // 末尾再过滤空列：packing 后仍可能残留空列（高度差较大时），空列不应占宽度。
+  return colArrays.filter(col => col.length > 0)
 })
 
 watch(() => props.images.length, () => {
@@ -498,6 +509,11 @@ const updateColumnCount = () => {
     }
   }
 }
+
+// 列数变化通知：收藏夹一级页需要按列数对齐分页条数（否则每页最后一行填不满）
+watch(columnCount, (n) => {
+  emit('columns-change', n)
+})
 
 const isSelected = (image) => {
   return props.selectedImages.some(img => img.id === image.id)
