@@ -198,7 +198,9 @@
         <div
           v-if="previewVisible && currentImage && !viewerVisible"
           class="image-preview-overlay"
+          :class="`detail-layout-${detailLayout}`"
           :data-chrome-tone="chromeTone"
+          :style="overlayStyle"
           @click.self="previewVisible = false"
         >
 <div
@@ -315,12 +317,12 @@
             
             <div
               class="float-footer-right"
-              :data-arrow="isDesktop ? (infoPanelExpanded ? 'left' : 'right') : (infoPanelExpanded ? 'up' : 'down')"
+              :data-arrow="isDetailRail ? (infoPanelExpanded ? 'left' : 'right') : (infoPanelExpanded ? 'up' : 'down')"
               @click="toggleInfoPanel"
             >
               <span class="float-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
               <el-icon class="float-expand-icon">
-                <template v-if="isDesktop">
+                <template v-if="isDetailRail">
                   <ArrowLeft v-if="infoPanelExpanded" />
                   <ArrowRight v-else />
                 </template>
@@ -346,7 +348,7 @@
           <transition name="detail-surface">
             <ImageDetail
               v-if="infoPanelExpanded"
-              :layout="isDesktop ? 'rail' : 'dock'"
+              :layout="detailLayout"
               :title="'详情'"
               :subtitle="detailSubtitle"
               :rating="currentImage.rating"
@@ -895,8 +897,44 @@ const refreshingTags = ref(false)
 // 移动端展开详情时用整体上移给坞让位：--detail-shift 由坞的实际高度算出
 const detailHostRef = ref(null)
 const detailShift = ref(0)
-// 详情形态断点：>=980px 用右侧栏，窄屏用图片下方坞（与站内断点一致）
-const isDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= 980 : true)
+// 详情形态断点：**按屏幕方向**决定，而不是绝对宽度。
+//   横屏 → 右侧栏（rail，向右展开）；竖屏 → 下方坞（dock，向下展开）。
+//
+// 为什么不用纯宽度断点（原为 innerWidth >= 980）：
+//   手机横屏（如 844×390）宽度不足 980px，但横向空间其实很富裕、纵向空间极窄；
+//   若按宽度判定会走「下方坞」→ 展开后坞几乎占满 390px 的高度、图片被挤没，
+//   详情基本没法用。横屏时右侧栏是唯一合理形态。
+// 宽度 ≥ 980px 仍一律走右侧栏：这类窗口横向本就富裕，下方坞反而更差。
+const DETAIL_RAIL_MIN_VIEWPORT = 700 // 横屏时至少要能并排放下侧栏
+const DETAIL_RAIL_WIDTH_DESKTOP = 340
+const DETAIL_RAIL_WIDTH_COMPACT = 280 // 手机横屏：侧栏更窄，给图片让出更多空间
+const DETAIL_RAIL_GAP = 16
+
+const getDetailLayout = () => {
+  const w = window.innerWidth
+  const h = window.innerHeight
+  if (w >= 980) return 'rail'
+  if (w > h && w >= DETAIL_RAIL_MIN_VIEWPORT) return 'rail'
+  return 'dock'
+}
+
+// 当前详情形态：'rail'（右侧栏，向右展开）| 'dock'（下方坞，向下展开）
+const detailLayout = ref(getDetailLayout())
+const isDetailRail = computed(() => detailLayout.value === 'rail')
+
+// 侧栏宽度：宽屏 340px；横屏窄屏（手机横屏）收到 280px，避免图片被挤太窄
+const detailRailWidth = computed(() =>
+  window.innerWidth >= 1000 ? DETAIL_RAIL_WIDTH_DESKTOP : DETAIL_RAIL_WIDTH_COMPACT
+)
+// 侧栏与图片之间的留白：窄屏横屏时收紧
+const detailLayoutMargin = computed(() =>
+  window.innerWidth >= 1000 ? 48 : 24
+)
+
+// overlay 根元素样式：把侧栏宽度下发成 CSS 变量（ImageDetail 的 rail 宽度消费它）
+const overlayStyle = computed(() => ({
+  '--detail-rail-width': `${detailRailWidth.value}px`,
+}))
 const downloading = ref(false)
 // 任务下发请求在途标记（防重复点击）；「下载中」的权威来源是 useDownloadState
 const {
@@ -1034,13 +1072,8 @@ const onFavoriteChanged = (payload) => {
   }
 }
 
-// 详情侧栏占位：宽度与 ImageDetail 的 rail 保持一致（340px）
-const DETAIL_RAIL_WIDTH = 340
-const DETAIL_RAIL_GAP = 16
-const DETAIL_LAYOUT_MARGIN = 48
-
 // 计算图片预览容器尺寸，保持图片原始比例。
-// 桌面展开详情时给右侧栏让位；移动端不缩放图片，展开时整体上移。
+// 右侧栏形态（rail）展开时给侧栏让位；下方坞形态（dock）不缩放图片，展开时整体上移。
 const calculatePreviewSize = () => {
   if (!currentImage.value) {
     previewContainerStyle.value = {}
@@ -1051,14 +1084,17 @@ const calculatePreviewSize = () => {
   const imgHeight = currentImage.value.height || 1080
   const imgRatio = imgWidth / imgHeight
   const detailsOpen = infoPanelExpanded.value
-  const desktop = isDesktop.value
+  const rail = isDetailRail.value
 
-  const maxHeight = window.innerHeight * (desktop ? 0.8 : 0.9)
-  let maxWidth = window.innerWidth * (desktop ? 0.8 : 0.94)
-  if (desktop && detailsOpen) {
+  const maxHeight = window.innerHeight * (rail ? 0.8 : 0.9)
+  let maxWidth = window.innerWidth * (rail ? 0.8 : 0.94)
+  if (rail && detailsOpen) {
     maxWidth = Math.min(
       maxWidth,
-      window.innerWidth - DETAIL_RAIL_WIDTH - DETAIL_RAIL_GAP - DETAIL_LAYOUT_MARGIN,
+      window.innerWidth -
+        detailRailWidth.value -
+        DETAIL_RAIL_GAP -
+        detailLayoutMargin.value,
     )
   }
   maxWidth = Math.max(240, maxWidth)
@@ -1090,7 +1126,7 @@ const detailRailHeight = computed(() => {
 // 移动端整体上移：图片底边与坞顶边保持 8px 间距。
 // 只测量坞的高度，图片位置用「居中 + 高度」推算，避免读到已经偏移的 rect。
 const updateDetailShift = () => {
-  if (isDesktop.value || !infoPanelExpanded.value) {
+  if (isDetailRail.value || !infoPanelExpanded.value) {
     detailShift.value = 0
     return
   }
@@ -1111,12 +1147,12 @@ const scheduleDetailShiftUpdate = () => {
   nextTick(updateDetailShift)
 }
 
-watch([infoPanelExpanded, isDesktop], scheduleDetailShiftUpdate)
+watch([infoPanelExpanded, detailLayout], scheduleDetailShiftUpdate)
 
 // 窗口尺寸变化：更新断点并重算预览尺寸与移动端上移量。
 // 命名函数是为了 onUnmounted 能移除（旧实现是匿名监听，卸载后仍会执行）。
 const handleWindowResize = () => {
-  isDesktop.value = window.innerWidth >= 980
+  detailLayout.value = getDetailLayout()
   if (previewVisible.value && currentImage.value) {
     calculatePreviewSize()
     scheduleDetailShiftUpdate()
@@ -1139,7 +1175,7 @@ const wrapperStyle = computed(() => ({
 
 // 移动端坞与图片同宽；桌面用 host 的宽度过渡给 rail 让位（不再靠 flex 在动画结束瞬间跳变）
 const detailHostStyle = computed(() => {
-  if (!isDesktop.value) return { width: previewContainerStyle.value.width || '100%' }
+  if (!isDetailRail.value) return { width: previewContainerStyle.value.width || '100%' }
   return { height: detailRailHeight.value }
 })
 
@@ -2718,25 +2754,26 @@ html.dark-mode .selection-count {
     margin-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (min-width: 980px) {
-  .detail-host--open {
-    width: 340px;
-    margin-left: 16px;
-  }
+/* 详情形态由 JS 判定（detail-layout-rail / detail-layout-dock），
+   CSS 只消费结果 —— 不再各自维护一套 media query 断点，避免两处判定漂移。 */
+
+/* 右侧栏形态：横向展开，宽度由 --detail-rail-width 下发（宽屏 340 / 窄屏横屏 280） */
+.detail-layout-rail .detail-host--open {
+  width: var(--detail-rail-width, 340px);
+  margin-left: 16px;
 }
 
-@media (max-width: 979px) {
-  .detail-host {
-    position: absolute;
-    left: 50%;
-    bottom: 8px;
-    transform: translateX(-50%);
-    width: auto;
-    height: auto;
-    margin: 0;
-    overflow: visible;
-    transition: none;
-  }
+/* 下方坞形态：绝对定位到图片下方，宽度跟随图片 */
+.detail-layout-dock .detail-host {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  transition: none;
 }
 
 /* 图片容器 - 动态尺寸（由JS计算保持图片比例），图片自适应缩放 */
@@ -3057,7 +3094,7 @@ html.dark-mode .selection-count {
   opacity: 0;
 }
 
-/* 详情表面过渡：桌面从右侧滑入，窄屏从下方滑入 */
+/* 详情表面过渡：右侧栏形态从右侧滑入，下方坞形态从下方滑入（方向由形态类决定） */
 .detail-surface-enter-active,
 .detail-surface-leave-active {
   transition: opacity 0.26s ease, transform 0.30s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -3069,11 +3106,9 @@ html.dark-mode .selection-count {
   transform: translateX(14px);
 }
 
-@media (max-width: 979px) {
-  .detail-surface-enter-from,
-  .detail-surface-leave-to {
-    transform: translateY(14px);
-  }
+.detail-layout-dock .detail-surface-enter-from,
+.detail-layout-dock .detail-surface-leave-to {
+  transform: translateY(14px);
 }
 
 /* 深色模式适配 */

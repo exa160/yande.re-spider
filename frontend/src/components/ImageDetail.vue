@@ -273,9 +273,11 @@ html.dark-mode .image-detail {
   z-index: 2;
 }
 
+/* 右侧栏宽度：由 Gallery 下发的 --detail-rail-width 决定
+   （宽屏 340px / 手机横屏等窄横屏 280px），缺省回退 340px */
 .image-detail[data-layout='rail'] {
-  flex: 0 0 340px;
-  width: 340px;
+  flex: 0 0 var(--detail-rail-width, 340px);
+  width: var(--detail-rail-width, 340px);
 }
 
 /* 移动端坞与图片同宽；高度随内容展开，让标签完整显示。

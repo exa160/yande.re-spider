@@ -2860,6 +2860,144 @@ describe('Gallery.vue 详情布局（桌面 rail / 移动 dock）', () => {
 })
 
 // =============================================================================
+// 详情弹出方向：**按屏幕方向**决定，而不是绝对宽度
+//   横屏 → 右侧栏（rail，向右展开）
+//   竖屏 → 下方坞（dock，向下展开）
+//
+// 背景：原实现用 innerWidth >= 980 判形态 → 手机横屏（844×390）会落到「下方坞」，
+// 而横屏纵向只有 390px，坞展开后几乎占满屏幕、图片被挤没 → 详情没法用。
+// =============================================================================
+describe('Gallery.vue 详情形态按屏幕方向判定', () => {
+  // 本 describe 自带视口/详情辅助（不依赖其它 describe 的局部闭包）
+  const setViewport = (width, height) => {
+    const prevWidth = window.innerWidth
+    const prevHeight = window.innerHeight
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
+    return () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: prevWidth })
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight })
+    }
+  }
+  const openDetail = async (wrapper) => {
+    wrapper.vm.currentImage = {
+      id: 100,
+      file_url: 'pictures/100.jpg',
+      preview_url: null,
+      width: 1920,
+      height: 1080,
+      rating: 'Safe',
+      down_flag: true,
+      tags: [],
+    }
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+  }
+
+  const detailLayoutOf = (wrapper) => {
+    const overlay = document.body.querySelector('.image-preview-overlay')
+    return overlay ? overlay.className.match(/detail-layout-(\w+)/)?.[1] : null
+  }
+
+  it('手机横屏 844×390 → rail（向右展开），不再落到下方坞', async () => {
+    const restoreViewport = setViewport(844, 390)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+
+      expect(wrapper.vm.detailLayout).toBe('rail')
+      expect(detailLayoutOf(wrapper)).toBe('rail')
+      expect(document.body.querySelector('.image-detail').getAttribute('data-layout')).toBe('rail')
+      // 侧栏方向箭头：rail 用左右箭头
+      expect(document.querySelector('.float-footer-right').getAttribute('data-arrow')).toBe('left')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('手机竖屏 390×844 → dock（向下展开）', async () => {
+    const restoreViewport = setViewport(390, 844)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+
+      expect(wrapper.vm.detailLayout).toBe('dock')
+      expect(detailLayoutOf(wrapper)).toBe('dock')
+      expect(document.body.querySelector('.image-detail').getAttribute('data-layout')).toBe('dock')
+      // dock 用上下箭头
+      expect(document.querySelector('.float-footer-right').getAttribute('data-arrow')).toBe('up')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('桌面 1440×900 → rail（向右展开）', async () => {
+    const restoreViewport = setViewport(1440, 900)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('rail')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('横屏窄屏（600×400）宽度不足以并排放侧栏 → 退回 dock', async () => {
+    const restoreViewport = setViewport(600, 400)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('dock')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('旋转屏幕（竖→横）时形态与图片尺寸都跟着重算', async () => {
+    const restoreViewport = setViewport(390, 844)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('dock')
+
+      // 转成横屏
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 844 })
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 390 })
+      window.dispatchEvent(new Event('resize'))
+      await flushPromises()
+
+      expect(wrapper.vm.detailLayout).toBe('rail')
+      // 展开详情后图片要给侧栏让位 → 宽度不超过视口减去侧栏(280)+间距(16)+留白(24)
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      const width = parseFloat(wrapper.vm.previewContainerStyle.width)
+      expect(width).toBeLessThanOrEqual(844 - 280 - 16 - 24 + 1)
+    } finally {
+      restoreViewport()
+    }
+  })
+})
+
+// =============================================================================
 // 角标实时刷新/对齐：
 // - 点进「我的最爱 / 最近下载」时用列表 total 对齐角标（后端已与列表同口径）
 // - 收藏切换后刷新 myFavoritesCount
