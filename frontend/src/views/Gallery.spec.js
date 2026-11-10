@@ -140,7 +140,6 @@ beforeEach(async () => {
   favCfg.enableMyFavorites.value = false
   favCfg.enableRandomBrowse.value = false
   favCfg.enableRecentDownloads.value = false
-  favCfg.folderPageSize.value = 20
   favCfg.previewOrder.value = 'random'
   favCfg.includeOnline.value = false
   favCfg.tileSize.value = 'adaptive'
@@ -936,7 +935,8 @@ describe('Gallery.vue 收藏夹一级浏览加载更多契约（客户端切片�
     const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
     expect(wfg.props('loading')).toBe(false)
     expect(wfg.props('isLoadingMore')).toBe(false)
-    expect(wrapper.vm.currentFolders).toHaveLength(40)
+    // 每页 = 列数(4) × 3 行 = 12 → 第 2 页累计 24
+    expect(wrapper.vm.currentFolders).toHaveLength(24)
     expect(wrapper.vm.folderPage).toBe(2)
     expect(getAllFoldersMock).not.toHaveBeenCalled()
   })
@@ -959,7 +959,8 @@ describe('Gallery.vue 收藏夹一级浏览加载更多契约（客户端切片�
 
     // 默认 4 列 → 每页 20（与改造前一致）
     expect(wrapper.vm.folderColumnCount).toBe(4)
-    expect(wrapper.vm.currentFolders).toHaveLength(20)
+    // 4 列 × 3 行 = 12 → 首页 12 条（虚拟磁贴在测试环境为 0 个）
+    expect(wrapper.vm.currentFolders).toHaveLength(12)
 
     // 模拟 FolderGrid 上报 6 列（4K）
     const grid = wrapper.findComponent({ name: 'FolderGrid' })
@@ -967,7 +968,7 @@ describe('Gallery.vue 收藏夹一级浏览加载更多契约（客户端切片�
     await flushPromises()
 
     expect(wrapper.vm.folderColumnCount).toBe(6)
-    // floor(20/6)*6 = 18 → 首页 18 条（虚拟磁贴在测试环境为 0 个）
+    // 6 列 × 3 行 = 18 → 首页 18 条
     expect(wrapper.vm.currentFolders).toHaveLength(18)
 
     wrapper.vm.handleFolderScrollBottom()
@@ -2954,14 +2955,41 @@ describe('Gallery.vue 详情形态按屏幕方向判定', () => {
     }
   })
 
-  it('横屏窄屏（600×400）宽度不足以并排放侧栏 → 退回 dock', async () => {
-    const restoreViewport = setViewport(600, 400)
+  it('横屏但太窄（560×400）→ 退回 dock（侧栏会把图片挤没）', async () => {
+    const restoreViewport = setViewport(560, 400)
     try {
       const wrapper = factory()
       await flushPromises()
       await openDetail(wrapper)
       await flushPromises()
       expect(wrapper.vm.detailLayout).toBe('dock')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('大屏上的竖向窗口（1100×1800）→ dock（竖屏向下展开，不受宽度影响）', async () => {
+    const restoreViewport = setViewport(1100, 1800)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('dock')
+      expect(detailLayoutOf(wrapper)).toBe('dock')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('横屏 600×400（刚好够放侧栏）→ rail', async () => {
+    const restoreViewport = setViewport(600, 400)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('rail')
     } finally {
       restoreViewport()
     }
@@ -3178,26 +3206,28 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     expect(previewFolderMock).toHaveBeenCalledTimes(1)
   })
 
-  it('虚拟磁贴占用第一页名额：pageSize=8 + 2 虚拟 → 首页 6 真实，第二页 8 真实', async () => {
+  // 每页条数改为「列数 × 3 行」自动推导（不再有「每页收藏夹个数」配置）。
+  // 测试环境列数 = 4 → 每页 12 个（4 列 × 3 行）。
+  it('虚拟磁贴占用第一页名额：每页 12（4 列 × 3 行）+ 2 虚拟 → 首页 10 真实，第二页 +12', async () => {
     getAllFoldersMock.mockResolvedValue({ data: mkFolders(30) })
     const wrapper = factory()
     await flushPromises()
     await enterFavorites(wrapper)
 
     const cfg = useFavoritesConfig()
-    cfg.folderPageSize.value = 8
     cfg.enableMyFavorites.value = true
     cfg.enableRandomBrowse.value = true
     await flushPromises()
 
-    expect(wrapper.vm.currentFolders).toHaveLength(6)
-    expect(wrapper.vm.displayFolders).toHaveLength(8) // 2 虚拟 + 6 真实
+    expect(wrapper.vm.folderColumnCount).toBe(4)
+    expect(wrapper.vm.currentFolders).toHaveLength(10)
+    expect(wrapper.vm.displayFolders).toHaveLength(12) // 2 虚拟 + 10 真实
 
     await wrapper.vm.loadFolders(2)
     await flushPromises()
     expect(wrapper.vm.folderPage).toBe(2)
-    expect(wrapper.vm.currentFolders).toHaveLength(14)
-    expect(wrapper.vm.displayFolders).toHaveLength(16) // 2 虚拟 + 14 真实
+    expect(wrapper.vm.currentFolders).toHaveLength(22)
+    expect(wrapper.vm.displayFolders).toHaveLength(24) // 2 虚拟 + 22 真实
   })
 
   it('关键字过滤在客户端完成，不重复请求收藏夹列表', async () => {
@@ -3334,7 +3364,8 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
 
       expect(getAllFoldersMock).not.toHaveBeenCalled()
       expect(wrapper.vm.folderPage).toBe(2)
-      expect(wrapper.vm.currentFolders).toHaveLength(40)
+      // 每页 = 4 列 × 3 行 = 12 → 第 2 页累计 24
+      expect(wrapper.vm.currentFolders).toHaveLength(24)
       expect(scrollToSpy).toHaveBeenCalledWith(0, 420)
     } finally {
       scrollToSpy.mockRestore()
@@ -3401,14 +3432,14 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
   }
 
   it('一级页未翻页时，从收藏夹弹窗进入最后一个 folder → 点收藏夹 tab 返回会补齐页并定位', async () => {
-    const folders = mkManyFolders(45) // pageSize=20 → 第 45 个在第 3 页
+    const folders = mkManyFolders(45) // 每页 12 → 第 45 个在第 4 页
     getAllFoldersMock.mockResolvedValue({ data: folders })
     const wrapper = factory()
     await flushPromises()
     await wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
     expect(wrapper.vm.folderPage).toBe(1)
-    expect(wrapper.vm.currentFolders).toHaveLength(20)
+    expect(wrapper.vm.currentFolders).toHaveLength(12)
 
     wrapper.vm.handleEnterFavoriteFolderDetail(folders[44])
     await flushPromises()
@@ -3422,7 +3453,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
       await nextTick()
 
       expect(wrapper.vm.favoritesView).toBe('folders')
-      expect(wrapper.vm.folderPage).toBe(3)
+      expect(wrapper.vm.folderPage).toBe(4)
       expect(wrapper.vm.currentFolders).toHaveLength(45)
       expect(wrapper.find('[data-folder-id="45"]').exists()).toBe(true)
       expect(spy).toHaveBeenCalled()
@@ -3449,7 +3480,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
       await nextTick()
 
       expect(wrapper.vm.favoritesView).toBe('folders')
-      expect(wrapper.vm.folderPage).toBe(3)
+      expect(wrapper.vm.folderPage).toBe(4)
       expect(wrapper.vm.currentFolders).toHaveLength(45)
       expect(spy).toHaveBeenCalled()
     } finally {
@@ -3468,7 +3499,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
     await flushPromises()
     expect(wrapper.vm.folderPage).toBe(2)
 
-    const target = wrapper.vm.currentFolders[25]
+    const target = wrapper.vm.currentFolders[15]
     wrapper.vm.handleFolderClick(target)
     await flushPromises()
 
@@ -3480,7 +3511,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
 
       expect(wrapper.vm.favoritesView).toBe('folders')
       expect(wrapper.vm.folderPage).toBe(2)
-      expect(wrapper.vm.currentFolders).toHaveLength(40)
+      expect(wrapper.vm.currentFolders).toHaveLength(24)
       expect(spy).not.toHaveBeenCalled()
     } finally {
       restore()

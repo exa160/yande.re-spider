@@ -689,7 +689,6 @@ const {
   tileSize,
   previewOrder,
   includeOnline,
-  folderPageSize,
   enableMyFavorites,
   enableRandomBrowse,
   enableRecentDownloads,
@@ -741,7 +740,6 @@ const filterFoldersByKeyword = (folders, keyword) => {
 // 所以每翻一页都会出现一次残缺行。现在按列数向下取整到整数倍，每页都填满。
 const sliceFoldersForPage = (filtered, page) => {
   const { firstPage, laterPage } = getFolderPageSizes(
-    folderPageSize.value,
     folderColumnCount.value,
     enabledVirtualCount.value
   )
@@ -837,7 +835,7 @@ const handleFolderTileVisible = (folder) => {
 }
 
 const folderListConfigSignature = () =>
-  `${previewOrder.value}|${includeOnline.value}|${folderPageSize.value}|${tileSize.value}`
+  `${previewOrder.value}|${includeOnline.value}|${tileSize.value}`
 
 // v2 我的最爱 / 随机浏览：是否在 WaterfallGallery 显示 HeartOverlay
 //   - showHeart=true → 渲染 HeartOverlay，并在 showHeart && enableMyFavorites 时调 /gallery/load 加 include_favorite_status
@@ -897,15 +895,19 @@ const refreshingTags = ref(false)
 // 移动端展开详情时用整体上移给坞让位：--detail-shift 由坞的实际高度算出
 const detailHostRef = ref(null)
 const detailShift = ref(0)
-// 详情形态断点：**按屏幕方向**决定，而不是绝对宽度。
-//   横屏 → 右侧栏（rail，向右展开）；竖屏 → 下方坞（dock，向下展开）。
+// 坞（dock 形态）实测高度：用于给图片高度封顶，避免高图被上移量顶出视口
+const dockHeight = ref(0)
+// 详情形态断点：**按屏幕方向**决定（横屏 → 右侧栏；竖屏 → 下方坞）。
 //
-// 为什么不用纯宽度断点（原为 innerWidth >= 980）：
+// 为什么按方向而不是宽度：
 //   手机横屏（如 844×390）宽度不足 980px，但横向空间其实很富裕、纵向空间极窄；
 //   若按宽度判定会走「下方坞」→ 展开后坞几乎占满 390px 的高度、图片被挤没，
 //   详情基本没法用。横屏时右侧栏是唯一合理形态。
-// 宽度 ≥ 980px 仍一律走右侧栏：这类窗口横向本就富裕，下方坞反而更差。
-const DETAIL_RAIL_MIN_VIEWPORT = 700 // 横屏时至少要能并排放下侧栏
+//   同理，竖屏的窗口（哪怕很宽，如大屏上的 1100×1800 竖窗）横向虽宽但纵向更长，
+//   下方坞能把图片完整展示 → 也应走 dock。
+// 宽度门槛只兜底「横屏但太窄」：侧栏 280 + 间距 16 + 留白 24 + 图片至少 240
+//   ≈ 560px，低于此宽度侧栏会把图片挤没 → 退回 dock。
+const DETAIL_RAIL_MIN_VIEWPORT = 600
 const DETAIL_RAIL_WIDTH_DESKTOP = 340
 const DETAIL_RAIL_WIDTH_COMPACT = 280 // 手机横屏：侧栏更窄，给图片让出更多空间
 const DETAIL_RAIL_GAP = 16
@@ -913,7 +915,6 @@ const DETAIL_RAIL_GAP = 16
 const getDetailLayout = () => {
   const w = window.innerWidth
   const h = window.innerHeight
-  if (w >= 980) return 'rail'
   if (w > h && w >= DETAIL_RAIL_MIN_VIEWPORT) return 'rail'
   return 'dock'
 }
@@ -1086,7 +1087,7 @@ const calculatePreviewSize = () => {
   const detailsOpen = infoPanelExpanded.value
   const rail = isDetailRail.value
 
-  const maxHeight = window.innerHeight * (rail ? 0.8 : 0.9)
+  let maxHeight = window.innerHeight * (rail ? 0.8 : 0.9)
   let maxWidth = window.innerWidth * (rail ? 0.8 : 0.94)
   if (rail && detailsOpen) {
     maxWidth = Math.min(
@@ -1096,6 +1097,11 @@ const calculatePreviewSize = () => {
         DETAIL_RAIL_GAP -
         detailLayoutMargin.value,
     )
+  }
+  // dock 形态且详情已展开：图片高度封顶到「视口 - 坞高 - 间距」，
+  // 否则高图会被上移量顶出视口顶部（只显示下半截）。
+  if (!rail && detailsOpen && dockHeight.value > 0) {
+    maxHeight = Math.min(maxHeight, window.innerHeight - dockHeight.value - 16)
   }
   maxWidth = Math.max(240, maxWidth)
 
@@ -1128,23 +1134,33 @@ const detailRailHeight = computed(() => {
 const updateDetailShift = () => {
   if (isDetailRail.value || !infoPanelExpanded.value) {
     detailShift.value = 0
+    dockHeight.value = 0
     return
   }
   const dock = detailHostRef.value?.querySelector('.image-detail')
   const imageHeight = parseFloat(previewContainerStyle.value.height) || 0
-  const dockHeight = dock?.getBoundingClientRect().height || 0
-  if (!imageHeight || !dockHeight) {
+  const measured = dock?.getBoundingClientRect().height || 0
+  dockHeight.value = measured
+  if (!imageHeight || !measured) {
     detailShift.value = 0
     return
   }
   const imageBottom = (window.innerHeight + imageHeight) / 2
-  const dockTop = window.innerHeight - 8 - dockHeight
+  const dockTop = window.innerHeight - 8 - measured
   detailShift.value = Math.max(0, Math.round(imageBottom + 8 - dockTop))
 }
 
+// 展开/收起/形态切换后：先量坞高 → 再按坞高封顶图片尺寸 → 最后算上移量。
+// （dock 形态下坞高与图片尺寸互不影响，不会形成循环）
 const scheduleDetailShiftUpdate = () => {
   if (!previewVisible.value) return
-  nextTick(updateDetailShift)
+  nextTick(() => {
+    updateDetailShift()
+    if (!isDetailRail.value && infoPanelExpanded.value && currentImage.value) {
+      calculatePreviewSize()
+      nextTick(updateDetailShift)
+    }
+  })
 }
 
 watch([infoPanelExpanded, detailLayout], scheduleDetailShiftUpdate)
@@ -1297,7 +1313,6 @@ watch(includeOnline, () => reloadFolderList({ resetPreviews: true }))
 watch(tileSize, () => reloadFolderList({ resetPreviews: true }))
 
 // 分页大小 / 虚拟磁贴数量变化 → 第一页真实 folder 名额变化，重新切片（预览仍可复用）
-watch(folderPageSize, () => reloadFolderList())
 watch(enabledVirtualCount, () => reloadFolderList())
 
 // 图片预览
@@ -1618,7 +1633,6 @@ const folderIndexInFilteredList = (folder) => {
 
 const pageOfFolderIndex = (index) => {
   const { firstPage, laterPage } = getFolderPageSizes(
-    folderPageSize.value,
     folderColumnCount.value,
     enabledVirtualCount.value
   )
@@ -2733,12 +2747,11 @@ html.dark-mode .selection-count {
   justify-content: center;
 }
 
-@media (max-width: 979px) {
-  .image-preview-overlay {
-    display: block;
-    padding: 0;
-    overflow: hidden;
-  }
+/* 下方坞形态：overlay 不再是 flex 居中（图片走绝对定位），并裁掉溢出 */
+.detail-layout-dock .image-preview-overlay {
+  display: block;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* 详情宿主：
@@ -2791,18 +2804,18 @@ html.dark-mode .selection-count {
     transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (max-width: 979px) {
-  /* 移动端不缩放图片：展开详情时整体上移，让详情坞落在下方 */
-  .float-image-wrapper {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-  }
+/* 下方坞形态：图片绝对定位居中，展开详情时整体上移给坞让位。
+   （原先这段挂在 @media (max-width: 979px) 上，而形态已改为按方向判定 →
+    大屏上的竖向窗口（宽 > 979px）拿不到上移样式 → 图片与坞重叠。） */
+.detail-layout-dock .float-image-wrapper {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
 
-  .float-image-wrapper--detail-open {
-    transform: translate(-50%, calc(-50% - var(--detail-shift, 0px)));
-  }
+.detail-layout-dock .float-image-wrapper--detail-open {
+  transform: translate(-50%, calc(-50% - var(--detail-shift, 0px)));
 }
 
 /* 图片 - 适应容器 */
