@@ -120,11 +120,6 @@ class FavoritesConfig(ConfigModel):
         default=False,
         description="预览是否包含未下载图片",
     )
-    folder_page_size: int = Field(
-        default=20,
-        description="收藏夹一级每页: 8 | 12 | 20",
-    )
-
     enable_my_favorites: bool = Field(
         default=False,
         description="我的最爱功能总开关",
@@ -161,13 +156,6 @@ class FavoritesConfig(ConfigModel):
     def _validate_preview_order(cls, v: str) -> str:
         if v not in ("random", "asc", "desc"):
             raise ValueError("preview_order must be 'random' | 'asc' | 'desc'")
-        return v
-
-    @field_validator("folder_page_size")
-    @classmethod
-    def _validate_folder_page_size(cls, v: int) -> int:
-        if v not in (8, 12, 20):
-            raise ValueError("folder_page_size must be 8 | 12 | 20")
         return v
 
 

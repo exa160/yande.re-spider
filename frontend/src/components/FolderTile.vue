@@ -17,13 +17,17 @@
     <div
       v-if="!folder.isVirtual || hasPreviewImages || !compactMode"
       class="folder-preview-grid"
-      :style="`--cols: ${gridCols}`"
+      :style="gridStyle"
     >
       <div
         v-for="img in displayedImages"
         :key="img.id"
         :data-image-id="img.id"
         class="folder-preview-cell"
+        :class="{
+          'is-pending': !saveDataMode && !loadedIds.has(img.id),
+          'is-loaded': loadedIds.has(img.id),
+        }"
       >
         <img
           v-if="!saveDataMode"
@@ -31,6 +35,7 @@
           :alt="img.id.toString()"
           loading="lazy"
           :class="{ 'safe-blur': safeMode && img.rating && img.rating !== 'Safe' }"
+          @load="onCellLoaded(img.id)"
           @error="handlePreviewError(img.id)"
         />
         <div v-else class="folder-preview-placeholder">
@@ -209,12 +214,36 @@ const hasPreviewImages = computed(() =>
   (props.folder.preview_images || []).length > 0
 )
 
+// 预览网格的列数 / 行数由「预期张数」(displayCount) 决定，**不是**「已到达的张数」。
+//
+// 为什么要按预期张数：
+//   已到达张数会随预览图分批到达而变化（0 → 4 → 8），若按它决定列数，
+//   列数会 2 → 4 变一次，格子宽高比随之改变 → 又一次视觉跳变。
+//   按预期张数（4/6/8，由磁贴宽度决定）决定后，网格结构在磁贴生命周期内恒定。
 const gridCols = computed(() => {
-  const n = displayedImages.value.length
+  const n = displayCount.value
   if (n <= 4) return 2
   if (n <= 6) return 3
   return 4  // 8 张 → 4 列
 })
+
+// 行数显式固定 → grid 行高由容器高度均分，**与图片是否加载完成无关**。
+// 之前行高是内容驱动的（隐式 auto 行）：图片按自然比例撑高行 →
+// 懒加载过程中行高在 232 ↔ 385 之间来回跳（实测），图片被裁/被撑，出现明显抖动。
+const gridRows = computed(() =>
+  Math.max(1, Math.ceil(displayCount.value / gridCols.value))
+)
+
+const gridStyle = computed(
+  () => `--cols: ${gridCols.value}; --rows: ${gridRows.value};`
+)
+
+// 已完成加载的预览图 ID（用于淡入，避免图片"啪"地出现）
+const loadedIds = ref(new Set())
+const onCellLoaded = (imageId) => {
+  if (loadedIds.value.has(imageId)) return
+  loadedIds.value = new Set(loadedIds.value).add(imageId)
+}
 
 const processQueue = () => {
   if (props.saveDataMode) return
@@ -371,6 +400,8 @@ watch(() => props.saveDataMode, async (newMode) => {
 .folder-preview-grid {
   display: grid;
   grid-template-columns: repeat(var(--cols), 1fr);
+  /* 显式行高：行高由容器高度均分，与图片加载状态无关 → 懒加载时不再抖动 */
+  grid-template-rows: repeat(var(--rows), 1fr);
   gap: 2px;
   aspect-ratio: 4 / 3;
 }
@@ -380,11 +411,41 @@ watch(() => props.saveDataMode, async (newMode) => {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* grid item 默认 min-height:auto 会被内容（图片自然高度）撑开 → 必须归零 */
+  min-height: 0;
+  position: relative;
 }
 .folder-preview-cell img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+/* 图片加载完成 → 淡入，避免"啪"地出现 */
+.folder-preview-cell.is-loaded img {
+  opacity: 1;
+}
+/* 未加载的格子：骨架微光（替代原来的纯灰块） */
+.folder-preview-cell.is-pending::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--bg-primary-rgb, 255, 255, 255), 0.28),
+    transparent
+  );
+  animation: folder-tile-shimmer 1.4s infinite;
+}
+@keyframes folder-tile-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 .folder-preview-placeholder {
   color: var(--text-muted);
@@ -426,20 +487,21 @@ html.dark-mode .folder-tile {
   filter: blur(20px) brightness(var(--safe-blur-brightness, 0.7));
 }
 
-/* 虚拟磁贴（我的最爱 / 随机浏览）
+/* 虚拟磁贴（我的最爱 / 随机浏览 / 最近下载）
  * 区分两种使用场景：
  * 1. compact-mode（FavoritePanel 弹窗）：无预览图时 grid 不渲染，整体紧凑
- * 2. 非 compact（Gallery 收藏夹瀑布流）：保留 .folder-preview-grid 占位
- *    让虚拟磁贴与真实磁贴视觉节奏一致（min-height: 120px + bg-secondary 灰底）
+ * 2. 非 compact（Gallery 收藏夹网格）：保留 .folder-preview-grid 占位
+ *
+ * C 修复：虚拟磁贴原先用 min-height: 120px 撑高度，与真实磁贴的 4:3 盒子高度模型
+ * 不一致 → 同一行里磁贴高度不齐（瀑布流里表现为底部参差）。
+ * 现在统一走 4:3 盒子（aspect-ratio 由 .folder-preview-grid 提供），
+ * 虚拟磁贴与真实磁贴高度完全一致；compact 模式仍然不强制占位。
  */
 .virtual-tile .folder-preview-grid {
-  min-height: 120px;
   background: var(--bg-tertiary);
 }
 .virtual-tile.compact-mode .folder-preview-grid {
-  /* compact 模式（FavoritePanel）：无论是否有预览图都不强制 120px 占位
-     —— 由 v-if 控制 grid 是否渲染，此规则仅影响背景色和最小高度的细微差异 */
-  min-height: 0;
+  /* compact 模式（FavoritePanel）：由 v-if 控制 grid 是否渲染，此规则仅影响背景色 */
   background: transparent;
 }
 

@@ -140,7 +140,6 @@ beforeEach(async () => {
   favCfg.enableMyFavorites.value = false
   favCfg.enableRandomBrowse.value = false
   favCfg.enableRecentDownloads.value = false
-  favCfg.folderPageSize.value = 20
   favCfg.previewOrder.value = 'random'
   favCfg.includeOnline.value = false
   favCfg.tileSize.value = 'adaptive'
@@ -214,9 +213,15 @@ const factory = () => {
           name: 'WaterfallGallery',
           props: ['images', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'itemType', 'sourceMode', 'selectable', 'selectedImages', 'saveDataMode', 'safeMode', 'showHeart'],
           emits: ['load-more', 'load-error', 'image-click', 'image-select', 'multi-select-start', 'favorite-toggled'],
-          // 与真实 WaterfallGallery 的 folder 模式一致：每个磁贴外层带 data-folder-id，
-          // 供 Gallery 返回一级页时按 folder 定位滚动
           template: '<div class="waterfall-stub"><div v-for="img in images" :key="img.id" :data-folder-id="img.id"><slot :folder="img" /></div></div>',
+        },
+        // 收藏夹一级列表：已从 WaterfallGallery(folder 模式) 换成独立的 FolderGrid。
+        // stub 需要渲染 data-folder-id（Gallery 返回一级页时按 folder 定位滚动）。
+        FolderGrid: {
+          name: 'FolderGrid',
+          props: ['folders', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'tileSize', 'saveDataMode', 'safeMode', 'previewEpoch'],
+          emits: ['folder-click', 'visible', 'load-more', 'columns-change'],
+          template: '<div class="folder-grid-stub"><div v-for="f in folders" :key="f.id" :data-folder-id="f.id"><FolderTile :folder="f" :preview-epoch="previewEpoch" /></div></div>',
         },
         FolderTile: {
           name: 'FolderTile',
@@ -930,9 +935,47 @@ describe('Gallery.vue 收藏夹一级浏览加载更多契约（客户端切片�
     const wfg = wrapper.findComponent({ name: 'WaterfallGallery' })
     expect(wfg.props('loading')).toBe(false)
     expect(wfg.props('isLoadingMore')).toBe(false)
-    expect(wrapper.vm.currentFolders).toHaveLength(40)
+    // 每页 = 列数(4) × 3 行 = 12 → 第 2 页累计 24
+    expect(wrapper.vm.currentFolders).toHaveLength(24)
     expect(wrapper.vm.folderPage).toBe(2)
     expect(getAllFoldersMock).not.toHaveBeenCalled()
+  })
+
+  // 超宽屏（4K）folder 模式列数变为 6 → 每页条数必须按列数对齐（floor(20/6)*6 = 18），
+  // 否则每页最后一行必然缺几块（磁贴等高 + 瀑布流轮流分配 → 缺口必然出现）。
+  it('列数变化后分页条数按列数对齐（每页填满行）', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: Array.from({ length: 60 }, (_, i) => ({
+        id: i + 1,
+        name: `f${i + 1}`,
+        tags: `tag_${i + 1}`,
+        local_count: 0,
+        preview_images: [],
+      })),
+    })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFoldersView(wrapper)
+
+    // 默认 4 列 → 每页 20（与改造前一致）
+    expect(wrapper.vm.folderColumnCount).toBe(4)
+    // 4 列 × 3 行 = 12 → 首页 12 条（虚拟磁贴在测试环境为 0 个）
+    expect(wrapper.vm.currentFolders).toHaveLength(12)
+
+    // 模拟 FolderGrid 上报 6 列（4K）
+    const grid = wrapper.findComponent({ name: 'FolderGrid' })
+    grid.vm.$emit('columns-change', 6)
+    await flushPromises()
+
+    expect(wrapper.vm.folderColumnCount).toBe(6)
+    // 6 列 × 3 行 = 18 → 首页 18 条
+    expect(wrapper.vm.currentFolders).toHaveLength(18)
+
+    wrapper.vm.handleFolderScrollBottom()
+    await flushPromises()
+    // 累计 36 条 = 2 * 18 → 每列 6 个，无残缺行
+    expect(wrapper.vm.currentFolders).toHaveLength(36)
+    expect(wrapper.vm.currentFolders.length % wrapper.vm.folderColumnCount).toBe(0)
   })
 })
 
@@ -2818,6 +2861,171 @@ describe('Gallery.vue 详情布局（桌面 rail / 移动 dock）', () => {
 })
 
 // =============================================================================
+// 详情弹出方向：**按屏幕方向**决定，而不是绝对宽度
+//   横屏 → 右侧栏（rail，向右展开）
+//   竖屏 → 下方坞（dock，向下展开）
+//
+// 背景：原实现用 innerWidth >= 980 判形态 → 手机横屏（844×390）会落到「下方坞」，
+// 而横屏纵向只有 390px，坞展开后几乎占满屏幕、图片被挤没 → 详情没法用。
+// =============================================================================
+describe('Gallery.vue 详情形态按屏幕方向判定', () => {
+  // 本 describe 自带视口/详情辅助（不依赖其它 describe 的局部闭包）
+  const setViewport = (width, height) => {
+    const prevWidth = window.innerWidth
+    const prevHeight = window.innerHeight
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
+    return () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: prevWidth })
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight })
+    }
+  }
+  const openDetail = async (wrapper) => {
+    wrapper.vm.currentImage = {
+      id: 100,
+      file_url: 'pictures/100.jpg',
+      preview_url: null,
+      width: 1920,
+      height: 1080,
+      rating: 'Safe',
+      down_flag: true,
+      tags: [],
+    }
+    wrapper.vm.previewVisible = true
+    await flushPromises()
+  }
+
+  const detailLayoutOf = (wrapper) => {
+    const overlay = document.body.querySelector('.image-preview-overlay')
+    return overlay ? overlay.className.match(/detail-layout-(\w+)/)?.[1] : null
+  }
+
+  it('手机横屏 844×390 → rail（向右展开），不再落到下方坞', async () => {
+    const restoreViewport = setViewport(844, 390)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+
+      expect(wrapper.vm.detailLayout).toBe('rail')
+      expect(detailLayoutOf(wrapper)).toBe('rail')
+      expect(document.body.querySelector('.image-detail').getAttribute('data-layout')).toBe('rail')
+      // 侧栏方向箭头：rail 用左右箭头
+      expect(document.querySelector('.float-footer-right').getAttribute('data-arrow')).toBe('left')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('手机竖屏 390×844 → dock（向下展开）', async () => {
+    const restoreViewport = setViewport(390, 844)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+
+      expect(wrapper.vm.detailLayout).toBe('dock')
+      expect(detailLayoutOf(wrapper)).toBe('dock')
+      expect(document.body.querySelector('.image-detail').getAttribute('data-layout')).toBe('dock')
+      // dock 用上下箭头
+      expect(document.querySelector('.float-footer-right').getAttribute('data-arrow')).toBe('up')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('桌面 1440×900 → rail（向右展开）', async () => {
+    const restoreViewport = setViewport(1440, 900)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('rail')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('横屏但太窄（560×400）→ 退回 dock（侧栏会把图片挤没）', async () => {
+    const restoreViewport = setViewport(560, 400)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('dock')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('大屏上的竖向窗口（1100×1800）→ dock（竖屏向下展开，不受宽度影响）', async () => {
+    const restoreViewport = setViewport(1100, 1800)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('dock')
+      expect(detailLayoutOf(wrapper)).toBe('dock')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('横屏 600×400（刚好够放侧栏）→ rail', async () => {
+    const restoreViewport = setViewport(600, 400)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('rail')
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it('旋转屏幕（竖→横）时形态与图片尺寸都跟着重算', async () => {
+    const restoreViewport = setViewport(390, 844)
+    try {
+      const wrapper = factory()
+      await flushPromises()
+      await openDetail(wrapper)
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      expect(wrapper.vm.detailLayout).toBe('dock')
+
+      // 转成横屏
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 844 })
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 390 })
+      window.dispatchEvent(new Event('resize'))
+      await flushPromises()
+
+      expect(wrapper.vm.detailLayout).toBe('rail')
+      // 展开详情后图片要给侧栏让位 → 宽度不超过视口减去侧栏(280)+间距(16)+留白(24)
+      wrapper.vm.toggleInfoPanel()
+      await flushPromises()
+      wrapper.vm.calculatePreviewSize()
+      await flushPromises()
+      const width = parseFloat(wrapper.vm.previewContainerStyle.width)
+      expect(width).toBeLessThanOrEqual(844 - 280 - 16 - 24 + 1)
+    } finally {
+      restoreViewport()
+    }
+  })
+})
+
+// =============================================================================
 // 角标实时刷新/对齐：
 // - 点进「我的最爱 / 最近下载」时用列表 total 对齐角标（后端已与列表同口径）
 // - 收藏切换后刷新 myFavoritesCount
@@ -2998,26 +3206,28 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
     expect(previewFolderMock).toHaveBeenCalledTimes(1)
   })
 
-  it('虚拟磁贴占用第一页名额：pageSize=8 + 2 虚拟 → 首页 6 真实，第二页 8 真实', async () => {
+  // 每页条数改为「列数 × 3 行」自动推导（不再有「每页收藏夹个数」配置）。
+  // 测试环境列数 = 4 → 每页 12 个（4 列 × 3 行）。
+  it('虚拟磁贴占用第一页名额：每页 12（4 列 × 3 行）+ 2 虚拟 → 首页 10 真实，第二页 +12', async () => {
     getAllFoldersMock.mockResolvedValue({ data: mkFolders(30) })
     const wrapper = factory()
     await flushPromises()
     await enterFavorites(wrapper)
 
     const cfg = useFavoritesConfig()
-    cfg.folderPageSize.value = 8
     cfg.enableMyFavorites.value = true
     cfg.enableRandomBrowse.value = true
     await flushPromises()
 
-    expect(wrapper.vm.currentFolders).toHaveLength(6)
-    expect(wrapper.vm.displayFolders).toHaveLength(8) // 2 虚拟 + 6 真实
+    expect(wrapper.vm.folderColumnCount).toBe(4)
+    expect(wrapper.vm.currentFolders).toHaveLength(10)
+    expect(wrapper.vm.displayFolders).toHaveLength(12) // 2 虚拟 + 10 真实
 
     await wrapper.vm.loadFolders(2)
     await flushPromises()
     expect(wrapper.vm.folderPage).toBe(2)
-    expect(wrapper.vm.currentFolders).toHaveLength(14)
-    expect(wrapper.vm.displayFolders).toHaveLength(16) // 2 虚拟 + 14 真实
+    expect(wrapper.vm.currentFolders).toHaveLength(22)
+    expect(wrapper.vm.displayFolders).toHaveLength(24) // 2 虚拟 + 22 真实
   })
 
   it('关键字过滤在客户端完成，不重复请求收藏夹列表', async () => {
@@ -3154,7 +3364,8 @@ describe('Gallery.vue 收藏夹列表/预览拆分', () => {
 
       expect(getAllFoldersMock).not.toHaveBeenCalled()
       expect(wrapper.vm.folderPage).toBe(2)
-      expect(wrapper.vm.currentFolders).toHaveLength(40)
+      // 每页 = 4 列 × 3 行 = 12 → 第 2 页累计 24
+      expect(wrapper.vm.currentFolders).toHaveLength(24)
       expect(scrollToSpy).toHaveBeenCalledWith(0, 420)
     } finally {
       scrollToSpy.mockRestore()
@@ -3221,14 +3432,14 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
   }
 
   it('一级页未翻页时，从收藏夹弹窗进入最后一个 folder → 点收藏夹 tab 返回会补齐页并定位', async () => {
-    const folders = mkManyFolders(45) // pageSize=20 → 第 45 个在第 3 页
+    const folders = mkManyFolders(45) // 每页 12 → 第 45 个在第 4 页
     getAllFoldersMock.mockResolvedValue({ data: folders })
     const wrapper = factory()
     await flushPromises()
     await wrapper.vm.handleSourceChange('favorites')
     await flushPromises()
     expect(wrapper.vm.folderPage).toBe(1)
-    expect(wrapper.vm.currentFolders).toHaveLength(20)
+    expect(wrapper.vm.currentFolders).toHaveLength(12)
 
     wrapper.vm.handleEnterFavoriteFolderDetail(folders[44])
     await flushPromises()
@@ -3242,7 +3453,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
       await nextTick()
 
       expect(wrapper.vm.favoritesView).toBe('folders')
-      expect(wrapper.vm.folderPage).toBe(3)
+      expect(wrapper.vm.folderPage).toBe(4)
       expect(wrapper.vm.currentFolders).toHaveLength(45)
       expect(wrapper.find('[data-folder-id="45"]').exists()).toBe(true)
       expect(spy).toHaveBeenCalled()
@@ -3269,7 +3480,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
       await nextTick()
 
       expect(wrapper.vm.favoritesView).toBe('folders')
-      expect(wrapper.vm.folderPage).toBe(3)
+      expect(wrapper.vm.folderPage).toBe(4)
       expect(wrapper.vm.currentFolders).toHaveLength(45)
       expect(spy).toHaveBeenCalled()
     } finally {
@@ -3288,7 +3499,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
     await flushPromises()
     expect(wrapper.vm.folderPage).toBe(2)
 
-    const target = wrapper.vm.currentFolders[25]
+    const target = wrapper.vm.currentFolders[15]
     wrapper.vm.handleFolderClick(target)
     await flushPromises()
 
@@ -3300,7 +3511,7 @@ describe('Gallery.vue 返回一级页定位到当前 folder', () => {
 
       expect(wrapper.vm.favoritesView).toBe('folders')
       expect(wrapper.vm.folderPage).toBe(2)
-      expect(wrapper.vm.currentFolders).toHaveLength(40)
+      expect(wrapper.vm.currentFolders).toHaveLength(24)
       expect(spy).not.toHaveBeenCalled()
     } finally {
       restore()

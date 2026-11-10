@@ -90,13 +90,53 @@ describe('FolderTile', () => {
     expect(wrapper.emitted('click')[0][0]).toMatchObject({ id: 1 })
   })
 
-  it('gridCols 根据 preview_images 数量计算', () => {
+  // A 修复：gridCols / gridRows 由「预期张数」(displayCount) 决定，
+  // 不再由「已到达的 preview_images 数量」决定 —— 后者会随预览图分批到达而变化，
+  // 导致列数跳变、格子宽高比变化（视觉抖动）。
+  it('gridCols / gridRows 由预期张数决定，不随已到达张数变化', () => {
+    // 测试里磁贴宽度被 mock 成 500px → displayCount 落在最大档 8 → 4 列 2 行
     const w4 = factory({ folder: mkFolder(1, 4) })
-    expect(w4.vm.gridCols).toBe(2)  // 4 张 → 2 列
-    const w6 = factory({ folder: mkFolder(1, 6) })
-    expect(w6.vm.gridCols).toBe(3)
+    expect(w4.vm.displayCount).toBe(8)
+    expect(w4.vm.gridCols).toBe(4)
+    expect(w4.vm.gridRows).toBe(2)
+
+    // 已到达 8 张也不会改变列数（结构恒定 → 无跳动）
     const w8 = factory({ folder: mkFolder(1, 8) })
     expect(w8.vm.gridCols).toBe(4)
+    expect(w8.vm.gridRows).toBe(2)
+  })
+
+  it('tileSize 固定为 8 张时 → 4 列 2 行', () => {
+    const w = factory({ folder: mkFolder(1, 8), tileSize: '8' })
+    expect(w.vm.displayCount).toBe(8)
+    expect(w.vm.gridCols).toBe(4)
+    expect(w.vm.gridRows).toBe(2)
+  })
+
+  it('gridStyle 同时下发 --cols 与 --rows（行高显式固定）', () => {
+    const w = factory({ folder: mkFolder(1, 8), tileSize: '8' })
+    expect(w.element.querySelector('.folder-preview-grid').getAttribute('style'))
+      .toContain('--cols: 4')
+    expect(w.element.querySelector('.folder-preview-grid').getAttribute('style'))
+      .toContain('--rows: 2')
+  })
+
+  it('未加载的格子带 is-pending，加载完成后带 is-loaded（B 骨架淡入）', async () => {
+    const wrapper = factory({ folder: mkFolder(1, 4) })
+    await flushPromises()
+    const cells = wrapper.findAll('.folder-preview-cell')
+    expect(cells.length).toBe(4)
+    // 初始：未加载 → is-pending
+    expect(cells.every(c => c.classes().includes('is-pending'))).toBe(true)
+
+    // 触发可见 → src 生效 → img load → is-loaded
+    const observer = observerInstances[0]
+    observer.cb(cells.map(el => ({ isIntersecting: true, target: el.element })))
+    await flushPromises()
+    const imgs = wrapper.findAll('img')
+    imgs.forEach(img => img.trigger('load'))
+    await flushPromises()
+    expect(wrapper.findAll('.folder-preview-cell.is-loaded').length).toBe(4)
   })
 
   it('saveDataMode 由 true 切到 false 后，已可见 cell 重新入队并填充 src', async () => {

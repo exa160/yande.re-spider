@@ -118,35 +118,28 @@
              → 磁贴先空白再逐批重新出现 = "闪一下"；
           2) 列分布/高度全部重算 → 恢复位置时出现上下位移。
         保持挂载后 DOM / 图片 src / 列分布原样保留 → 既不闪也不位移。
+
+        D 改造：folder 模式不再复用 WaterfallGallery（瀑布流），改用独立的
+        FolderGrid（等宽 CSS Grid）。磁贴等高时瀑布流没有收益，且分页条数与列数
+        不对齐时最后一行必然缺几块。FolderGrid 内部用 auto-fill 自适应列数，
+        并把实际列数通过 columns-change 上报 → Gallery 据此对齐分页条数。
       -->
-      <WaterfallGallery
+      <FolderGrid
         v-show="querySource === 'favorites' && favoritesView === 'folders'"
-        item-type="folder"
-        :images="displayFolders"
+        :folders="displayFolders"
         :loading="folderLoading"
         :has-more="folderHasMore"
         :is-loading-more="isLoadingMore"
         :load-error="false"
-        :selected-images="[]"
-        :selectable="false"
-        :source-mode="'favorites'"
+        :tile-size="tileSize"
         :save-data-mode="saveDataMode"
         :safe-mode="safeMode"
+        :preview-epoch="previewGeneration"
+        @folder-click="handleFolderClick"
+        @visible="handleFolderTileVisible"
         @load-more="loadMoreFolders"
-      >
-        <template #default="{ folder }">
-          <FolderTile
-            :folder="folder"
-            :tile-size="tileSize"
-            :save-data-mode="saveDataMode"
-            :safe-mode="safeMode"
-            :preview-epoch="previewGeneration"
-            observe-visibility
-            @click="handleFolderClick"
-            @visible="handleFolderTileVisible"
-          />
-        </template>
-      </WaterfallGallery>
+        @columns-change="onFolderColumnsChange"
+      />
 
       <!-- 普通瀑布流（在线 / 本地 / 文件夹图片） -->
       <WaterfallGallery
@@ -205,7 +198,9 @@
         <div
           v-if="previewVisible && currentImage && !viewerVisible"
           class="image-preview-overlay"
+          :class="`detail-layout-${detailLayout}`"
           :data-chrome-tone="chromeTone"
+          :style="overlayStyle"
           @click.self="previewVisible = false"
         >
 <div
@@ -322,12 +317,12 @@
             
             <div
               class="float-footer-right"
-              :data-arrow="isDesktop ? (infoPanelExpanded ? 'left' : 'right') : (infoPanelExpanded ? 'up' : 'down')"
+              :data-arrow="isDetailRail ? (infoPanelExpanded ? 'left' : 'right') : (infoPanelExpanded ? 'up' : 'down')"
               @click="toggleInfoPanel"
             >
               <span class="float-expand-text">{{ infoPanelExpanded ? '收起详情' : '展开详情' }}</span>
               <el-icon class="float-expand-icon">
-                <template v-if="isDesktop">
+                <template v-if="isDetailRail">
                   <ArrowLeft v-if="infoPanelExpanded" />
                   <ArrowRight v-else />
                 </template>
@@ -353,7 +348,7 @@
           <transition name="detail-surface">
             <ImageDetail
               v-if="infoPanelExpanded"
-              :layout="isDesktop ? 'rail' : 'dock'"
+              :layout="detailLayout"
               :title="'详情'"
               :subtitle="detailSubtitle"
               :rating="currentImage.rating"
@@ -409,7 +404,7 @@ import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, Arrow
 import { useRoute, useRouter } from 'vue-router'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
-import FolderTile from '@/components/FolderTile.vue'
+import FolderGrid from '@/components/FolderGrid.vue'
 import BackButton from '@/components/BackButton.vue'
 import HeartOverlay from '@/components/HeartOverlay.vue'
 import DownloadIndicator from '@/components/DownloadIndicator.vue'
@@ -434,6 +429,7 @@ import {
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import { useDownloadState } from '@/composables/useDownloadState'
 import { useImageTone } from '@/composables/useImageTone'
+import { getFolderPageSizes } from '@/composables/columnLayout'
 
 const images = ref([])
 const loading = ref(false)
@@ -458,6 +454,15 @@ const folderKeyword = ref('')
 let folderSearchDebounce = null
 // GET /favorites 一次取回的全量收藏夹；null = 尚未加载
 const allFolders = ref(null)
+// 收藏夹一级页当前列数（由 folder 模式的 WaterfallGallery 通过 columns-change 事件上报）。
+// 分页条数必须按列数对齐，否则每页最后一行填不满（见 sliceFoldersForPage 注释）。
+// 初值 4 = 改造前的默认列数，保证未测量前行为与旧版一致。
+const folderColumnCount = ref(4)
+const onFolderColumnsChange = (count) => {
+  if (typeof count === 'number' && count > 0 && count !== folderColumnCount.value) {
+    folderColumnCount.value = count
+  }
+}
 // 进入二级页时保存的一级页快照（滚动位置 + 配置签名）
 let folderListSnapshot = null
 
@@ -684,7 +689,6 @@ const {
   tileSize,
   previewOrder,
   includeOnline,
-  folderPageSize,
   enableMyFavorites,
   enableRandomBrowse,
   enableRecentDownloads,
@@ -727,19 +731,40 @@ const filterFoldersByKeyword = (folders, keyword) => {
   })
 }
 
+// 收藏夹一级页的分页切片。
+//
+// 关键点：**每页磁贴总数必须是列数的整数倍**，否则最后一行的列必然缺几块。
+// 收藏夹磁贴高度固定（预览区 4:3 + 固定信息栏）→ 瀑布流的「最短列优先」退化为
+// 严格轮流分配 → 总数 % 列数 != 0 时，最后一行就是残缺的。
+// 用户配置的「每页收藏夹个数」（8/12/20）与列数（宽度推导，3~6）原本互不相关，
+// 所以每翻一页都会出现一次残缺行。现在按列数向下取整到整数倍，每页都填满。
 const sliceFoldersForPage = (filtered, page) => {
-  const pageSize = folderPageSize.value
-  const firstPageSize = Math.max(1, pageSize - enabledVirtualCount.value)
-  if (page === 1) {
-    return {
-      items: filtered.slice(0, firstPageSize),
-      end: Math.min(firstPageSize, filtered.length),
-    }
+  const { firstPage, laterPage } = getFolderPageSizes(
+    folderColumnCount.value,
+    enabledVirtualCount.value
+  )
+  // 累计切片（第 N 页 = 前 N 页的全部真实收藏夹）→ 直接整体替换 currentFolders，
+  // 既能追加也能在列数变化时原地重算，无需额外的 push 逻辑。
+  const total = firstPage + Math.max(0, page - 1) * laterPage
+  return {
+    items: filtered.slice(0, total),
+    end: Math.min(total, filtered.length),
   }
-  const start = firstPageSize + (page - 2) * pageSize
-  const end = start + pageSize
-  return { items: filtered.slice(start, end), end: Math.min(end, filtered.length) }
 }
+
+// 列数变化（窗口 resize / 布局变化）时按新列数重新切片 —— 不发网络请求，
+// 因为后端是一次性返回全部收藏夹的，分页纯前端切片。
+const resliceFolders = () => {
+  if (allFolders.value === null) return
+  const filtered = filterFoldersByKeyword(allFolders.value || [], folderKeyword.value)
+  const { items, end } = sliceFoldersForPage(filtered, folderPage.value)
+  currentFolders.value = items
+  folderHasMore.value = end < filtered.length
+}
+
+watch(folderColumnCount, () => {
+  resliceFolders()
+})
 
 const previewLimit = computed(
   () => PREVIEW_LIMIT_BY_TILE_SIZE[tileSize.value] ?? 8
@@ -810,7 +835,7 @@ const handleFolderTileVisible = (folder) => {
 }
 
 const folderListConfigSignature = () =>
-  `${previewOrder.value}|${includeOnline.value}|${folderPageSize.value}|${tileSize.value}`
+  `${previewOrder.value}|${includeOnline.value}|${tileSize.value}`
 
 // v2 我的最爱 / 随机浏览：是否在 WaterfallGallery 显示 HeartOverlay
 //   - showHeart=true → 渲染 HeartOverlay，并在 showHeart && enableMyFavorites 时调 /gallery/load 加 include_favorite_status
@@ -870,8 +895,45 @@ const refreshingTags = ref(false)
 // 移动端展开详情时用整体上移给坞让位：--detail-shift 由坞的实际高度算出
 const detailHostRef = ref(null)
 const detailShift = ref(0)
-// 详情形态断点：>=980px 用右侧栏，窄屏用图片下方坞（与站内断点一致）
-const isDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= 980 : true)
+// 详情形态断点：**按屏幕方向**决定（横屏 → 右侧栏；竖屏 → 下方坞）。
+//
+// 为什么按方向而不是宽度：
+//   手机横屏（如 844×390）宽度不足 980px，但横向空间其实很富裕、纵向空间极窄；
+//   若按宽度判定会走「下方坞」→ 展开后坞几乎占满 390px 的高度、图片被挤没，
+//   详情基本没法用。横屏时右侧栏是唯一合理形态。
+//   同理，竖屏的窗口（哪怕很宽，如大屏上的 1100×1800 竖窗）横向虽宽但纵向更长，
+//   下方坞能把图片完整展示 → 也应走 dock。
+// 宽度门槛只兜底「横屏但太窄」：侧栏 280 + 间距 16 + 留白 24 + 图片至少 240
+//   ≈ 560px，低于此宽度侧栏会把图片挤没 → 退回 dock。
+const DETAIL_RAIL_MIN_VIEWPORT = 600
+const DETAIL_RAIL_WIDTH_DESKTOP = 340
+const DETAIL_RAIL_WIDTH_COMPACT = 280 // 手机横屏：侧栏更窄，给图片让出更多空间
+const DETAIL_RAIL_GAP = 16
+
+const getDetailLayout = () => {
+  const w = window.innerWidth
+  const h = window.innerHeight
+  if (w > h && w >= DETAIL_RAIL_MIN_VIEWPORT) return 'rail'
+  return 'dock'
+}
+
+// 当前详情形态：'rail'（右侧栏，向右展开）| 'dock'（下方坞，向下展开）
+const detailLayout = ref(getDetailLayout())
+const isDetailRail = computed(() => detailLayout.value === 'rail')
+
+// 侧栏宽度：宽屏 340px；横屏窄屏（手机横屏）收到 280px，避免图片被挤太窄
+const detailRailWidth = computed(() =>
+  window.innerWidth >= 1000 ? DETAIL_RAIL_WIDTH_DESKTOP : DETAIL_RAIL_WIDTH_COMPACT
+)
+// 侧栏与图片之间的留白：窄屏横屏时收紧
+const detailLayoutMargin = computed(() =>
+  window.innerWidth >= 1000 ? 48 : 24
+)
+
+// overlay 根元素样式：把侧栏宽度下发成 CSS 变量（ImageDetail 的 rail 宽度消费它）
+const overlayStyle = computed(() => ({
+  '--detail-rail-width': `${detailRailWidth.value}px`,
+}))
 const downloading = ref(false)
 // 任务下发请求在途标记（防重复点击）；「下载中」的权威来源是 useDownloadState
 const {
@@ -1009,13 +1071,8 @@ const onFavoriteChanged = (payload) => {
   }
 }
 
-// 详情侧栏占位：宽度与 ImageDetail 的 rail 保持一致（340px）
-const DETAIL_RAIL_WIDTH = 340
-const DETAIL_RAIL_GAP = 16
-const DETAIL_LAYOUT_MARGIN = 48
-
 // 计算图片预览容器尺寸，保持图片原始比例。
-// 桌面展开详情时给右侧栏让位；移动端不缩放图片，展开时整体上移。
+// 右侧栏形态（rail）展开时给侧栏让位；下方坞形态（dock）不缩放图片，展开时整体上移。
 const calculatePreviewSize = () => {
   if (!currentImage.value) {
     previewContainerStyle.value = {}
@@ -1026,16 +1083,22 @@ const calculatePreviewSize = () => {
   const imgHeight = currentImage.value.height || 1080
   const imgRatio = imgWidth / imgHeight
   const detailsOpen = infoPanelExpanded.value
-  const desktop = isDesktop.value
+  const rail = isDetailRail.value
 
-  const maxHeight = window.innerHeight * (desktop ? 0.8 : 0.9)
-  let maxWidth = window.innerWidth * (desktop ? 0.8 : 0.94)
-  if (desktop && detailsOpen) {
+  let maxHeight = window.innerHeight * (rail ? 0.8 : 0.9)
+  let maxWidth = window.innerWidth * (rail ? 0.8 : 0.94)
+  if (rail && detailsOpen) {
     maxWidth = Math.min(
       maxWidth,
-      window.innerWidth - DETAIL_RAIL_WIDTH - DETAIL_RAIL_GAP - DETAIL_LAYOUT_MARGIN,
+      window.innerWidth -
+        detailRailWidth.value -
+        DETAIL_RAIL_GAP -
+        detailLayoutMargin.value,
     )
   }
+  // 注意：dock（竖屏/移动端）形态**不缩放图片** —— 展开详情时只把图片整体上移
+  // 给坞让位（见 updateDetailShift）。早前这里按「视口 - 坞高」给图片高度封顶，
+  // 会把图片连同宽度一起缩小，移动端观感很差（图片被压扁、主体变小），已移除。
   maxWidth = Math.max(240, maxWidth)
 
   let width, height
@@ -1064,8 +1127,12 @@ const detailRailHeight = computed(() => {
 
 // 移动端整体上移：图片底边与坞顶边保持 8px 间距。
 // 只测量坞的高度，图片位置用「居中 + 高度」推算，避免读到已经偏移的 rect。
+//
+// 关键：**图片本身不缩放**，只是整体上移（transform）。
+// 竖屏/移动端展开详情时若按剩余空间缩放图片，主体会被压小、观感很差；
+// 这里保持图片原始尺寸，只把它移到坞的上方（图片顶部可能超出视口，属预期）。
 const updateDetailShift = () => {
-  if (isDesktop.value || !infoPanelExpanded.value) {
+  if (isDetailRail.value || !infoPanelExpanded.value) {
     detailShift.value = 0
     return
   }
@@ -1086,12 +1153,12 @@ const scheduleDetailShiftUpdate = () => {
   nextTick(updateDetailShift)
 }
 
-watch([infoPanelExpanded, isDesktop], scheduleDetailShiftUpdate)
+watch([infoPanelExpanded, detailLayout], scheduleDetailShiftUpdate)
 
 // 窗口尺寸变化：更新断点并重算预览尺寸与移动端上移量。
 // 命名函数是为了 onUnmounted 能移除（旧实现是匿名监听，卸载后仍会执行）。
 const handleWindowResize = () => {
-  isDesktop.value = window.innerWidth >= 980
+  detailLayout.value = getDetailLayout()
   if (previewVisible.value && currentImage.value) {
     calculatePreviewSize()
     scheduleDetailShiftUpdate()
@@ -1114,7 +1181,7 @@ const wrapperStyle = computed(() => ({
 
 // 移动端坞与图片同宽；桌面用 host 的宽度过渡给 rail 让位（不再靠 flex 在动画结束瞬间跳变）
 const detailHostStyle = computed(() => {
-  if (!isDesktop.value) return { width: previewContainerStyle.value.width || '100%' }
+  if (!isDetailRail.value) return { width: previewContainerStyle.value.width || '100%' }
   return { height: detailRailHeight.value }
 })
 
@@ -1236,7 +1303,6 @@ watch(includeOnline, () => reloadFolderList({ resetPreviews: true }))
 watch(tileSize, () => reloadFolderList({ resetPreviews: true }))
 
 // 分页大小 / 虚拟磁贴数量变化 → 第一页真实 folder 名额变化，重新切片（预览仍可复用）
-watch(folderPageSize, () => reloadFolderList())
 watch(enabledVirtualCount, () => reloadFolderList())
 
 // 图片预览
@@ -1377,11 +1443,8 @@ const loadFolders = async (page, options = {}) => {
       folderKeyword.value
     )
     const { items, end } = sliceFoldersForPage(filtered, page)
-    if (page === 1) {
-      currentFolders.value = items
-    } else {
-      currentFolders.value.push(...items)
-    }
+    // 累计切片 → 整体替换（append 语义已由「累计到第 N 页」保证）
+    currentFolders.value = items
     folderHasMore.value = end < filtered.length
     folderPage.value = page
     // 预览由 FolderTile 进入视口时按需触发（handleFolderTileVisible）
@@ -1559,10 +1622,12 @@ const folderIndexInFilteredList = (folder) => {
 }
 
 const pageOfFolderIndex = (index) => {
-  const pageSize = folderPageSize.value
-  const firstPageSize = Math.max(1, pageSize - enabledVirtualCount.value)
-  if (index < firstPageSize) return 1
-  return 2 + Math.floor((index - firstPageSize) / pageSize)
+  const { firstPage, laterPage } = getFolderPageSizes(
+    folderColumnCount.value,
+    enabledVirtualCount.value
+  )
+  if (index < firstPage) return 1
+  return 2 + Math.floor((index - firstPage) / laterPage)
 }
 
 // 客户端切片，补页不发列表请求；逐页追加保证 currentFolders 顺序完整
@@ -2672,12 +2737,11 @@ html.dark-mode .selection-count {
   justify-content: center;
 }
 
-@media (max-width: 979px) {
-  .image-preview-overlay {
-    display: block;
-    padding: 0;
-    overflow: hidden;
-  }
+/* 下方坞形态：overlay 不再是 flex 居中（图片走绝对定位），并裁掉溢出 */
+.detail-layout-dock .image-preview-overlay {
+  display: block;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* 详情宿主：
@@ -2693,25 +2757,26 @@ html.dark-mode .selection-count {
     margin-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (min-width: 980px) {
-  .detail-host--open {
-    width: 340px;
-    margin-left: 16px;
-  }
+/* 详情形态由 JS 判定（detail-layout-rail / detail-layout-dock），
+   CSS 只消费结果 —— 不再各自维护一套 media query 断点，避免两处判定漂移。 */
+
+/* 右侧栏形态：横向展开，宽度由 --detail-rail-width 下发（宽屏 340 / 窄屏横屏 280） */
+.detail-layout-rail .detail-host--open {
+  width: var(--detail-rail-width, 340px);
+  margin-left: 16px;
 }
 
-@media (max-width: 979px) {
-  .detail-host {
-    position: absolute;
-    left: 50%;
-    bottom: 8px;
-    transform: translateX(-50%);
-    width: auto;
-    height: auto;
-    margin: 0;
-    overflow: visible;
-    transition: none;
-  }
+/* 下方坞形态：绝对定位到图片下方，宽度跟随图片 */
+.detail-layout-dock .detail-host {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  transition: none;
 }
 
 /* 图片容器 - 动态尺寸（由JS计算保持图片比例），图片自适应缩放 */
@@ -2729,18 +2794,46 @@ html.dark-mode .selection-count {
     transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (max-width: 979px) {
-  /* 移动端不缩放图片：展开详情时整体上移，让详情坞落在下方 */
-  .float-image-wrapper {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-  }
+/* 下方坞形态：图片绝对定位居中，展开详情时整体上移给坞让位。
+   （原先这段挂在 @media (max-width: 979px) 上，而形态已改为按方向判定 →
+    大屏上的竖向窗口（宽 > 979px）拿不到上移样式 → 图片与坞重叠。） */
+.detail-layout-dock .float-image-wrapper {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
 
-  .float-image-wrapper--detail-open {
-    transform: translate(-50%, calc(-50% - var(--detail-shift, 0px)));
-  }
+.detail-layout-dock .float-image-wrapper--detail-open {
+  transform: translate(-50%, calc(-50% - var(--detail-shift, 0px)));
+}
+
+/* 坞形态的展开动画：从上到下「展开」出现 / 从上到下「遮住」消失。
+   与右侧栏的横向展开（宽度 0→340px）对称 —— 右侧栏是"从右往左撑开"，
+   坞则是"从上往下展开"。
+
+   实现用 clip-path 的 inset（基值同为 inset + round，保证进出场都能插值）：
+   - 出现：bottom inset 从 100% 收到 0 → 可见区自上而下逐步显现
+   - 消失：top inset 从 0 涨到 100%  → 内容自上而下被遮住
+   圆角用 round 保留，避免动画期间变成直角。
+
+   投影从 ImageDetail 挪到宿主：clip-path 会裁掉元素自身的投影，
+   挪到宿主（未被裁）后动画期间投影不会突然消失。 */
+.detail-layout-dock .image-detail {
+  clip-path: inset(0 0 0 0 round 18px);
+  box-shadow: none;
+}
+
+.detail-layout-dock .detail-host {
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.20);
+}
+
+.detail-layout-dock .detail-surface-enter-from {
+  clip-path: inset(0 0 100% 0 round 18px);
+}
+
+.detail-layout-dock .detail-surface-leave-to {
+  clip-path: inset(100% 0 0 0 round 18px);
 }
 
 /* 图片 - 适应容器 */
@@ -3032,10 +3125,11 @@ html.dark-mode .selection-count {
   opacity: 0;
 }
 
-/* 详情表面过渡：桌面从右侧滑入，窄屏从下方滑入 */
+/* 详情表面过渡：右侧栏形态从右侧滑入，下方坞形态从上到下展开（方向由形态类决定） */
 .detail-surface-enter-active,
 .detail-surface-leave-active {
-  transition: opacity 0.26s ease, transform 0.30s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 0.26s ease, transform 0.30s cubic-bezier(0.2, 0.8, 0.2, 1),
+    clip-path 0.30s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .detail-surface-enter-from,
@@ -3044,11 +3138,9 @@ html.dark-mode .selection-count {
   transform: translateX(14px);
 }
 
-@media (max-width: 979px) {
-  .detail-surface-enter-from,
-  .detail-surface-leave-to {
-    transform: translateY(14px);
-  }
+.detail-layout-dock .detail-surface-enter-from,
+.detail-layout-dock .detail-surface-leave-to {
+  transform: none;
 }
 
 /* 深色模式适配 */

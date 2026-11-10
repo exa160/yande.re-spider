@@ -211,3 +211,6 @@ backend/config/
 
 # AI agent 会话状态（非项目代码）
 .omo/
+
+# Node 依赖（前端 npm install 产物，不入库）
+node_modules/
