@@ -191,6 +191,13 @@ const mountGallery = () => {
           // 供 Gallery 返回一级页时按 folder 定位滚动
           template: '<div class="waterfall-stub"><div v-for="img in images" :key="img.id" :data-folder-id="img.id"><slot :folder="img" /></div></div>',
         },
+        // 收藏夹一级列表已从 WaterfallGallery(folder 模式) 换成独立的 FolderGrid
+        FolderGrid: {
+          name: 'FolderGrid',
+          props: ['folders', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'tileSize', 'saveDataMode', 'safeMode', 'previewEpoch'],
+          emits: ['folder-click', 'visible', 'load-more', 'columns-change'],
+          template: '<div class="folder-grid-stub"><div v-for="f in folders" :key="f.id" :data-folder-id="f.id"><FolderTile :folder="f" :preview-epoch="previewEpoch" /></div></div>',
+        },
         FolderTile: {
           name: 'FolderTile',
           props: ['folder', 'tileSize', 'saveDataMode', 'safeMode', 'observeVisibility', 'previewEpoch'],
@@ -763,7 +770,7 @@ describe('Gallery.vue 滚动位置策略 · 迟到的回顶与用户接管', () 
 // 全程不变 → 不闪、列分布/高度也不变 → 恢复位置不会漂。
 // =============================================================================
 describe('Gallery.vue 返回一级页时列表保持挂载', () => {
-  it('进入二级页再返回：一级列表的 WaterfallGallery / FolderTile 实例不重建', async () => {
+  it('进入二级页再返回：一级列表的 FolderGrid / FolderTile 实例不重建', async () => {
     const folders = mkFolders(5)
     getAllFoldersMock.mockResolvedValue({ data: folders })
 
@@ -771,11 +778,9 @@ describe('Gallery.vue 返回一级页时列表保持挂载', () => {
     await flushPromises()
     await enterFavorites(wrapper)
 
-    const folderGalleryBefore = wrapper
-      .findAllComponents({ name: 'WaterfallGallery' })
-      .find((w) => w.props('itemType') === 'folder')
+    const folderGridBefore = wrapper.findComponent({ name: 'FolderGrid' })
     const tileBefore = wrapper.findComponent({ name: 'FolderTile' })
-    expect(folderGalleryBefore).toBeTruthy()
+    expect(folderGridBefore).toBeTruthy()
     expect(tileBefore.exists()).toBe(true)
 
     // 进入二级页
@@ -791,11 +796,9 @@ describe('Gallery.vue 返回一级页时列表保持挂载', () => {
     expect(wrapper.vm.favoritesView).toBe('folders')
 
     // 关键断言：组件实例没有被销毁重建（否则预览图 src 会丢 → 闪一下）
-    const folderGalleryAfter = wrapper
-      .findAllComponents({ name: 'WaterfallGallery' })
-      .find((w) => w.props('itemType') === 'folder')
-    expect(folderGalleryAfter).toBeTruthy()
-    expect(folderGalleryAfter.vm).toBe(folderGalleryBefore.vm)
+    const folderGridAfter = wrapper.findComponent({ name: 'FolderGrid' })
+    expect(folderGridAfter).toBeTruthy()
+    expect(folderGridAfter.vm).toBe(folderGridBefore.vm)
     expect(wrapper.findComponent({ name: 'FolderTile' }).vm).toBe(tileBefore.vm)
   })
 

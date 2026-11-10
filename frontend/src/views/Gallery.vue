@@ -118,35 +118,28 @@
              → 磁贴先空白再逐批重新出现 = "闪一下"；
           2) 列分布/高度全部重算 → 恢复位置时出现上下位移。
         保持挂载后 DOM / 图片 src / 列分布原样保留 → 既不闪也不位移。
+
+        D 改造：folder 模式不再复用 WaterfallGallery（瀑布流），改用独立的
+        FolderGrid（等宽 CSS Grid）。磁贴等高时瀑布流没有收益，且分页条数与列数
+        不对齐时最后一行必然缺几块。FolderGrid 内部用 auto-fill 自适应列数，
+        并把实际列数通过 columns-change 上报 → Gallery 据此对齐分页条数。
       -->
-      <WaterfallGallery
+      <FolderGrid
         v-show="querySource === 'favorites' && favoritesView === 'folders'"
-        item-type="folder"
-        :images="displayFolders"
+        :folders="displayFolders"
         :loading="folderLoading"
         :has-more="folderHasMore"
         :is-loading-more="isLoadingMore"
         :load-error="false"
-        :selected-images="[]"
-        :selectable="false"
-        :source-mode="'favorites'"
+        :tile-size="tileSize"
         :save-data-mode="saveDataMode"
         :safe-mode="safeMode"
+        :preview-epoch="previewGeneration"
+        @folder-click="handleFolderClick"
+        @visible="handleFolderTileVisible"
         @load-more="loadMoreFolders"
-      >
-        <template #default="{ folder }">
-          <FolderTile
-            :folder="folder"
-            :tile-size="tileSize"
-            :save-data-mode="saveDataMode"
-            :safe-mode="safeMode"
-            :preview-epoch="previewGeneration"
-            observe-visibility
-            @click="handleFolderClick"
-            @visible="handleFolderTileVisible"
-          />
-        </template>
-      </WaterfallGallery>
+        @columns-change="onFolderColumnsChange"
+      />
 
       <!-- 普通瀑布流（在线 / 本地 / 文件夹图片） -->
       <WaterfallGallery
@@ -409,7 +402,7 @@ import { Download, Check, Connection, Setting, Sunny, Moon, Close, Select, Arrow
 import { useRoute, useRouter } from 'vue-router'
 import AdvancedQuery from '@/components/AdvancedQuery.vue'
 import WaterfallGallery from '@/components/WaterfallGallery.vue'
-import FolderTile from '@/components/FolderTile.vue'
+import FolderGrid from '@/components/FolderGrid.vue'
 import BackButton from '@/components/BackButton.vue'
 import HeartOverlay from '@/components/HeartOverlay.vue'
 import DownloadIndicator from '@/components/DownloadIndicator.vue'
@@ -434,6 +427,7 @@ import {
 import { useFavoriteFoldersList } from '@/composables/useFavoriteFoldersList'
 import { useDownloadState } from '@/composables/useDownloadState'
 import { useImageTone } from '@/composables/useImageTone'
+import { getFolderPageSizes } from '@/composables/columnLayout'
 
 const images = ref([])
 const loading = ref(false)
@@ -458,6 +452,15 @@ const folderKeyword = ref('')
 let folderSearchDebounce = null
 // GET /favorites 一次取回的全量收藏夹；null = 尚未加载
 const allFolders = ref(null)
+// 收藏夹一级页当前列数（由 folder 模式的 WaterfallGallery 通过 columns-change 事件上报）。
+// 分页条数必须按列数对齐，否则每页最后一行填不满（见 sliceFoldersForPage 注释）。
+// 初值 4 = 改造前的默认列数，保证未测量前行为与旧版一致。
+const folderColumnCount = ref(4)
+const onFolderColumnsChange = (count) => {
+  if (typeof count === 'number' && count > 0 && count !== folderColumnCount.value) {
+    folderColumnCount.value = count
+  }
+}
 // 进入二级页时保存的一级页快照（滚动位置 + 配置签名）
 let folderListSnapshot = null
 
@@ -727,19 +730,41 @@ const filterFoldersByKeyword = (folders, keyword) => {
   })
 }
 
+// 收藏夹一级页的分页切片。
+//
+// 关键点：**每页磁贴总数必须是列数的整数倍**，否则最后一行的列必然缺几块。
+// 收藏夹磁贴高度固定（预览区 4:3 + 固定信息栏）→ 瀑布流的「最短列优先」退化为
+// 严格轮流分配 → 总数 % 列数 != 0 时，最后一行就是残缺的。
+// 用户配置的「每页收藏夹个数」（8/12/20）与列数（宽度推导，3~6）原本互不相关，
+// 所以每翻一页都会出现一次残缺行。现在按列数向下取整到整数倍，每页都填满。
 const sliceFoldersForPage = (filtered, page) => {
-  const pageSize = folderPageSize.value
-  const firstPageSize = Math.max(1, pageSize - enabledVirtualCount.value)
-  if (page === 1) {
-    return {
-      items: filtered.slice(0, firstPageSize),
-      end: Math.min(firstPageSize, filtered.length),
-    }
+  const { firstPage, laterPage } = getFolderPageSizes(
+    folderPageSize.value,
+    folderColumnCount.value,
+    enabledVirtualCount.value
+  )
+  // 累计切片（第 N 页 = 前 N 页的全部真实收藏夹）→ 直接整体替换 currentFolders，
+  // 既能追加也能在列数变化时原地重算，无需额外的 push 逻辑。
+  const total = firstPage + Math.max(0, page - 1) * laterPage
+  return {
+    items: filtered.slice(0, total),
+    end: Math.min(total, filtered.length),
   }
-  const start = firstPageSize + (page - 2) * pageSize
-  const end = start + pageSize
-  return { items: filtered.slice(start, end), end: Math.min(end, filtered.length) }
 }
+
+// 列数变化（窗口 resize / 布局变化）时按新列数重新切片 —— 不发网络请求，
+// 因为后端是一次性返回全部收藏夹的，分页纯前端切片。
+const resliceFolders = () => {
+  if (allFolders.value === null) return
+  const filtered = filterFoldersByKeyword(allFolders.value || [], folderKeyword.value)
+  const { items, end } = sliceFoldersForPage(filtered, folderPage.value)
+  currentFolders.value = items
+  folderHasMore.value = end < filtered.length
+}
+
+watch(folderColumnCount, () => {
+  resliceFolders()
+})
 
 const previewLimit = computed(
   () => PREVIEW_LIMIT_BY_TILE_SIZE[tileSize.value] ?? 8
@@ -1377,11 +1402,8 @@ const loadFolders = async (page, options = {}) => {
       folderKeyword.value
     )
     const { items, end } = sliceFoldersForPage(filtered, page)
-    if (page === 1) {
-      currentFolders.value = items
-    } else {
-      currentFolders.value.push(...items)
-    }
+    // 累计切片 → 整体替换（append 语义已由「累计到第 N 页」保证）
+    currentFolders.value = items
     folderHasMore.value = end < filtered.length
     folderPage.value = page
     // 预览由 FolderTile 进入视口时按需触发（handleFolderTileVisible）
@@ -1559,10 +1581,13 @@ const folderIndexInFilteredList = (folder) => {
 }
 
 const pageOfFolderIndex = (index) => {
-  const pageSize = folderPageSize.value
-  const firstPageSize = Math.max(1, pageSize - enabledVirtualCount.value)
-  if (index < firstPageSize) return 1
-  return 2 + Math.floor((index - firstPageSize) / pageSize)
+  const { firstPage, laterPage } = getFolderPageSizes(
+    folderPageSize.value,
+    folderColumnCount.value,
+    enabledVirtualCount.value
+  )
+  if (index < firstPage) return 1
+  return 2 + Math.floor((index - firstPage) / laterPage)
 }
 
 // 客户端切片，补页不发列表请求；逐页追加保证 currentFolders 顺序完整

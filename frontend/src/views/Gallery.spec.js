@@ -214,9 +214,15 @@ const factory = () => {
           name: 'WaterfallGallery',
           props: ['images', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'itemType', 'sourceMode', 'selectable', 'selectedImages', 'saveDataMode', 'safeMode', 'showHeart'],
           emits: ['load-more', 'load-error', 'image-click', 'image-select', 'multi-select-start', 'favorite-toggled'],
-          // 与真实 WaterfallGallery 的 folder 模式一致：每个磁贴外层带 data-folder-id，
-          // 供 Gallery 返回一级页时按 folder 定位滚动
           template: '<div class="waterfall-stub"><div v-for="img in images" :key="img.id" :data-folder-id="img.id"><slot :folder="img" /></div></div>',
+        },
+        // 收藏夹一级列表：已从 WaterfallGallery(folder 模式) 换成独立的 FolderGrid。
+        // stub 需要渲染 data-folder-id（Gallery 返回一级页时按 folder 定位滚动）。
+        FolderGrid: {
+          name: 'FolderGrid',
+          props: ['folders', 'loading', 'hasMore', 'isLoadingMore', 'loadError', 'tileSize', 'saveDataMode', 'safeMode', 'previewEpoch'],
+          emits: ['folder-click', 'visible', 'load-more', 'columns-change'],
+          template: '<div class="folder-grid-stub"><div v-for="f in folders" :key="f.id" :data-folder-id="f.id"><FolderTile :folder="f" :preview-epoch="previewEpoch" /></div></div>',
         },
         FolderTile: {
           name: 'FolderTile',
@@ -933,6 +939,42 @@ describe('Gallery.vue 收藏夹一级浏览加载更多契约（客户端切片�
     expect(wrapper.vm.currentFolders).toHaveLength(40)
     expect(wrapper.vm.folderPage).toBe(2)
     expect(getAllFoldersMock).not.toHaveBeenCalled()
+  })
+
+  // 超宽屏（4K）folder 模式列数变为 6 → 每页条数必须按列数对齐（floor(20/6)*6 = 18），
+  // 否则每页最后一行必然缺几块（磁贴等高 + 瀑布流轮流分配 → 缺口必然出现）。
+  it('列数变化后分页条数按列数对齐（每页填满行）', async () => {
+    getAllFoldersMock.mockResolvedValue({
+      data: Array.from({ length: 60 }, (_, i) => ({
+        id: i + 1,
+        name: `f${i + 1}`,
+        tags: `tag_${i + 1}`,
+        local_count: 0,
+        preview_images: [],
+      })),
+    })
+    const wrapper = factory()
+    await flushPromises()
+    await enterFoldersView(wrapper)
+
+    // 默认 4 列 → 每页 20（与改造前一致）
+    expect(wrapper.vm.folderColumnCount).toBe(4)
+    expect(wrapper.vm.currentFolders).toHaveLength(20)
+
+    // 模拟 FolderGrid 上报 6 列（4K）
+    const grid = wrapper.findComponent({ name: 'FolderGrid' })
+    grid.vm.$emit('columns-change', 6)
+    await flushPromises()
+
+    expect(wrapper.vm.folderColumnCount).toBe(6)
+    // floor(20/6)*6 = 18 → 首页 18 条（虚拟磁贴在测试环境为 0 个）
+    expect(wrapper.vm.currentFolders).toHaveLength(18)
+
+    wrapper.vm.handleFolderScrollBottom()
+    await flushPromises()
+    // 累计 36 条 = 2 * 18 → 每列 6 个，无残缺行
+    expect(wrapper.vm.currentFolders).toHaveLength(36)
+    expect(wrapper.vm.currentFolders.length % wrapper.vm.folderColumnCount).toBe(0)
   })
 })
 
