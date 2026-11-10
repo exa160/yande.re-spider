@@ -895,8 +895,6 @@ const refreshingTags = ref(false)
 // 移动端展开详情时用整体上移给坞让位：--detail-shift 由坞的实际高度算出
 const detailHostRef = ref(null)
 const detailShift = ref(0)
-// 坞（dock 形态）实测高度：用于给图片高度封顶，避免高图被上移量顶出视口
-const dockHeight = ref(0)
 // 详情形态断点：**按屏幕方向**决定（横屏 → 右侧栏；竖屏 → 下方坞）。
 //
 // 为什么按方向而不是宽度：
@@ -1098,11 +1096,9 @@ const calculatePreviewSize = () => {
         detailLayoutMargin.value,
     )
   }
-  // dock 形态且详情已展开：图片高度封顶到「视口 - 坞高 - 间距」，
-  // 否则高图会被上移量顶出视口顶部（只显示下半截）。
-  if (!rail && detailsOpen && dockHeight.value > 0) {
-    maxHeight = Math.min(maxHeight, window.innerHeight - dockHeight.value - 16)
-  }
+  // 注意：dock（竖屏/移动端）形态**不缩放图片** —— 展开详情时只把图片整体上移
+  // 给坞让位（见 updateDetailShift）。早前这里按「视口 - 坞高」给图片高度封顶，
+  // 会把图片连同宽度一起缩小，移动端观感很差（图片被压扁、主体变小），已移除。
   maxWidth = Math.max(240, maxWidth)
 
   let width, height
@@ -1131,36 +1127,30 @@ const detailRailHeight = computed(() => {
 
 // 移动端整体上移：图片底边与坞顶边保持 8px 间距。
 // 只测量坞的高度，图片位置用「居中 + 高度」推算，避免读到已经偏移的 rect。
+//
+// 关键：**图片本身不缩放**，只是整体上移（transform）。
+// 竖屏/移动端展开详情时若按剩余空间缩放图片，主体会被压小、观感很差；
+// 这里保持图片原始尺寸，只把它移到坞的上方（图片顶部可能超出视口，属预期）。
 const updateDetailShift = () => {
   if (isDetailRail.value || !infoPanelExpanded.value) {
     detailShift.value = 0
-    dockHeight.value = 0
     return
   }
   const dock = detailHostRef.value?.querySelector('.image-detail')
   const imageHeight = parseFloat(previewContainerStyle.value.height) || 0
-  const measured = dock?.getBoundingClientRect().height || 0
-  dockHeight.value = measured
-  if (!imageHeight || !measured) {
+  const dockHeight = dock?.getBoundingClientRect().height || 0
+  if (!imageHeight || !dockHeight) {
     detailShift.value = 0
     return
   }
   const imageBottom = (window.innerHeight + imageHeight) / 2
-  const dockTop = window.innerHeight - 8 - measured
+  const dockTop = window.innerHeight - 8 - dockHeight
   detailShift.value = Math.max(0, Math.round(imageBottom + 8 - dockTop))
 }
 
-// 展开/收起/形态切换后：先量坞高 → 再按坞高封顶图片尺寸 → 最后算上移量。
-// （dock 形态下坞高与图片尺寸互不影响，不会形成循环）
 const scheduleDetailShiftUpdate = () => {
   if (!previewVisible.value) return
-  nextTick(() => {
-    updateDetailShift()
-    if (!isDetailRail.value && infoPanelExpanded.value && currentImage.value) {
-      calculatePreviewSize()
-      nextTick(updateDetailShift)
-    }
-  })
+  nextTick(updateDetailShift)
 }
 
 watch([infoPanelExpanded, detailLayout], scheduleDetailShiftUpdate)
