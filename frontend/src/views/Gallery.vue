@@ -2818,6 +2818,34 @@ html.dark-mode .selection-count {
   transform: translate(-50%, calc(-50% - var(--detail-shift, 0px)));
 }
 
+/* 坞形态的展开动画：从上到下「展开」出现 / 从上到下「遮住」消失。
+   与右侧栏的横向展开（宽度 0→340px）对称 —— 右侧栏是"从右往左撑开"，
+   坞则是"从上往下展开"。
+
+   实现用 clip-path 的 inset（基值同为 inset + round，保证进出场都能插值）：
+   - 出现：bottom inset 从 100% 收到 0 → 可见区自上而下逐步显现
+   - 消失：top inset 从 0 涨到 100%  → 内容自上而下被遮住
+   圆角用 round 保留，避免动画期间变成直角。
+
+   投影从 ImageDetail 挪到宿主：clip-path 会裁掉元素自身的投影，
+   挪到宿主（未被裁）后动画期间投影不会突然消失。 */
+.detail-layout-dock .image-detail {
+  clip-path: inset(0 0 0 0 round 18px);
+  box-shadow: none;
+}
+
+.detail-layout-dock .detail-host {
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.20);
+}
+
+.detail-layout-dock .detail-surface-enter-from {
+  clip-path: inset(0 0 100% 0 round 18px);
+}
+
+.detail-layout-dock .detail-surface-leave-to {
+  clip-path: inset(100% 0 0 0 round 18px);
+}
+
 /* 图片 - 适应容器 */
 .float-main-image {
   display: flex;
@@ -3107,10 +3135,11 @@ html.dark-mode .selection-count {
   opacity: 0;
 }
 
-/* 详情表面过渡：右侧栏形态从右侧滑入，下方坞形态从下方滑入（方向由形态类决定） */
+/* 详情表面过渡：右侧栏形态从右侧滑入，下方坞形态从上到下展开（方向由形态类决定） */
 .detail-surface-enter-active,
 .detail-surface-leave-active {
-  transition: opacity 0.26s ease, transform 0.30s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 0.26s ease, transform 0.30s cubic-bezier(0.2, 0.8, 0.2, 1),
+    clip-path 0.30s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .detail-surface-enter-from,
@@ -3121,7 +3150,7 @@ html.dark-mode .selection-count {
 
 .detail-layout-dock .detail-surface-enter-from,
 .detail-layout-dock .detail-surface-leave-to {
-  transform: translateY(14px);
+  transform: none;
 }
 
 /* 深色模式适配 */
